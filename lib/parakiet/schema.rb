@@ -180,6 +180,73 @@ module Parakiet
       new(Node.new(name: "schema", repetition: :required, children: builder.nodes))
     end
 
+    # Infers a schema from sample rows (Hashes). All fields are nullable.
+    # Integer -> int64, Float -> double, String -> string (binary if not valid UTF-8),
+    # true/false -> boolean, Time -> timestamp(micros), Date -> date, BigDecimal -> decimal(38, max scale),
+    # Hash -> struct, Array -> list.
+    def self.infer(rows, sample: 1000)
+      sample_rows = rows.first(sample)
+      raise ArgumentError, "Cannot infer a schema from zero rows" if sample_rows.empty?
+      names = sample_rows.flat_map { |r| r.keys.map(&:to_s) }.uniq
+      nodes = names.map do |name|
+        values = sample_rows.map { |r| r.fetch(name) { r[name.to_sym] } }
+        Inference.node_for(name, values)
+      end
+      new(Node.new(name: "schema", repetition: :required, children: nodes))
+    end
+
+    module Inference
+      module_function
+
+      def node_for(name, values)
+        present = values.compact
+        raise ArgumentError, "Cannot infer a type for #{name}: all sampled values are nil" if present.empty?
+        sample = present.first
+        case sample
+        when Hash
+          keys = present.flat_map { |h| h.keys.map(&:to_s) }.uniq
+          children = keys.map { |k| node_for(k, present.map { |h| h.fetch(k) { h[k.to_sym] } }) }
+          Node.new(name: name, children: children)
+        when Array
+          elements = present.flatten(1)
+          element = if elements.compact.empty?
+            Node.new(name: "element", **Types.physical_attributes(:string))
+          else
+            node_for("element", elements)
+          end
+          Node.new(name: name, children: [Node.new(name: "list", repetition: :repeated, children: [element])],
+            logical_type: Format::LogicalType.new(list: Format::ListType.new), converted_type: Format::ConvertedType::LIST)
+        else
+          type, opts = scalar_type(name, present)
+          Node.new(name: name, **Types.physical_attributes(type, **(opts || {})))
+        end
+      end
+
+      def scalar_type(name, values)
+        classes = values.map(&:class).uniq
+        if classes.all? { |c| c <= Integer }
+          [:int64]
+        elsif classes.all? { |c| c <= Integer || c <= Float }
+          [:double]
+        elsif classes.all? { |c| c == TrueClass || c == FalseClass }
+          [:boolean]
+        elsif classes.all? { |c| c <= String }
+          values.all? { |v| v.encoding != Encoding::BINARY && v.valid_encoding? } ? [:string] : [:binary]
+        elsif classes.all? { |c| c <= Symbol }
+          [:string]
+        elsif classes.all? { |c| c <= Time }
+          [:timestamp, { unit: :micros }]
+        elsif classes.all? { |c| c <= Date && !(c <= DateTime) }
+          [:date]
+        elsif defined?(BigDecimal) && classes.all? { |c| c <= BigDecimal || c <= Integer }
+          scale = values.map { |v| v.is_a?(BigDecimal) ? v.to_s("F").split(".")[1].to_s.sub(/0+\z/, "").size : 0 }.max
+          [:decimal, { precision: 38, scale: scale }]
+        else
+          raise ArgumentError, "Cannot infer a Parquet type for #{name} from #{classes.map(&:name).join(", ")}"
+        end
+      end
+    end
+
     def initialize(root)
       @root = root
       @columns = []
