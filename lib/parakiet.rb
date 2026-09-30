@@ -24,6 +24,7 @@ require_relative "parakiet/compression"
 require_relative "parakiet/types"
 require_relative "parakiet/schema"
 require_relative "parakiet/reader"
+require_relative "parakiet/writer"
 
 module Parakiet
   Delta = Encodings::Delta
@@ -32,4 +33,10 @@ module Parakiet
 
   def open(path, &block) = Reader.open(path, &block)
   def read(path, columns: nil) = Reader.open(path) { |r| r.rows(columns: columns) }
+
+  # Writes an Enumerable of row Hashes. Without a schema, one is inferred from the first rows.
+  def write(path, rows, schema: nil, **options)
+    schema ||= Schema.infer(rows)
+    Writer.open(path, schema, **options) { |w| w.write_rows(rows) }
+  end
 end

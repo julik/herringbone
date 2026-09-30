@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require "base64"
 require "digest"
 
 # Converts values read by Parakiet into the canonical JSON form used by the
@@ -45,11 +44,11 @@ module Canonical
       v
     when String
       if kind == :uuid
-        { "base64" => Base64.strict_encode64([v.delete("-")].pack("H*")) }
+        { "base64" => [[v.delete("-")].pack("H*")].pack("m0") }
       elsif %i[string json enum].include?(kind)
         v
       else
-        { "base64" => Base64.strict_encode64(v) }
+        { "base64" => [v].pack("m0") }
       end
     when Rational then decimal(v, a)
     else
