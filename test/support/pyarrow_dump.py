@@ -11,7 +11,9 @@ Reads Parquet files with pyarrow and prints one JSON object with, per file:
 Usage: pyarrow_dump.py FILE [FILE ...]   (use --check to only verify pyarrow is importable)
 """
 
+import decimal
 import json
+import struct
 import os
 import sys
 
@@ -71,7 +73,23 @@ def physical(v, t):
     if isinstance(v, str):
         return v.encode("utf-8")
     if pa.types.is_decimal(t):
-        return int(v.scaleb(t.scale))
+        # The default decimal context (28 digits) would round 38-digit values
+        with decimal.localcontext() as ctx:
+            ctx.prec = 100
+            return int(v.scaleb(t.scale))
+    return v
+
+
+def raw_stat(v, t, half):
+    """Normalizes a raw statistics value to what physical() produces from column data."""
+    if isinstance(v, bytes):
+        if half:
+            return struct.unpack("<e", v)[0]
+        if pa.types.is_decimal(t):
+            return int.from_bytes(v, "big", signed=True)
+    if isinstance(v, int) and v < 0 and pa.types.is_unsigned_integer(t):
+        # Unsigned columns store their values in signed physical types
+        return v + (1 << t.bit_width)
     return v
 
 
@@ -86,6 +104,10 @@ def stats_check(pf, md):
                 continue
             path = col.path_in_schema.split(".")
             leaf = leaf_array(table, path)
+            half = pa.types.is_float16(leaf.type)
+            if half:
+                # pyarrow has no float16 kernels; float32 holds every float16 exactly
+                leaf = leaf.cast(pa.float32())
             if pa.types.is_floating(leaf.type):
                 leaf = pc.filter(leaf, pc.invert(pc.is_nan(leaf)))
             valid = leaf.drop_null()
@@ -99,12 +121,17 @@ def stats_check(pf, md):
                 valid = valid.cast(pa.int32())
             mm = pc.min_max(valid)
             dmin, dmax = physical(mm["min"].as_py(), t), physical(mm["max"].as_py(), t)
-            smin, smax = st.min_raw, st.max_raw
+            smin, smax = raw_stat(st.min_raw, t, half), raw_stat(st.max_raw, t, half)
             if pa.types.is_floating(t) and dmin == 0:
                 ok_min = smin == 0
             else:
                 ok_min = smin == dmin
             ok_max = (smax == 0) if (pa.types.is_floating(t) and dmax == 0) else smax == dmax
+            # Byte-array bounds over 64 bytes are truncated: min to a prefix, max to an upper bound
+            if isinstance(dmin, bytes) and len(dmin) > 64 and not ok_min:
+                ok_min = len(smin) == 64 and dmin.startswith(smin)
+            if isinstance(dmax, bytes) and len(dmax) > 64 and not ok_max:
+                ok_max = len(smax) <= 64 and smax > dmax[:len(smax)]
             if not (ok_min and ok_max):
                 errors.append("rg %d %s: stats min/max %s/%s, data %s/%s"
                               % (g, col.path_in_schema, py(smin), py(smax), py(dmin), py(dmax)))
