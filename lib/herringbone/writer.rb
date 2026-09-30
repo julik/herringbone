@@ -17,8 +17,9 @@ module Herringbone
   #   end
   #
   # The output is any IO that responds to #write (a File, StringIO, Tempfile, socket, pipe...); it
-  # is written sequentially and never seeked, rewound or closed by the writer. Herringbone does
-  # not open files by path.
+  # is written sequentially and never seeked, rewound or closed by the writer; only #write is
+  # required, its return value is ignored, and #binmode and #flush are called when available.
+  # Herringbone does not open files by path.
   #
   # Options:
   #   compression:     :snappy (default), :zstd, :gzip, :lz4 (LZ4_RAW), :lz4_hadoop, :brotli, :none
@@ -40,7 +41,7 @@ module Herringbone
   #
   # Statistics and page indexes (ColumnIndex/OffsetIndex) are always written.
   class Writer
-    MAGIC = "PAR1"
+    MAGIC = "PAR1".b.freeze
     T = Format::Type
     E = Format::Encoding
 
@@ -200,9 +201,15 @@ module Herringbone
 
     private
 
-    # Pathname responds to #write too (writing a whole file by path), so it is rejected explicitly
+    # Pathname responds to #write too (writing a whole file by path), so it is rejected explicitly.
+    # A text-mode IO (a pipe, or a File opened with "w") transcodes what is written when
+    # Encoding.default_internal is set, as Rails does, and binary pages cannot be transcoded,
+    # so the IO is switched to binary mode.
     def check_io!(io)
-      return io if io.respond_to?(:write) && !io.is_a?(String) && !(defined?(Pathname) && io.is_a?(Pathname))
+      if io.respond_to?(:write) && !io.is_a?(String) && !(defined?(Pathname) && io.is_a?(Pathname))
+        io.binmode if io.respond_to?(:binmode)
+        return io
+      end
       raise ArgumentError, "Herringbone::Writer expects an IO that responds to #write " \
         "(e.g. File.open(path, \"wb\") or StringIO.new), got #{io.class}"
     end

@@ -111,9 +111,10 @@ first 1000 rows unless `schema:` is given; fields declared in a block replace in
 `Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows) { json :payload })`.
 
 The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
-pipe), sequentially, and never seeks, rewinds or closes it. If the `Writer.open` block raises (or
-`#abort` is called), no footer is written and what was written so far is left for you to discard.
-To replace a file only once it is complete, write to a temporary file and rename it.
+pipe), sequentially, and never seeks, rewinds or closes it (it does switch it to binary mode). If
+the `Writer.open` block raises (or `#abort` is called), no footer is written and what was written
+so far is left for you to discard. To replace a file only once it is complete, write to a temporary
+file and rename it.
 
 Column types: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
 string binary json bson enum uuid date int96 time timestamp decimal fixed`, plus `struct`, `list`
@@ -174,6 +175,25 @@ default 1MB) unless `ndv:` gives the number of distinct values. Nested leaves ar
 dotted path (`"tags.list.element"`). Hashing is pure Ruby unless the `xxhash` gem is installed:
 a million rows take about 1.2 s longer to write with a filter on an INT64 column and 2.8 s longer
 with one on a ~22-byte string column, and about 0.5 s longer with `xxhash`.
+
+### Writing to S3
+
+Parquet keeps its metadata in a footer, so a file can be streamed into an S3 multipart upload
+without a local copy, using `upload_stream` from `aws-sdk-s3`:
+
+```ruby
+s3 = Aws::S3::TransferManager.new # aws-sdk-s3 1.197+; before that, Aws::S3::Object#upload_stream
+s3.upload_stream(bucket: "exports", key: "events.parquet", part_size: 16 * 1024 * 1024) do |io|
+  Herringbone::Writer.open(io, schema) do |w|
+    events.each { |event| w << event }
+  end
+end
+s3.upload_stream(bucket: "exports", key: "orders.parquet") { |io| Herringbone.write(io, Order.all) }
+```
+
+If the block raises, the SDK aborts the multipart upload and raises `Aws::S3::MultipartUploadError`,
+so no partial object is left. S3 allows at most 10,000 parts, which with the default 5MB parts caps
+the file at about 48GB; raise `part_size:` for bigger files.
 
 ## ActiveRecord
 
