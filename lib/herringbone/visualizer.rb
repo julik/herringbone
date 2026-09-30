@@ -14,6 +14,7 @@ module Herringbone
   #
   #   File.open("data.parquet", "rb") do |io|
   #     Herringbone::Visualizer.new(io).to_html                     # => String
+  #     Herringbone::Visualizer.new(io, checksums: true).to_html    # also verifies page CRCs
   #     File.open("layout.html", "w") { |out| Herringbone.visualize(io, out) }
   #   end
   class Visualizer
@@ -31,11 +32,13 @@ module Herringbone
 
     attr_reader :inspector
 
-    # +source+ is an Inspector, or anything Inspector.new accepts (a random-access IO or a Reader)
-    def initialize(source, title: nil, max_pages: MAX_PAGES)
+    # +source+ is an Inspector, or anything Inspector.new accepts (a random-access IO or a Reader).
+    # With checksums: true, page bodies are read to verify their CRCs (Inspector#verify_checksums).
+    def initialize(source, title: nil, max_pages: MAX_PAGES, checksums: false)
       @inspector = source.is_a?(Inspector) ? source : Inspector.new(source)
       @title = title
       @max_pages = max_pages
+      @checksums = checksums
     end
 
     def to_html
@@ -56,6 +59,7 @@ module Herringbone
     # The data embedded in the page
     def payload
       i = @inspector
+      i.verify_checksums if @checksums && !i.checksums_verified?
       budget = @max_pages
       totals = i.column_totals.to_h { |t| [t[:column], t] }
       {
@@ -76,6 +80,7 @@ module Herringbone
           }
         end,
         kv: i.key_value_metadata,
+        arrow_error: i.arrow_schema_error,
         footer_json: footer_json
       }
     end
@@ -85,7 +90,8 @@ module Herringbone
     def file_info
       s = @inspector.summary
       name = @title || @inspector.name || "(IO)"
-      s.merge(name: name, pages_truncated: @inspector.column_chunks.sum { |c| c.pages.size } > @max_pages)
+      s.merge(name: name, pages_truncated: @inspector.column_chunks.sum { |c| c.pages.size } > @max_pages,
+        index_mismatches: @inspector.column_chunks.sum { |c| c.index_mismatches.size })
     end
 
     def column_info(col, t)
@@ -117,7 +123,10 @@ module Herringbone
         np: c.pages.size, ndp: c.data_pages.size,
         size_stats: c.size_statistics,
         kv: c.key_value_metadata.empty? ? nil : c.key_value_metadata,
-        err: c.error
+        err: c.error,
+        # [page, field, value in page header, value in column index]; page is nil for :page_count
+        idx_mm: c.index_mismatches.empty? ? nil : c.index_mismatches.map { |m| mismatch_row(m) },
+        crc_bad: c.pages.count { |p| p.checksum == :mismatch }.then { |n| n.zero? ? nil : n }
       }
       if with_pages
         h[:pages] = c.pages.map { |p| page_row(p) }
@@ -144,7 +153,7 @@ module Herringbone
     end
 
     # [type, offset, header_size, compressed, uncompressed, values, nulls, rows, first_row, encoding,
-    #  min, max, crc, extra]
+    #  min, max, crc, extra]; crc is 0 (none), 1 (present, not verified), 2 (verified ok) or 3 (mismatch)
     def page_row(p)
       st = p.statistics
       extra = if p.type == :DATA_PAGE_V2
@@ -158,7 +167,15 @@ module Herringbone
       end
       [PAGE_TYPES.fetch(p.type, 1), p.offset, p.header_size, p.compressed_size, p.uncompressed_size, p.num_values,
         p.num_nulls, p.num_rows, p.first_row_index, p.encoding, st && disp(st.min), st && disp(st.max),
-        p.crc.nil? ? 0 : 1, extra]
+        CRC_STATES.fetch(p.checksum) { p.crc.nil? ? 0 : 1 }, extra]
+    end
+
+    CRC_STATES = { absent: 0, ok: 2, mismatch: 3 }.freeze
+
+    def mismatch_row(m)
+      values = [m[:page_value], m[:index_value]]
+      values = values.map { |v| disp(v) } if m[:field] == :min || m[:field] == :max
+      [m[:page], m[:field].to_s, *values]
     end
 
     # Display form of a decoded statistics value: strings quoted, the rest as text
@@ -212,7 +229,7 @@ module Herringbone
         --ink: #111827; --secondary: #374151; --subtle: #6b7280; --faint: #9ca3af;
         --line: #e5e7eb; --line-soft: #f1f2f4; --bg: #ffffff; --surface: #ffffff; --surface-alt: #f9fafb;
         --accent: #4f46e5; --accent-soft: #eef2ff; --accent-line: #c7d2fe;
-        --ok: #047857; --ok-soft: #ecfdf5; --ok-line: #a7f3d0; --warn: #b45309; --warn-soft: #fffbeb; --err: #b91c1c;
+        --ok: #047857; --ok-soft: #ecfdf5; --ok-line: #a7f3d0; --warn: #b45309; --warn-soft: #fffbeb; --err: #b91c1c; --err-soft: #fef2f2;
         --strip-bg: #f3f4f6; --seam: rgba(255,255,255,.85); --outline: #111827;
         --k-dict: #e2e5ea; --k-data: #c3c8d0; --k-ci: #d8b4fe; --k-oi: #93c5fd; --k-bloom: #6ee7b7;
         --k-cmeta: #fcd9a8; --k-footer: #4b5563; --k-flen: #1f2937; --k-magic: #111827; --k-unknown: #fca5a5;
@@ -225,7 +242,7 @@ module Herringbone
           --ink: #e5e7eb; --secondary: #cbd2dc; --subtle: #9aa3b2; --faint: #6b7483;
           --line: #2a2f38; --line-soft: #20252c; --bg: #0e1116; --surface: #13171d; --surface-alt: #181d24;
           --accent: #8b93ff; --accent-soft: #1d2140; --accent-line: #3b418a;
-          --ok: #34d399; --ok-soft: #0d2a22; --ok-line: #1f5d4a; --warn: #fbbf24; --warn-soft: #2a2110; --err: #f87171;
+          --ok: #34d399; --ok-soft: #0d2a22; --ok-line: #1f5d4a; --warn: #fbbf24; --warn-soft: #2a2110; --err: #f87171; --err-soft: #2c1414;
           --strip-bg: #1b2028; --seam: rgba(14,17,22,.8); --outline: #f9fafb;
           --k-dict: #394150; --k-data: #566072; --k-ci: #7e5aa8; --k-oi: #3f6fa8; --k-bloom: #2f8f6c;
           --k-cmeta: #7a5a2e; --k-footer: #9ca3af; --k-flen: #d1d5db; --k-magic: #f3f4f6; --k-unknown: #b45353;
@@ -261,6 +278,8 @@ module Herringbone
       .badges { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 14px; }
       .badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; font-size: 12.5px; color: var(--subtle); }
       .badge.ok { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); }
+      .badge.warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+      .badge.err { background: var(--err-soft); border-color: var(--err); color: var(--err); }
       .badge code { font-family: var(--mono); font-size: 12px; }
       .map-grid { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; }
       .strip-label { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--faint); margin-bottom: 4px; }
@@ -325,7 +344,9 @@ module Herringbone
       .ratio .bar { height: 6px; }
       .pill { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--line-soft); font-family: var(--mono); font-size: 11px; margin: 1px 2px 1px 0; white-space: nowrap; }
       .pill.warn { background: var(--warn-soft); color: var(--warn); }
-      .pill.err { color: var(--err); }
+      .pill.err { color: var(--err); background: var(--err-soft); }
+      .pill.ok { color: var(--ok); background: var(--ok-soft); }
+      .sline .arrow { color: var(--faint); }
       .sw-inline { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
       .detail .dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 18px; margin: 0 0 12px; }
       .detail .dl dt { font-size: 11px; color: var(--faint); }
@@ -463,6 +484,7 @@ module Herringbone
 
         // ---------- byte segments ----------
         var PT = ["DATA_PAGE", "INDEX_PAGE", "DICTIONARY_PAGE", "DATA_PAGE_V2"];
+        var CRC = ["", "present, not verified", "ok", "MISMATCH"];
         var segs = [{ k: "magic", s: 0, e: 4 }];
         D.row_groups.forEach(function (rg) {
           rg.chunks.forEach(function (ch) {
@@ -589,6 +611,7 @@ module Herringbone
             rows.push([s.k === "dict" ? "Entries" : "Values", num(p[5]) + (p[6] != null ? " · " + num(p[6]) + " nulls" : "")]);
             if (p[7] != null && s.k !== "dict") rows.push(["Rows", num(p[7]) + (p[8] != null ? " from row " + num(p[8]) : "")]);
             rows.push(["Encoding", p[9] || "–"]);
+            if (p[12]) rows.push(["CRC", CRC[p[12]]]);
             if (p[10] != null || p[11] != null) rows.push(["Min … max", (p[10] || "–") + " … " + (p[11] || "–")]);
           }
           if (ch && (s.k === "data" || s.k === "dict" || s.k === "chunk")) {
@@ -629,6 +652,11 @@ module Herringbone
           var sorting = (D.row_groups[0] && D.row_groups[0].sorting) || [];
           var sortedCols = sortedAcrossRowGroups();
           function badge(ok, label, extra) { return h("span", { class: "badge" + (ok ? " ok" : "") }, h("span", { "aria-hidden": "true", text: ok ? "✓" : "–" }), h("span", { text: label }), extra ? h("code", { text: extra }) : null); }
+          function flag(cls, label, extra) { return h("span", { class: "badge " + cls }, h("span", { "aria-hidden": "true", text: "✗" }), h("span", { text: label }), extra ? h("code", { text: extra }) : null); }
+          var cs = F.checksums, crcBadge;
+          if (cs && cs.mismatch) crcBadge = flag("err", "Page CRC mismatches", num(cs.mismatch) + " of " + num(cs.ok + cs.mismatch));
+          else if (cs && cs.ok) crcBadge = badge(true, "Page CRCs verified", num(cs.ok) + " ok" + (cs.absent ? ", " + num(cs.absent) + " without" : ""));
+          else crcBadge = badge(crc, "Page CRCs", crc ? "not verified" : null);
           add(el, [
             h("header", null, h("h2", { text: F.name }), h("span", { class: "subtle" }, "created by ", h("span", { class: "mono", text: F.created_by || "unknown" }))),
             h("dl", { class: "stats" },
@@ -642,7 +670,8 @@ module Herringbone
               badge(F.bloom_filters, "Bloom filters"),
               badge(stats, "Statistics"),
               badge(dicts, "Dictionary encoding"),
-              badge(crc, "Page CRCs"),
+              crcBadge,
+              F.index_mismatches ? flag("warn", "Page stats disagree with page index", num(F.index_mismatches)) : null,
               badge(sorting.length > 0, "Sorting columns", sorting.length ? sorting.map(function (s) { return s.column + (s.descending ? " desc" : ""); }).join(", ") : null),
               badge(sortedCols.length > 0, "Sorted across row groups", sortedCols.length ? (sortedCols.length > 2 ? sortedCols[0] + " +" + (sortedCols.length - 1) : sortedCols.join(", ")) : null),
               F.pages_truncated ? h("span", { class: "badge" }, "page detail capped for size") : null)
@@ -727,15 +756,16 @@ module Herringbone
           function walk(n, depth) {
             var ann = n.logical_type || n.converted_type;
             if (n.children) {
-              lines.push({ depth: depth, html: [h("span", { class: "kw", text: n.repetition + " " }), h("span", { class: "ty", text: "group " }), h("span", { class: "nm", text: n.name }), ann ? h("span", { class: "ann", text: " (" + ann + ")" }) : null, " {"] });
+              lines.push({ depth: depth, html: [h("span", { class: "kw", text: n.repetition + " " }), h("span", { class: "ty", text: "group " }), h("span", { class: "nm", text: n.name }), ann ? h("span", { class: "ann", text: " (" + ann + ")" }) : null, " {", arrowNote(n)] });
               n.children.forEach(function (c) { walk(c, depth + 1); });
               lines.push({ depth: depth, html: ["}"] });
             } else {
               var phys = n.physical_type.toLowerCase() + (n.type_length ? "(" + n.type_length + ")" : "");
               lines.push({ depth: depth, leaf: n.column, html: [h("span", { class: "kw", text: n.repetition + " " }), h("span", { class: "ty", text: phys + " " }), h("span", { class: "nm", text: n.name }), ann ? h("span", { class: "ann", text: " (" + ann + ")" }) : null, ";",
-                h("span", { class: "lv", text: "  d" + n.max_definition_level + " r" + n.max_repetition_level })] });
+                h("span", { class: "lv", text: "  d" + n.max_definition_level + " r" + n.max_repetition_level }), arrowNote(n)] });
             }
           }
+          function arrowNote(n) { return n.arrow_type ? h("span", { class: "arrow", title: "Arrow type (from ARROW:schema): " + n.arrow_type, text: "  // arrow: " + n.arrow_type }) : null; }
           D.schema.forEach(function (n) { walk(n, 1); });
           lines.push({ depth: 0, html: ["}"] });
           var box = h("div", { class: "schema" });
@@ -748,7 +778,9 @@ module Herringbone
               h("span", { class: "ln", text: n + 1 }), code,
               h("span", { class: "size" }, h("span", { class: "bar" }, h("span", { style: "width:" + (c.cs / total * 100) + "%;background:" + colColor(c.i, false) })), h("span", { class: "v", text: bytes(c.cs) }))));
           });
-          add(el, [h("h2", null, "Schema", h("small", { text: "size on disk · d/r = max definition/repetition level · click a column" })), box]);
+          var hasArrow = D.schema.some(function (n) { return n.arrow_type; });
+          add(el, [h("h2", null, "Schema", h("small", { text: "size on disk · d/r = max definition/repetition level" + (hasArrow ? " · Arrow types from ARROW:schema" : "") + " · click a column" })), box]);
+          if (D.arrow_error) add(el, h("div", { class: "note", text: D.arrow_error }));
           if (lines.length > limit) add(el, h("button", { class: "more", onclick: function () { S.allSchema = true; renderSchema(); } }, "Show all " + num(lines.length) + " lines"));
         }
 
@@ -800,7 +832,8 @@ module Herringbone
               if (dictBytes) add(pages, h("span", { style: "flex:" + dictBytes + " 0 0;background:" + colColor(ch.c, true) }));
               add(pages, h("span", { title: plural(ch.np, "page"), style: "flex:" + Math.max(1, dataBytes) + " 0 0;background:repeating-linear-gradient(90deg," + colColor(ch.c, false) + " 0 3px,var(--seam) 3px 4px)" }));
             }
-            var info = [ch.np ? plural(ch.ndp, "page") : "no pages", ch.nulls ? num(ch.nulls) + " nulls" : null].filter(Boolean).join(" · ");
+            var info = [ch.np ? plural(ch.ndp, "page") : "no pages", ch.nulls ? num(ch.nulls) + " nulls" : null,
+              ch.crc_bad ? "✗ CRC" : null, ch.idx_mm ? "✗ index" : null].filter(Boolean).join(" · ");
             add(body, h("div", { class: "chunk-row" + (S.col === ch.c ? " sel" : ""), onclick: function (ev) { ev.stopPropagation(); selectChunk(g.i, ch.c); } },
               h("span", { class: "name", title: colPath(ch.c), text: colPath(ch.c) }), pages,
               h("span", { class: "size", text: bytes(ch.cs) }),
@@ -874,7 +907,9 @@ module Herringbone
               h("td", { class: "r num", text: ratio(ch.us, ch.cs) }),
               h("td", null, h("span", { class: "pill", text: ch.codec }), st.caveat ? h("span", { class: "pill warn", title: st.caveat, text: "legacy stats" }) : null, st.source && st.source.indexOf("legacy") >= 0 && !st.caveat ? h("span", { class: "pill", text: "legacy min/max" }) : null,
                 st.min_exact === false || st.max_exact === false ? h("span", { class: "pill", title: "min/max were truncated by the writer", text: "truncated" }) : null,
-                ch.err ? h("span", { class: "pill err", title: ch.err, text: "error" }) : null)));
+                ch.err ? h("span", { class: "pill err", title: ch.err, text: "error" }) : null,
+                ch.crc_bad ? h("span", { class: "pill err", text: "CRC mismatch" }) : null,
+                ch.idx_mm ? h("span", { class: "pill warn", title: "page statistics disagree with the column index", text: "index mismatch" }) : null)));
           });
           add(card, h("div", { class: "tablewrap", style: "max-height:360px;overflow:auto" }, h("table", null,
             h("thead", null, h("tr", null, ["rg", "min", "max", "nulls", "distinct", "values", "data pages", "dict entries", "size", "ratio", ""].map(function (t, i) { return h("th", { class: i >= 3 && i <= 9 ? "r" : null, text: t }); }))), tb)));
@@ -888,6 +923,11 @@ module Herringbone
           add(box, h("h2", null, "Column chunk", h("small", { text: col.path + " · row group " + g.i })));
           if (ch.err) add(box, h("div", { class: "note err", text: "While walking page headers: " + ch.err }));
           if (ch.stats && ch.stats.caveat) add(box, h("div", { class: "note", text: "Statistics: " + ch.stats.caveat }));
+          if (ch.crc_bad) add(box, h("div", { class: "note err", text: plural(ch.crc_bad, "page") + " failed CRC verification: the bytes stored don't match the checksum in the page header." }));
+          if (ch.idx_mm) add(box, h("div", { class: "note" }, "Page statistics disagree with the column index:",
+            h("ul", { style: "margin:4px 0 0;padding-left:18px" }, ch.idx_mm.slice(0, 20).map(function (m) {
+              return h("li", { class: "mono", text: m[0] == null ? m[2] + " data pages but " + m[3] + " column index entries" : "page " + m[0] + " " + m[1] + ": page header " + (m[2] == null ? "–" : m[2]) + ", column index " + (m[3] == null ? "–" : m[3]) });
+            }), ch.idx_mm.length > 20 ? h("li", { text: "+" + num(ch.idx_mm.length - 20) + " more" }) : null)));
           var items = [
             ["codec", ch.codec], ["encodings", ch.enc.join(", ")],
             ["compressed / uncompressed", bytes(ch.cs) + " / " + bytes(ch.us) + " (" + ratio(ch.us, ch.cs) + ")"],
@@ -929,6 +969,8 @@ module Herringbone
         function pagesTable(ch) {
           var wrap = h("div");
           var tb = h("tbody"), from = S.pageOffset, rows = ch.pages.slice(from, from + PAGE_SIZE);
+          var bad = {};
+          (ch.idx_mm || []).forEach(function (m) { if (m[0] != null) (bad[m[0]] = bad[m[0]] || []).push(m[1] + ": index says " + (m[3] == null ? "–" : m[3])); });
           rows.forEach(function (p, k) {
             var i = from + k;
             add(tb, h("tr", { class: "click" + (S.page === i ? " hl" : ""), onclick: function () { S.page = S.page === i ? null : i; renderMap(); renderDetail(); } },
@@ -945,7 +987,7 @@ module Herringbone
               h("td", null, p[9] ? h("span", { class: "pill", text: p[9] }) : "–"),
               h("td", { class: "mono clip", title: p[10] || "", text: p[10] != null ? p[10] : "–" }),
               h("td", { class: "mono clip", title: p[11] || "", text: p[11] != null ? p[11] : "–" }),
-              h("td", { text: p[12] ? "✓" : "" }),
+              h("td", null, crcCell(p[12]), bad[i] ? h("span", { class: "pill warn", title: bad[i].join("\n"), text: "≠ index" }) : null),
               h("td", { class: "faint", text: p[13] || "" })));
           });
           add(wrap, h("div", { class: "tablewrap" }, h("table", null,
@@ -954,15 +996,25 @@ module Herringbone
           return wrap;
         }
 
+        function crcCell(v) {
+          if (v === 2) return h("span", { class: "pill ok", title: "CRC verified", text: "✓ ok" });
+          if (v === 3) return h("span", { class: "pill err", title: "the page bytes don't match the CRC in its header", text: "✗ mismatch" });
+          return v ? h("span", { title: "the page header has a CRC (not verified; use --verify-checksums)", text: "✓" }) : "";
+        }
+
         function pageIndexTable(ch) {
           var wrap = h("div");
           var ci = ch.column_index, oi = ch.offset_index || [];
           var n = Math.max(ci ? ci.rows.length : 0, oi.length);
           if (ci) add(wrap, h("div", { class: "kvline" }, h("span", null, h("span", { class: "k", text: "boundary order" }), h("span", { class: "mono", text: String(ci.boundary) })), h("span", null, h("span", { class: "k", text: "entries" }), h("span", { class: "mono", text: num(n) }))));
           var tb = h("tbody"), from = S.pageOffset;
+          // column index entries follow the data pages; map them back to page numbers
+          var dataPages = [], badEntry = {};
+          ch.pages.forEach(function (p, k) { if (p[0] !== 2) dataPages.push(k); });
+          (ch.idx_mm || []).forEach(function (m) { if (m[0] != null) badEntry[dataPages.indexOf(m[0])] = true; });
           for (var i = from; i < Math.min(n, from + PAGE_SIZE); i++) {
             var c = ci && ci.rows[i], o = oi[i];
-            add(tb, h("tr", null,
+            add(tb, h("tr", { class: badEntry[i] ? "hl" : null, title: badEntry[i] ? "disagrees with the page header's statistics" : null },
               h("td", { class: "num", text: i }),
               h("td", { class: "r num", text: o ? num(o[0]) : "–" }),
               h("td", { class: "r num", text: o ? num(o[1]) : "–" }),
@@ -987,12 +1039,35 @@ module Herringbone
             var body;
             if (kv.json !== undefined) body = code(JSON.stringify(kv.json, null, 2), "json");
             else body = h("pre", null, h("code", { text: kv.value }));
-            var extra = kv.arrow_fields ? h("div", { class: "hint", text: "Arrow schema fields: " + kv.arrow_fields.join(", ") }) : null;
+            var extra = kv.arrow_schema ? arrowTree(kv.arrow_schema)
+              : kv.arrow_fields ? h("div", { class: "hint", text: "Arrow schema fields: " + kv.arrow_fields.join(", ") }) : null;
+            if (kv.arrow_error) extra = [h("div", { class: "note", text: kv.arrow_error }), extra];
             var head = h("div", { class: "head" }, h("span", { class: "key", text: kv.key }), h("span", { class: "pill", text: kv.format }), h("span", { class: "faint", text: bytes(kv.bytesize) }), kv.summary ? h("span", { class: "subtle", text: kv.summary }) : null);
             if (kv.format === "arrow_schema" || kv.bytesize > 4000) add(card, h("div", { class: "kv" }, head, extra, h("details", null, h("summary", { text: "show value" }), body)));
             else add(card, h("div", { class: "kv" }, head, body));
           });
           add(el, [h("h2", null, "Key/value metadata", h("small", { text: num(D.kv.length) + " entries" })), card]);
+        }
+        function arrowTree(a) {
+          var box = h("div", { class: "schema", style: "margin:4px 0 8px" }), n = 0;
+          function walk(f, depth) {
+            if (n++ > 2000) return;
+            var notes = [];
+            if (!f.nullable) notes.push("not null");
+            if (f.extension) notes.push("extension " + f.extension);
+            if (f.dictionary) notes.push("dictionary-encoded, " + f.dictionary.index_type + " indices" + (f.dictionary.ordered ? ", ordered" : ""));
+            var meta = f.metadata ? Object.keys(f.metadata).filter(function (k) { return k.indexOf("ARROW:extension:") !== 0; }) : [];
+            if (meta.length) notes.push("metadata " + meta.map(function (k) { return k + "=" + JSON.stringify(f.metadata[k]).slice(0, 80); }).join(", "));
+            add(box, h("div", { class: "sline", title: f.type },
+              h("span", { class: "ln" }),
+              h("span", { class: "code", style: "padding-left:" + (depth * 2) + "ch" }, h("span", { class: "nm", text: f.name }), ": ",
+                h("span", { class: "ty", text: f.children && f.type.length > 60 ? f.type.slice(0, f.type.indexOf("<") + 1) + "…>" : f.type }),
+                notes.length ? h("span", { class: "ann", text: "  " + notes.join("; ") }) : null)));
+            (f.children || []).forEach(function (c) { walk(c, depth + 1); });
+          }
+          a.fields.forEach(function (f) { walk(f, 0); });
+          var meta = a.metadata ? Object.keys(a.metadata) : [];
+          return [h("div", { class: "hint", text: "Arrow schema" + (a.endianness === "big" ? " (big-endian)" : "") + (meta.length ? " · schema metadata: " + meta.join(", ") : "") }), box];
         }
         function code(text, lang) {
           var c = h("code", { class: "language-" + lang, text: text });

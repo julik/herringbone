@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "zlib"
 
 module Herringbone
   # Examines a Parquet file using only its footer, page headers and page indexes. Values are
@@ -37,15 +38,20 @@ module Herringbone
       def to_h = Inspector.jsonable(super.compact)
     end
 
-    # One page header of a column chunk
+    # One page header of a column chunk. +checksum+ is nil until the CRCs are verified
+    # (Inspector#verify_checksums), then :ok, :mismatch or :absent (the page has no CRC).
     PageInfo = Struct.new(:index, :type, :offset, :header_size, :compressed_size, :uncompressed_size,
       :num_values, :num_nulls, :num_rows, :first_row_index, :encoding, :definition_level_encoding,
       :repetition_level_encoding, :definition_levels_byte_length, :repetition_levels_byte_length,
-      :is_compressed, :is_sorted, :statistics, :crc, keyword_init: true) do
+      :is_compressed, :is_sorted, :statistics, :crc, :checksum, keyword_init: true) do
       def total_size = header_size + compressed_size
       def end_offset = offset + total_size
+      def body_offset = offset + header_size
       def dictionary? = type == :DICTIONARY_PAGE
       def data? = type == :DATA_PAGE || type == :DATA_PAGE_V2
+
+      # The CRC from the header as an unsigned 32-bit value (Thrift stores it as a signed i32)
+      def expected_crc = crc && (crc & 0xFFFF_FFFF)
 
       def to_h
         h = super
@@ -190,6 +196,23 @@ module Herringbone
         counts.all? ? counts.sum : nil
       end
 
+      # Reads every page body (compressed bytes, as stored) and checks it against the CRC in its
+      # page header. Sets PageInfo#checksum on each page and returns the pages' statuses.
+      def verify_checksums
+        pages.map { |p| p.checksum = @inspector.page_checksum(p) }
+      end
+
+      # Page statistics (from page headers) that disagree with the ColumnIndex entry for the
+      # same page. Each: { page:, data_page:, field:, page_value:, index_value: } where +page+
+      # is the page's position in #pages, +data_page+ its position among the data pages (and
+      # in the ColumnIndex), +field+ one of :min, :max, :null_count, :null_page, :page_count.
+      # A ColumnIndex bound that is wider than the page's (e.g. a truncated string prefix) is
+      # allowed; one that is narrower, or a differing null count, is reported. Empty when the
+      # chunk has no ColumnIndex or its pages carry no statistics.
+      def index_mismatches
+        @index_mismatches ||= @inspector.compare_page_index(self)
+      end
+
       def to_h(pages: true, page_indexes: true)
         h = {
           path: path,
@@ -222,6 +245,7 @@ module Herringbone
           external_file: external_file,
           num_pages: self.pages.size,
           num_data_pages: data_pages.size,
+          index_mismatches: index_mismatches.empty? ? nil : index_mismatches,
           error: error
         }
         h[:pages] = self.pages.map(&:to_h) if pages
@@ -396,7 +420,60 @@ module Herringbone
         page_index: page_index?,
         bloom_filters: bloom_filters?,
         column_orders: column_orders
+      }.tap { |h| h[:checksums] = checksum_summary.except(:mismatches) if checksums_verified? }
+    end
+
+    # Reads every page body and checks it against the CRC32 in its page header (the CRC covers
+    # the page data as stored: compressed, and for v2 pages the levels plus the compressed
+    # values). Nothing is decompressed. Sets PageInfo#checksum on every page and returns
+    # #checksum_summary. Needs the IO, so call it before closing the file.
+    def verify_checksums
+      column_chunks.each(&:verify_checksums)
+      @checksums_verified = true
+      checksum_summary
+    end
+
+    def checksums_verified? = @checksums_verified == true
+
+    # After #verify_checksums: { ok:, mismatch:, absent:, mismatches: [{ row_group:, column:, page:, type:, offset:, crc:, actual: }] }
+    def checksum_summary
+      return nil unless checksums_verified?
+      all = column_chunks.flat_map { |c| c.pages.map { |p| [c, p] } }
+      tally = all.map { |_, p| p.checksum }.tally
+      {
+        ok: tally.fetch(:ok, 0), mismatch: tally.fetch(:mismatch, 0), absent: tally.fetch(:absent, 0),
+        mismatches: all.select { |_, p| p.checksum == :mismatch }.map do |c, p|
+          { row_group: c.row_group.index, column: c.path, page: p.index, type: p.type, offset: p.offset,
+            crc: p.expected_crc, actual: page_crc(p) }
+        end
       }
+    end
+
+    # Every disagreement between page header statistics and the ColumnIndex, across the file,
+    # each with :row_group and :column added (see ColumnChunkInfo#index_mismatches)
+    def index_mismatches
+      column_chunks.flat_map do |c|
+        c.index_mismatches.map { |m| { row_group: c.row_group.index, column: c.path }.merge(m) }
+      end
+    end
+
+    # The decoded ARROW:schema key/value (see ArrowSchema.decode); nil when the file has none or
+    # it could not be decoded, and #arrow_schema_error then says why
+    def arrow_schema
+      return @arrow_schema if defined?(@arrow_schema)
+      @arrow_schema_error = nil
+      kv = (@metadata.key_value_metadata || []).find { |x| x.key == "ARROW:schema" }
+      @arrow_schema = kv && begin
+        ArrowSchema.decode(kv.value)
+      rescue StandardError => e
+        @arrow_schema_error = "could not decode ARROW:schema: #{e.message}"
+        nil
+      end
+    end
+
+    def arrow_schema_error
+      arrow_schema
+      @arrow_schema_error
     end
 
     # Schema tree: Hashes with name, repetition, types, levels (leaves) and children (groups)
@@ -419,7 +496,9 @@ module Herringbone
         h[:children] = node.children.map { |c| build.call(c) } if node.group?
         h.compact
       end
-      @schema.root.children.map { |c| build.call(c) }
+      tree = @schema.root.children.map { |c| build.call(c) }
+      annotate_arrow_types(tree, arrow_schema[:fields]) if arrow_schema
+      tree
     end
 
     # Per leaf column: sums over all row groups, plus overall min/max where comparable
@@ -507,20 +586,26 @@ module Herringbone
       out
     end
 
-    def to_h(pages: true, page_indexes: true)
+    # With checksums: true, verifies page CRCs first (see #verify_checksums)
+    def to_h(pages: true, page_indexes: true, checksums: false)
+      verify_checksums if checksums && !checksums_verified?
       Inspector.jsonable({
         summary: summary,
         key_value_metadata: key_value_metadata,
         schema: schema_tree,
         row_groups: row_groups.map { |rg| rg.to_h(pages: pages, page_indexes: page_indexes) },
-        column_totals: column_totals
-      })
+        column_totals: column_totals,
+        checksum_mismatches: checksum_summary&.fetch(:mismatches),
+        index_mismatches: index_mismatches
+      }.compact)
     end
 
     def to_json(*args) = to_h.to_json(*args)
 
-    # Readable text summary. With pages: true, lists every page header too.
-    def report(pages: false)
+    # Readable text summary. With pages: true, lists every page header too; with checksums: true,
+    # verifies page CRCs first (see #verify_checksums).
+    def report(pages: false, checksums: false)
+      verify_checksums if checksums && !checksums_verified?
       s = summary
       out = []
       out << "file: #{@name || "(IO)"}"
@@ -530,17 +615,35 @@ module Herringbone
       out << "codecs: #{s[:codecs].join(", ")}; data #{Inspector.human_bytes(s[:compressed_size])} compressed, " \
         "#{Inspector.human_bytes(s[:uncompressed_size])} uncompressed#{ratio_text(s[:uncompressed_size], s[:compressed_size])}"
       out << "page index: #{s[:page_index] ? "yes" : "no"}, bloom filters: #{s[:bloom_filters] ? "yes" : "no"}"
+      if (cs = checksum_summary)
+        out << "page CRCs: #{cs[:ok]} ok, #{cs[:mismatch]} mismatched, #{cs[:absent]} without a CRC"
+        cs[:mismatches].each do |m|
+          out << "  CRC MISMATCH: row group #{m[:row_group]} #{m[:column]} page #{m[:page]} (#{m[:type]} @#{m[:offset]}): " \
+            "header says #{format("%08x", m[:crc])}, data has #{format("%08x", m[:actual])}"
+        end
+      end
+      mismatches = index_mismatches
+      unless mismatches.empty?
+        out << "page statistics vs column index: #{mismatches.size} disagreement#{mismatches.size == 1 ? "" : "s"}"
+        mismatches.first(50).each { |m| out << "  #{index_mismatch_text(m)}" }
+        out << "  ..." if mismatches.size > 50
+      end
       kvs = key_value_metadata
       unless kvs.empty?
         out << "key/value metadata:"
-        kvs.each { |kv| out << "  #{kv[:key]} (#{kv[:format]}, #{kv[:bytesize]} bytes): #{kv[:summary] || kv[:value].to_s[0, 80].inspect}" }
+        kvs.each do |kv|
+          out << "  #{kv[:key]} (#{kv[:format]}, #{kv[:bytesize]} bytes): #{kv[:summary] || kv[:value].to_s[0, 80].inspect}"
+          out << "    #{kv[:arrow_error]}" if kv[:arrow_error]
+          ArrowSchema.lines(kv[:arrow_schema][:fields]).each { |l| out << "    #{l}" } if kv[:arrow_schema]
+        end
       end
       out << "schema:"
       walk = lambda do |n, depth|
         type = n[:children] ? "group" : [n[:physical_type], n[:type_length] && "(#{n[:type_length]})"].compact.join
         ann = n[:logical_type] || n[:converted_type]
         levels = n[:children] ? "" : "  [def #{n[:max_definition_level]}, rep #{n[:max_repetition_level]}]"
-        out << "#{"  " * depth}#{n[:repetition]} #{type} #{n[:name]}#{ann ? " (#{ann})" : ""}#{levels}"
+        arrow = n[:arrow_type] ? "  arrow: #{n[:arrow_type]}" : ""
+        out << "#{"  " * depth}#{n[:repetition]} #{type} #{n[:name]}#{ann ? " (#{ann})" : ""}#{levels}#{arrow}"
         (n[:children] || []).each { |c| walk.call(c, depth + 1) }
       end
       schema_tree.each { |n| walk.call(n, 1) }
@@ -573,7 +676,7 @@ module Herringbone
             st = p.statistics
             out << "    #{p.index}: #{p.type} @#{p.offset} header #{p.header_size} + #{p.compressed_size}/#{p.uncompressed_size} bytes, " \
               "#{p.num_values} values#{p.num_nulls ? ", #{p.num_nulls} nulls" : ""}#{p.num_rows ? ", #{p.num_rows} rows" : ""}" \
-              "#{p.encoding ? " #{p.encoding}" : ""}#{p.crc ? " crc" : ""}" \
+              "#{p.encoding ? " #{p.encoding}" : ""}#{crc_text(p)}" \
               "#{st && (st.min || st.max) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""}"
           end
         end
@@ -665,6 +768,45 @@ module Herringbone
       nil
     end
 
+    # :ok, :mismatch or :absent for one page (reads its body)
+    def page_checksum(page)
+      return :absent unless page.crc
+      page_crc(page) == page.expected_crc ? :ok : :mismatch
+    end
+
+    # CRC32 of a page's body as stored
+    def page_crc(page)
+      Zlib.crc32(read_at(page.body_offset, page.compressed_size))
+    end
+
+    # See ColumnChunkInfo#index_mismatches
+    def compare_page_index(chunk)
+      ci = chunk.column_index or return []
+      data = chunk.data_pages
+      if ci.null_pages.size != data.size
+        return [{ page: nil, data_page: nil, field: :page_count, page_value: data.size, index_value: ci.null_pages.size }]
+      end
+      order = Inspector.sort_order(chunk.column)
+      out = []
+      data.each_with_index do |p, k|
+        report = ->(field, pv, iv) { out << { page: p.index, data_page: k, field: field, page_value: pv, index_value: iv } }
+        idx_nulls = ci.null_counts&.[](k)
+        report.call(:null_count, p.num_nulls, idx_nulls) if idx_nulls && p.num_nulls && idx_nulls != p.num_nulls
+        st = p.statistics
+        # Legacy min/max were computed with another ordering, so they can't be compared
+        next if st.nil? || st.caveat || (st.min.nil? && st.max.nil?)
+        if ci.null_pages[k]
+          report.call(:null_page, "has min/max", "null page")
+          next
+        end
+        imin = ci.min_values[k]
+        imax = ci.max_values[k]
+        report.call(:min, st.min, imin) if st.min_exact != false && narrower?(imin, st.min, order, :min)
+        report.call(:max, st.max, imax) if st.max_exact != false && narrower?(imax, st.max, order, :max)
+      end
+      out
+    end
+
     # Decodes a Format::Statistics into Ruby values via the column's type converter
     def decode_statistics(st, column)
       return nil unless st
@@ -720,6 +862,245 @@ module Herringbone
       conv ? conv.call(raw) : raw
     rescue StandardError
       Inspector.hex(bytes)
+    end
+
+    # Decodes the ARROW:schema key/value that Arrow writers (pyarrow, arrow-rs, DuckDB...) store:
+    # base64 of an Arrow IPC message whose header is a flatbuffer Schema (Arrow's Message.fbs and
+    # Schema.fbs). Pure Ruby and read-only; type names follow pyarrow's (str(field.type)).
+    #
+    #   Inspector::ArrowSchema.decode(value)
+    #   # => { endianness: "little", metadata: {...}, fields: [{ name: "a", type: "int32", nullable: true, ... }] }
+    #
+    # Fields carry :name, :type, :nullable and, when present, :children, :dictionary
+    # ({ index_type:, ordered:, id: }), :extension (ARROW:extension:name) and :metadata.
+    module ArrowSchema
+      class Error < StandardError; end
+
+      MAX_DEPTH = 64
+      MAX_FIELDS = 100_000
+      TIME_UNITS = %w[s ms us ns].freeze
+      MESSAGE_SCHEMA = 1
+
+      # A minimal flatbuffer reader: tables (through their vtables), scalars, strings, vectors of
+      # scalars and tables, and unions. Every read is bounds-checked; malformed input raises Error.
+      class FlatBuffer
+        def initialize(bytes)
+          @b = bytes.b
+        end
+
+        def root = table_at(u32(0))
+        def table_at(pos) = Table.new(self, pos)
+
+        def check(pos, len)
+          return if pos >= 0 && len >= 0 && pos + len <= @b.bytesize
+          raise Error, "flatbuffer read of #{len} bytes at #{pos} is out of bounds (#{@b.bytesize} bytes)"
+        end
+
+        def read(pos, len, fmt)
+          check(pos, len)
+          @b.byteslice(pos, len).unpack1(fmt)
+        end
+
+        def u8(pos) = read(pos, 1, "C")
+        def u16(pos) = read(pos, 2, "S<")
+        def i16(pos) = read(pos, 2, "s<")
+        def u32(pos) = read(pos, 4, "L<")
+        def i32(pos) = read(pos, 4, "l<")
+        def i64(pos) = read(pos, 8, "q<")
+
+        # Offsets are relative to where they are stored
+        def deref(pos) = pos + u32(pos)
+
+        def string(pos)
+          len = u32(pos)
+          check(pos + 4, len)
+          @b.byteslice(pos + 4, len).force_encoding(Encoding::UTF_8)
+        end
+
+        # [start, length] of the vector at +pos+ with +size+-byte elements
+        def vector(pos, size)
+          len = u32(pos)
+          check(pos + 4, len * size)
+          [pos + 4, len]
+        end
+      end
+
+      # One flatbuffer table; fields are addressed by their slot (declaration order in the .fbs)
+      class Table
+        def initialize(fb, pos)
+          @fb = fb
+          @pos = pos
+          @vtable = pos - fb.i32(pos)
+          @vtable_size = fb.u16(@vtable)
+          raise Error, "bad flatbuffer vtable at #{@vtable}" if @vtable_size < 4 || @vtable_size.odd?
+          fb.check(@vtable, @vtable_size)
+        end
+
+        # Absolute position of a field's value, nil when absent
+        def field(slot)
+          o = 4 + (slot * 2)
+          return nil if o + 2 > @vtable_size
+          off = @fb.u16(@vtable + o)
+          off.zero? ? nil : @pos + off
+        end
+
+        def u8(slot, default = 0) = (p = field(slot)) ? @fb.u8(p) : default
+        def bool(slot, default = false) = (p = field(slot)) ? @fb.u8(p) != 0 : default
+        def i16(slot, default = 0) = (p = field(slot)) ? @fb.i16(p) : default
+        def i32(slot, default = 0) = (p = field(slot)) ? @fb.i32(p) : default
+        def i64(slot, default = 0) = (p = field(slot)) ? @fb.i64(p) : default
+        def string(slot) = (p = field(slot)) && @fb.string(@fb.deref(p))
+        def table(slot) = (p = field(slot)) && @fb.table_at(@fb.deref(p))
+
+        def tables(slot)
+          p = field(slot) or return []
+          start, len = @fb.vector(@fb.deref(p), 4)
+          Array.new(len) { |i| @fb.table_at(@fb.deref(start + (4 * i))) }
+        end
+
+        def i32s(slot)
+          p = field(slot) or return []
+          start, len = @fb.vector(@fb.deref(p), 4)
+          Array.new(len) { |i| @fb.i32(start + (4 * i)) }
+        end
+      end
+
+      module_function
+
+      # Decodes the base64 ARROW:schema value; raises ArrowSchema::Error when it can't
+      def decode(b64)
+        bytes = b64.to_s.unpack1("m")
+        raise Error, "empty value" if bytes.empty?
+        fb = FlatBuffer.new(message_bytes(bytes))
+        message = fb.root
+        header_type = message.u8(1)
+        raise Error, "IPC message holds a #{header_type} header, not a Schema" unless header_type == MESSAGE_SCHEMA
+        schema = message.table(2) or raise Error, "IPC message has no Schema"
+        count = [0]
+        {
+          endianness: schema.i16(0).zero? ? "little" : "big",
+          fields: schema.tables(1).map { |f| field(f, 0, count) },
+          metadata: key_values(schema.tables(2))
+        }.compact
+      rescue ArgumentError, TypeError, RangeError => e
+        raise Error, e.message
+      end
+
+      # The flatbuffer inside an encapsulated IPC message: [0xFFFFFFFF] int32 length, flatbuffer
+      # (the continuation marker is missing in files from before Arrow 0.15)
+      def message_bytes(bytes)
+        raise Error, "too short for an IPC message (#{bytes.bytesize} bytes)" if bytes.bytesize < 8
+        len = bytes.unpack1("l<")
+        start = 4
+        if len == -1
+          len = bytes.byteslice(4, 4).unpack1("l<")
+          start = 8
+        end
+        raise Error, "IPC message length #{len} does not fit in #{bytes.bytesize} bytes" if len <= 0 || start + len > bytes.bytesize
+        bytes.byteslice(start, len)
+      end
+
+      def field(t, depth, count)
+        raise Error, "fields nested deeper than #{MAX_DEPTH} levels" if depth > MAX_DEPTH
+        raise Error, "more than #{MAX_FIELDS} fields" if (count[0] += 1) > MAX_FIELDS
+        children = t.tables(5).map { |c| field(c, depth + 1, count) }
+        metadata = key_values(t.tables(6))
+        type = type_name(t.u8(2), t.table(3), children)
+        h = { name: t.string(0).to_s, type: type, nullable: t.bool(1) }
+        if (d = t.table(4))
+          index = d.table(1)
+          index_type = index ? int_name(index) : "int32"
+          ordered = d.bool(2)
+          h[:dictionary] = { index_type: index_type, ordered: ordered, id: d.i64(0) }
+          h[:type] = "dictionary<values=#{type}, indices=#{index_type}, ordered=#{ordered ? 1 : 0}>"
+        end
+        h[:children] = children unless children.empty?
+        if metadata
+          h[:extension] = metadata["ARROW:extension:name"] if metadata["ARROW:extension:name"]
+          h[:metadata] = metadata
+        end
+        h
+      end
+
+      def key_values(tables)
+        return nil if tables.empty?
+        tables.to_h { |kv| [kv.string(0).to_s, kv.string(1).to_s] }
+      end
+
+      # A child as pyarrow prints it inside a nested type: "name: type" plus " not null"
+      def child_text(c) = "#{c[:name]}: #{c[:type]}#{c[:nullable] ? "" : " not null"}"
+
+      def int_name(t) = "#{t.bool(1) ? "" : "u"}int#{t.i32(0)}"
+
+      def unit(u) = TIME_UNITS[u] || "unit#{u}"
+
+      # Type names follow Arrow's DataType::ToString (what pyarrow prints)
+      def type_name(kind, t, children)
+        case kind
+        when 1 then "null"
+        when 2 then t ? int_name(t) : "int"
+        when 3 then %w[halffloat float double][t ? t.i16(0) : 0] || "float?"
+        when 4 then "binary"
+        when 5 then "string"
+        when 6 then "bool"
+        when 7
+          raise Error, "decimal type without parameters" unless t
+          bits = t.i32(2, 128)
+          "decimal#{bits}(#{t.i32(0)}, #{t.i32(1)})"
+        when 8 then t&.i16(0, 1)&.zero? ? "date32[day]" : "date64[ms]"
+        when 9
+          bits = t ? t.i32(1, 32) : 32
+          "time#{bits}[#{unit(t ? t.i16(0, 1) : 1)}]"
+        when 10
+          tz = t&.string(1)
+          "timestamp[#{unit(t ? t.i16(0) : 0)}#{tz ? ", tz=#{tz}" : ""}]"
+        when 11 then %w[month_interval day_time_interval month_day_nano_interval][t ? t.i16(0) : 0] || "interval"
+        when 12 then "list<#{children.map { |c| child_text(c) }.join(", ")}>"
+        when 13 then "struct<#{children.map { |c| child_text(c) }.join(", ")}>"
+        when 14
+          mode = t&.i16(0)&.positive? ? "dense" : "sparse"
+          ids = t ? t.i32s(1) : []
+          members = children.each_with_index.map { |c, i| "#{child_text(c)}=#{ids[i] || i}" }
+          "#{mode}_union<#{members.join(", ")}>"
+        when 15 then "fixed_size_binary[#{t ? t.i32(0) : 0}]"
+        when 16 then "fixed_size_list<#{children.map { |c| child_text(c) }.join(", ")}>[#{t ? t.i32(0) : 0}]"
+        when 17 then map_name(t, children)
+        when 18 then "duration[#{unit(t ? t.i16(0, 1) : 1)}]"
+        when 19 then "large_binary"
+        when 20 then "large_string"
+        when 21 then "large_list<#{children.map { |c| child_text(c) }.join(", ")}>"
+        when 22 then "run_end_encoded<#{children.map { |c| "#{c[:name] == "values" ? "values" : "run_ends"}: #{c[:type]}" }.join(", ")}>"
+        when 23 then "binary_view"
+        when 24 then "string_view"
+        when 25 then "list_view<#{children.map { |c| child_text(c) }.join(", ")}>"
+        when 26 then "large_list_view<#{children.map { |c| child_text(c) }.join(", ")}>"
+        else "unknown type #{kind}"
+        end
+      end
+
+      # map<key, value> with non-standard field names in parentheses, as Arrow prints it
+      def map_name(t, children)
+        entries = children.first
+        kv = entries && entries[:children] || []
+        named = ->(f, std) { f ? "#{f[:type]}#{f[:name] == std ? "" : " ('#{f[:name]}')"}" : "?" }
+        sorted = t&.bool(0) ? ", keys_sorted" : ""
+        entries_name = entries && entries[:name] != "entries" ? " ('#{entries[:name]}')" : ""
+        "map<#{named.call(kv[0], "key")}, #{named.call(kv[1], "value")}#{sorted}#{entries_name}>"
+      end
+
+      # "name: type" lines for a field and its children, indented, for text output
+      def lines(fields, depth = 0, out = [])
+        fields.each do |f|
+          notes = []
+          notes << "not null" unless f[:nullable]
+          notes << "extension #{f[:extension]}" if f[:extension]
+          meta = (f[:metadata] || {}).reject { |k, _| k.start_with?("ARROW:extension:") }
+          notes << "metadata #{meta.map { |k, v| "#{k}=#{v.to_s[0, 60].inspect}" }.join(", ")}" unless meta.empty?
+          out << "#{"  " * depth}#{f[:name]}: #{f[:type]}#{notes.empty? ? "" : " (#{notes.join("; ")})"}"
+          lines(f[:children], depth + 1, out) if f[:children] && depth < 8
+        end
+        out
+      end
     end
 
     # ---- class helpers ----
@@ -826,6 +1207,56 @@ module Herringbone
       compressed.to_i.positive? && uncompressed ? format(" (%.2fx)", uncompressed.to_f / compressed) : ""
     end
 
+    def crc_text(page)
+      case page.checksum
+      when :ok then " crc ok"
+      when :mismatch then " CRC MISMATCH"
+      else page.crc ? " crc" : ""
+      end
+    end
+
+    def index_mismatch_text(m)
+      where = "row group #{m[:row_group]} #{m[:column]}"
+      if m[:field] == :page_count
+        "#{where}: #{m[:page_value]} data pages but #{m[:index_value]} column index entries"
+      else
+        "#{where} page #{m[:page]}: #{m[:field]} in page header #{Inspector.display(m[:page_value])}, " \
+          "in column index #{Inspector.display(m[:index_value])}"
+      end
+    end
+
+    # Adds :arrow_type to schema nodes with a same-named Arrow field (top level, and struct members)
+    def annotate_arrow_types(nodes, fields, depth = 0)
+      by_name = fields.to_h { |f| [f[:name], f] }
+      nodes.each do |n|
+        f = by_name[n[:name]] or next
+        n[:arrow_type] = f[:type]
+        if n[:children] && f[:children] && f[:type].start_with?("struct<") && depth < 32
+          annotate_arrow_types(n[:children], f[:children], depth + 1)
+        end
+      end
+    end
+
+    # Whether the index bound +idx+ excludes values the page's bound +page+ says are present
+    # (index min above the page min, or index max below the page max). Truncated binary bounds
+    # (one a prefix of the other) and values that can't be compared are never reported.
+    def narrower?(idx, page, order, which)
+      return false if idx.nil? || page.nil? || order == :unknown
+      a, b = which == :min ? [page, idx] : [idx, page] # true when a < b
+      if a.is_a?(String) && b.is_a?(String)
+        a = a.b
+        b = b.b
+        return false if a.start_with?(b) || b.start_with?(a)
+        return order == :unsigned ? a < b : false
+      end
+      return false if a.is_a?(Float) && a.nan? || b.is_a?(Float) && b.nan?
+      a = a ? 1 : 0 if a == true || a == false
+      b = b ? 1 : 0 if b == true || b == false
+      (a <=> b) == -1
+    rescue StandardError
+      false
+    end
+
     def safe_extreme(values, which)
       vals = values.compact
       return nil if vals.empty?
@@ -928,10 +1359,18 @@ module Herringbone
       h = { key: key, bytesize: value.bytesize }
       if key == "ARROW:schema"
         h[:format] = "arrow_schema"
-        h[:summary] = "Arrow IPC schema message, base64-encoded (#{value.bytesize} bytes)"
         h[:value] = value.size > 120 ? "#{value[0, 120]}…" : value
-        names = arrow_field_names(value)
-        h[:arrow_fields] = names if names
+        if (arrow = arrow_schema)
+          h[:summary] = "Arrow schema, #{arrow[:fields].size} field#{arrow[:fields].size == 1 ? "" : "s"}"
+          h[:arrow_fields] = arrow[:fields].map { |f| f[:name] }
+          meta = arrow[:metadata]&.transform_values { |v| v.size > 4000 ? "#{v[0, 4000]}…" : v }
+          h[:arrow_schema] = arrow.merge(metadata: meta).compact
+        else
+          h[:summary] = "Arrow IPC schema message, base64-encoded (#{value.bytesize} bytes)"
+          h[:arrow_error] = arrow_schema_error
+          names = arrow_field_names(value)
+          h[:arrow_fields] = names if names
+        end
       elsif value.lstrip.start_with?("{", "[") && value.bytesize < 4 * 1024 * 1024
         begin
           h[:json] = JSON.parse(value)
@@ -965,6 +1404,11 @@ module Herringbone
     rescue ArgumentError
       nil
     end
+  end
+
+  class Reader
+    # An Inspector for this reader's file (footer, page headers and page indexes; no values)
+    def inspector = Inspector.new(self)
   end
 
   module_function

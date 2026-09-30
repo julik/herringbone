@@ -8,6 +8,7 @@
 #   herringbone inspect FILE [OUT] write an HTML page showing the file's layout to OUT (or stdout)
 #   herringbone inspect FILE --text [--pages]   print a text summary of the layout (with every page header)
 #   herringbone inspect FILE --json             print the layout as JSON
+#   add --verify-checksums to any inspect form to read page bodies and check their CRCs
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
@@ -27,30 +28,32 @@ def jsonable(v)
 end
 
 USAGE = "usage: herringbone (schema|meta|cat) FILE [N]\n" \
-  "       herringbone inspect FILE [OUT.html | --text [--pages] | --json]"
+  "       herringbone inspect FILE [OUT.html | --text [--pages] | --json] [--verify-checksums]"
 
 # Parquet and file errors are reported in one line, without a backtrace
 begin
   if ARGV[0] == "inspect"
     flags, args = ARGV.drop(1).partition { |a| a.start_with?("--") }
     path, out = args
-    unknown = flags - %w[--text --json --pages]
-    if !path || !unknown.empty? || (flags.include?("--text") && flags.include?("--json")) || (out && flags.any?)
+    unknown = flags - %w[--text --json --pages --verify-checksums]
+    checksums = flags.include?("--verify-checksums")
+    if !path || !unknown.empty? || (flags.include?("--text") && flags.include?("--json")) ||
+        (out && (flags - ["--verify-checksums"]).any?) || (flags.include?("--pages") && !flags.include?("--text"))
       warn USAGE
       exit 1
     end
     File.open(path, "rb") do |io|
       inspector = Herringbone::Inspector.new(io)
       if flags.include?("--json")
-        puts JSON.pretty_generate(inspector.to_h)
+        puts JSON.pretty_generate(inspector.to_h(checksums: checksums))
       elsif flags.include?("--text")
-        puts inspector.report(pages: flags.include?("--pages"))
+        puts inspector.report(pages: flags.include?("--pages"), checksums: checksums)
       elsif out
-        html = Herringbone::Visualizer.new(inspector).to_html
+        html = Herringbone::Visualizer.new(inspector, checksums: checksums).to_html
         File.open(out, "w") { |f| f.write(html) }
         warn "wrote #{out}"
       else
-        Herringbone::Visualizer.new(inspector).write($stdout)
+        Herringbone::Visualizer.new(inspector, checksums: checksums).write($stdout)
       end
     end
     exit 0

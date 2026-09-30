@@ -324,4 +324,321 @@ class InspectorTest < Minitest::Test
   def test_rejects_non_parquet
     assert_raises(Herringbone::FormatError) { Inspector.from_string("not a parquet file at all") }
   end
+
+  # ---- reader.inspector ----
+
+  def test_reader_inspector
+    path = File.join(GEN, "codec_snappy.parquet")
+    with_reader(path) do |r|
+      i = r.inspector
+      assert_kind_of Inspector, i
+      assert_equal inspect_file(path).to_h[:row_groups], i.to_h[:row_groups]
+    end
+  end
+
+  # ---- page CRCs ----
+
+  def checksums_of(path)
+    File.open(path, "rb") do |io|
+      i = Inspector.new(io)
+      [i, i.verify_checksums]
+    end
+  end
+
+  def test_checksums_are_not_read_unless_asked
+    i = inspect_file(File.join(PT, "datapage_v1-corrupt-checksum.parquet"))
+    refute i.checksums_verified?
+    assert_nil i.checksum_summary
+    assert(i.column_chunks.flat_map(&:pages).all? { |p| p.checksum.nil? && p.crc })
+    refute i.summary.key?(:checksums)
+    refute i.to_h.key?(:checksum_mismatches)
+    refute_match(/CRC MISMATCH|crc ok/, i.report(pages: true))
+  end
+
+  def test_verify_checksums_of_parquet_testing_fixtures
+    without_decompression do
+      { "datapage_v1-uncompressed-checksum" => [4, 0, 0], "datapage_v1-snappy-compressed-checksum" => [4, 0, 0],
+        "plain-dict-uncompressed-checksum" => [4, 0, 0], "rle-dict-snappy-checksum" => [2, 0, 2],
+        "datapage_v1-corrupt-checksum" => [2, 2, 0], "rle-dict-uncompressed-corrupt-checksum" => [0, 2, 2] }.each do |f, (ok, bad, absent)|
+        i, s = checksums_of(File.join(PT, "#{f}.parquet"))
+        assert_equal [ok, bad, absent], [s[:ok], s[:mismatch], s[:absent]], f
+        assert_equal bad, s[:mismatches].size, f
+        assert i.checksums_verified?
+        assert_equal s.except(:mismatches), i.summary[:checksums]
+      end
+    end
+    # one data page of each column is corrupt
+    _, s = checksums_of(File.join(PT, "datapage_v1-corrupt-checksum.parquet"))
+    assert_equal [["a", 0, :DATA_PAGE], ["b", 1, :DATA_PAGE]], s[:mismatches].map { |m| [m[:column], m[:page], m[:type]] }
+    s[:mismatches].each { |m| refute_equal m[:crc], m[:actual] }
+    # only the dictionary pages carry (corrupt) CRCs here
+    i, = checksums_of(File.join(PT, "rle-dict-uncompressed-corrupt-checksum.parquet"))
+    assert_equal [%i[DICTIONARY_PAGE mismatch], %i[DATA_PAGE_V2 absent]] * 2, i.column_chunks.flat_map(&:pages).map { |p| [p.type, p.checksum] }
+  end
+
+  def test_verify_checksums_of_files_we_write
+    schema = Herringbone::Schema.define do
+      int64 :id
+      string :name
+      list :tags, :string
+    end
+    [1, 2].each do |version|
+      %i[none snappy gzip].each do |codec|
+        io = StringIO.new("".b)
+        Herringbone::Writer.open(io, schema, compression: codec, data_page_version: version, page_row_limit: 100) do |w|
+          500.times { |k| w << [k, k.even? ? nil : "name #{k % 7}", Array.new(k % 3) { |t| "t#{t}" }] }
+        end
+        i = Inspector.from_string(io.string)
+        s = i.verify_checksums
+        where = "v#{version} #{codec}"
+        assert_equal 0, s[:mismatch], where
+        assert_equal 0, s[:absent], where
+        assert_equal i.column_chunks.sum { |c| c.pages.size }, s[:ok], where
+        assert_operator s[:ok], :>, 10, where
+
+        # flip one byte in the body of the last data page of "name"
+        page = i.chunk(0, "name").data_pages.last
+        bytes = io.string.dup
+        at = page.body_offset + page.compressed_size - 1
+        bytes.setbyte(at, bytes.getbyte(at) ^ 0x01)
+        broken = Inspector.from_string(bytes)
+        s = broken.verify_checksums
+        assert_equal 1, s[:mismatch], where
+        assert_equal [{ row_group: 0, column: "name", page: page.index, type: page.type, offset: page.offset }],
+          s[:mismatches].map { |m| m.slice(:row_group, :column, :page, :type, :offset) }, where
+        assert_equal :mismatch, broken.chunk(0, "name").pages[page.index].checksum
+      end
+    end
+  end
+
+  def test_checksums_in_to_h_and_report
+    path = File.join(PT, "datapage_v1-corrupt-checksum.parquet")
+    h = File.open(path, "rb") { |io| Inspector.new(io).to_h(checksums: true) }
+    assert_equal({ ok: 2, mismatch: 2, absent: 0 }, h[:summary][:checksums])
+    assert_equal 2, h[:checksum_mismatches].size
+    statuses = h[:row_groups][0][:columns].flat_map { |c| c[:pages].map { |p| p[:checksum] } }
+    assert_equal %w[mismatch ok ok mismatch], statuses
+    assert JSON.generate(h)
+    text = File.open(path, "rb") { |io| Inspector.new(io).report(pages: true, checksums: true) }
+    assert_match(/page CRCs: 2 ok, 2 mismatched, 0 without a CRC/, text)
+    assert_match(/CRC MISMATCH: row group 0 a page 0 \(DATA_PAGE @4\): header says \h{8}, data has \h{8}/, text)
+    assert_match(/0: DATA_PAGE @4 .* CRC MISMATCH/, text)
+    assert_match(/1: DATA_PAGE @\d+ .* crc ok/, text)
+  end
+
+  # ---- ARROW:schema ----
+
+  # Expected types were printed by pyarrow (pa.ipc.read_schema on the decoded ARROW:schema
+  # value; str(field.type)), with extension types shown as their storage type
+  ARROW_EXPECTED = {
+    "logical_temporal" => [
+      "date: date32[day]", "time_ms: time32[ms]", "time_us: time64[us]", "time_ns: time64[ns]",
+      "ts_ms: timestamp[ms]", "ts_us: timestamp[us]", "ts_ns: timestamp[ns]", "ts_ms_utc: timestamp[ms, tz=UTC]",
+      "ts_us_utc: timestamp[us, tz=UTC]", "ts_ns_utc: timestamp[ns, tz=UTC]", "ts_us_tz_ny: timestamp[us, tz=America/New_York]"
+    ],
+    "logical_integers" => %w[i8:int8 i16:int16 i32:int32 i64:int64 u8:uint8 u16:uint16 u32:uint32 u64:uint64].map { |s| s.sub(":", ": ") },
+    "logical_decimal" => ["d_5_2: decimal128(5, 2)", "d_9_0: decimal128(9, 0)", "d_18_6: decimal128(18, 6)",
+      "d_38_10: decimal128(38, 10)", "d_76_20: decimal256(76, 20)"],
+    "logical_misc" => ["uuid: fixed_size_binary[16]", "fsb3: fixed_size_binary[3]", "f16: halffloat", "json: string",
+      "large_string: large_string", "binary: binary", "large_binary: large_binary", "f32: float", "f64: double"],
+    "dictionary_arrow_type" => ["d: dictionary<values=string, indices=int32, ordered=0>"],
+    "required_columns" => ["a: int32 not null", "b: string not null"],
+    "all_null_columns" => ["id: int32", "null_int: int32", "null_string: string", "null_double: double",
+      "null_list: list<item: int32>", "null_struct: struct<a: int32>", "null_type: null"],
+    "nested_list_int_nulls" => ["l: list<item: int32>", "l_required_elems: list<element: int32 not null>"],
+    "nested_list_list_string" => ["ll: list<item: list<item: string>>"],
+    "nested_map_string_int" => ["m: map<string, int32>"],
+    "nested_struct_list_struct" => ["s: struct<a: int32, b: list<item: struct<c: string>>>", "id: int32"],
+    "nested_deep_v2" => ["d: struct<m: map<string, list<item: int16>>, s: struct<x: double, y: list<item: bool>>>"],
+    "enc_byte_stream_split" => ["f32: float", "f64: double", "i32: int32", "i64: int64", "flba: fixed_size_binary[4]", "f16: halffloat"],
+    "format_version_1_0" => ["id: int64", "name: string", "value: double", "flag: bool", "small: int32", "ts: timestamp[ms]"],
+    "timestamp_int96" => ["ts: timestamp[us]"]
+  }.freeze
+
+  def arrow_lines(fields) = fields.map { |f| "#{f[:name]}: #{f[:type]}#{f[:nullable] ? "" : " not null"}" }
+
+  def test_arrow_schema_matches_pyarrow
+    ARROW_EXPECTED.each do |f, expected|
+      i = inspect_file(File.join(GEN, "#{f}.parquet"))
+      assert_nil i.arrow_schema_error, f
+      assert_equal expected, arrow_lines(i.arrow_schema[:fields]), f
+      assert_equal "little", i.arrow_schema[:endianness]
+    end
+    {
+      "list_columns" => ["int64_list: list<item: int64>", "utf8_list: list<item: string>"],
+      "null_list" => ["emptylist: list<item: null>"],
+      "byte_stream_split_extended.gzip" => ["float16_plain: halffloat", "float16_byte_stream_split: halffloat",
+        "float_plain: float", "float_byte_stream_split: float", "double_plain: double", "double_byte_stream_split: double",
+        "int32_plain: int32", "int32_byte_stream_split: int32", "int64_plain: int64", "int64_byte_stream_split: int64",
+        "flba5_plain: fixed_size_binary[5]", "flba5_byte_stream_split: fixed_size_binary[5]",
+        "decimal_plain: decimal128(7, 3)", "decimal_byte_stream_split: decimal128(7, 3)"],
+      "overflow_i16_page_cnt" => ["inc: bool not null"]
+    }.each do |f, expected|
+      assert_equal expected, arrow_lines(inspect_file(File.join(PT, "#{f}.parquet")).arrow_schema[:fields]), f
+    end
+  end
+
+  def test_arrow_schema_nested_children_dictionary_extension_and_metadata
+    nested = inspect_file(File.join(GEN, "nested_deep_v2.parquet")).arrow_schema[:fields].first
+    m = nested[:children].first
+    assert_equal ["m", "map<string, list<item: int16>>"], [m[:name], m[:type]]
+    entries = m[:children].first
+    assert_equal ["entries", false], [entries[:name], entries[:nullable]]
+    assert_equal ["key: string not null", "value: list<item: int16>"], arrow_lines(entries[:children])
+
+    dict = inspect_file(File.join(GEN, "dictionary_arrow_type.parquet")).arrow_schema[:fields].first
+    assert_equal({ index_type: "int32", ordered: false, id: 0 }, dict[:dictionary])
+
+    misc = inspect_file(File.join(GEN, "logical_misc.parquet")).arrow_schema[:fields]
+    assert_equal ["arrow.uuid", nil, nil, "arrow.json"], misc.first(4).map { |f| f[:extension] }
+    unknown = inspect_file(File.join(PT, "unknown-logical-type.parquet")).arrow_schema[:fields]
+    assert_equal({ "ARROW:extension:metadata" => "{}", "ARROW:extension:name" => "geoarrow.wkb" }, unknown[1][:metadata])
+    assert_equal "geoarrow.wkb", unknown[1][:extension]
+    assert_nil unknown[0][:metadata]
+
+    pandas = inspect_file(File.join(PT, "list_columns.parquet")).arrow_schema[:metadata]
+    assert_equal ["pandas"], pandas.keys
+    assert JSON.parse(pandas["pandas"])
+  end
+
+  # Serialized by pyarrow: pa.schema([...]).serialize(), base64-encoded, covering the types the
+  # fixtures don't use (and field/schema metadata)
+  EXOTIC_ARROW_SCHEMA = <<~B64.delete("\n")
+    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
+    AAgADAAIAAcACAAAAAAAAAFAAAAAAAAAAA==
+  B64
+
+  def test_arrow_schema_exotic_types
+    s = Inspector::ArrowSchema.decode(EXOTIC_ARROW_SCHEMA)
+    assert_equal [
+      "id: int64 not null", "d: duration[us]", "t: time32[s]", "d64: date64[ms]", "iv: month_day_nano_interval",
+      "dec: decimal256(40, 5)", "ll: large_list<x: float not null>", "fl: fixed_size_list<item: int8>[3]",
+      "u: dense_union<a: int32=5, b: string=7>", "m: map<string, int32, keys_sorted>",
+      "ree: run_end_encoded<run_ends: int32, values: string>", "sv: string_view",
+      "dict: dictionary<values=large_string, indices=int8, ordered=1>", "ts: timestamp[ns, tz=+01:00]", "st: struct<inner: uint16>"
+    ], arrow_lines(s[:fields])
+    assert_equal({ "origin" => "herringbone test" }, s[:metadata])
+    assert_equal({ "comment" => "primary key", "PARQUET:field_id" => "1" }, s[:fields][0][:metadata])
+    assert_equal({ "k" => "v" }, s[:fields].last[:children][0][:metadata])
+    assert_equal({ index_type: "int8", ordered: true, id: 0 }, s[:fields][12][:dictionary])
+    lines = Inspector::ArrowSchema.lines(s[:fields])
+    assert_includes lines, 'id: int64 (not null; metadata comment="primary key", PARQUET:field_id="1")'
+    assert_includes lines, '  inner: uint16 (metadata k="v")'
+  end
+
+  def test_arrow_schema_in_metadata_schema_tree_and_report
+    i = inspect_file(File.join(GEN, "nested_struct_list_struct.parquet"))
+    kv = i.key_value_metadata.find { |x| x[:key] == "ARROW:schema" }
+    assert_equal "Arrow schema, 2 fields", kv[:summary]
+    assert_equal %w[s id], kv[:arrow_fields]
+    assert_equal i.arrow_schema[:fields], kv[:arrow_schema][:fields]
+    tree = i.schema_tree
+    assert_equal ["struct<a: int32, b: list<item: struct<c: string>>>", "int32"], tree.map { |n| n[:arrow_type] }
+    assert_equal ["int32", "list<item: struct<c: string>>"], tree[0][:children].map { |n| n[:arrow_type] }
+    report = i.report
+    assert_match(/^    s: struct<a: int32, b: list<item: struct<c: string>>>$/, report)
+    assert_match(/^  optional INT32 id  \[def 1, rep 0\]  arrow: int32$/, report)
+    assert JSON.generate(i.to_h)
+    none = inspect_file(File.join(GEN, "logical_integers_no_arrow_schema.parquet"))
+    assert_nil none.arrow_schema
+    assert_nil none.arrow_schema_error
+    assert(none.schema_tree.none? { |n| n.key?(:arrow_type) })
+  end
+
+  def test_arrow_schema_decoding_fails_soft
+    good = inspect_file(File.join(GEN, "codec_snappy.parquet"))
+    value = good.metadata.key_value_metadata.find { |kv| kv.key == "ARROW:schema" }.value
+    raw = value.unpack1("m")
+    broken = {
+      "truncated" => [raw.byteslice(0, raw.bytesize / 2)].pack("m0"),
+      "garbage offsets" => [raw.byteslice(0, 12) + ("\xFF".b * (raw.bytesize - 12))].pack("m0"),
+      "not base64" => "!!!",
+      "not an IPC message" => ["\x10\x00\x00\x00".b + ("\x00".b * 16)].pack("m0")
+    }
+    broken.each do |label, v|
+      assert_raises(Inspector::ArrowSchema::Error, label) { Inspector::ArrowSchema.decode(v) }
+      io = StringIO.new("".b)
+      schema = Herringbone::Schema.define { int64 :id }
+      Herringbone::Writer.open(io, schema, metadata: { "ARROW:schema" => v }) { |w| w << [1] }
+      i = Inspector.from_string(io.string)
+      assert_nil i.arrow_schema, label
+      assert_match(/could not decode ARROW:schema/, i.arrow_schema_error, label)
+      kv = i.key_value_metadata.first
+      assert_equal "arrow_schema", kv[:format], label
+      assert_match(/could not decode/, kv[:arrow_error], label)
+      assert_match(/Arrow IPC schema message, base64-encoded/, kv[:summary], label)
+      assert_match(/could not decode ARROW:schema/, i.report, label)
+      assert JSON.generate(i.to_h)
+    end
+  end
+
+  # ---- page statistics vs ColumnIndex ----
+
+  def test_page_statistics_agree_with_the_column_index_in_fixtures
+    FIXTURES.each do |path|
+      assert_empty inspect_file(path).index_mismatches, File.basename(path)
+    end
+    # these have both page statistics and a column index, including truncated binary bounds
+    %w[binary_truncated_min_max repeated_primitive_no_list data_index_bloom_encoding_with_length].each do |f|
+      i = inspect_file(File.join(PT, "#{f}.parquet"))
+      assert(i.column_chunks.any? { |c| c.column_index && c.data_pages.any?(&:statistics) }, f)
+    end
+  end
+
+  def test_page_statistics_disagreeing_with_the_column_index_are_flagged
+    i = inspect_file(File.join(PT, "repeated_primitive_no_list.parquet"))
+    c = i.chunk(0, "Int32_list")
+    page = c.data_pages.first
+    assert_equal [0, 8, 1], [page.statistics.min, page.statistics.max, page.num_nulls]
+    ci = c.column_index.dup
+    ci.min_values = [1]  # narrower than the page: flagged
+    ci.max_values = [9]  # wider: allowed
+    ci.null_counts = [2]
+    c.instance_variable_set(:@column_index, ci)
+    c.remove_instance_variable(:@index_mismatches) if c.instance_variable_defined?(:@index_mismatches)
+    assert_equal [{ page: page.index, data_page: 0, field: :null_count, page_value: 1, index_value: 2 },
+      { page: page.index, data_page: 0, field: :min, page_value: 0, index_value: 1 }], c.index_mismatches
+    assert_equal [{ row_group: 0, column: "Int32_list" }], i.index_mismatches.map { |m| m.slice(:row_group, :column) }.uniq
+    assert_equal 2, c.to_h[:index_mismatches].size
+    assert_match(/page statistics vs column index: 2 disagreements/, i.report)
+    assert_match(/row group 0 Int32_list page 1: min in page header 0, in column index 1/, i.report)
+
+    strings = i.chunk(0, "String_list")
+    ci = strings.column_index.dup
+    ci.max_values = ["zer"]  # a truncated prefix: allowed
+    strings.instance_variable_set(:@column_index, ci)
+    assert_empty strings.index_mismatches
+    ci = ci.dup
+    ci.max_values = ["yes"]
+    ci.null_pages = [true]
+    strings.instance_variable_set(:@column_index, ci)
+    strings.remove_instance_variable(:@index_mismatches)
+    assert_equal [:null_page], strings.index_mismatches.map { |m| m[:field] }
+    ci = ci.dup
+    ci.null_pages = [false, false]
+    strings.instance_variable_set(:@column_index, ci)
+    strings.remove_instance_variable(:@index_mismatches)
+    assert_equal [{ page: nil, data_page: nil, field: :page_count, page_value: 1, index_value: 2 }], strings.index_mismatches
+  end
+
 end

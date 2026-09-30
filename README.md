@@ -296,8 +296,10 @@ for ZSTD/Brotli files even without the codec gems.
 File.open("data.parquet", "rb") do |file|
   i = Herringbone::Inspector.new(file)   # also takes a Reader
   i.summary        # size, footer size, rows, row groups, created_by, codecs, page index / bloom presence
-  i.schema_tree    # physical + logical types, repetition, max definition/repetition levels
-  i.key_value_metadata # ARROW:schema abbreviated, JSON values (pandas, Spark) parsed
+  i.schema_tree    # physical + logical types, repetition, max definition/repetition levels, Arrow type
+  i.key_value_metadata # ARROW:schema decoded, JSON values (pandas, Spark) parsed
+  i.arrow_schema   # ARROW:schema as Arrow fields and types (pyarrow's names), nested children,
+                   # dictionary encoding, extension names, field metadata; nil + i.arrow_schema_error if undecodable
   rg = i.row_groups[0]
   rg.sorting_columns
   chunk = rg.column("name")
@@ -305,11 +307,24 @@ File.open("data.parquet", "rb") do |file|
   chunk.statistics # min/max decoded to Ruby values (Date, Time, BigDecimal...), with caveats for legacy stats
   chunk.pages      # every page header: type, offset, sizes, values, nulls, rows, encoding, page statistics, CRC
   chunk.column_index # per-page min/max/null counts; chunk.offset_index: page locations and first rows
+  chunk.index_mismatches # page header statistics that disagree with the column index
   i.pages(0, "name") # same as above
   i.column_totals  # per column, summed over row groups
   i.layout         # byte ranges of everything in the file, in order
   i.to_h           # all of it, JSON-serializable
   puts i.report    # readable text summary
+end
+```
+
+Page CRCs are only verified when asked, because that reads every page body (still without
+decompressing: the CRC32 covers the page bytes as stored):
+
+```ruby
+File.open("data.parquet", "rb") do |file|
+  i = Herringbone::Inspector.new(file) # or reader.inspector for an open Herringbone::Reader
+  i.verify_checksums # => { ok: 10, mismatch: 1, absent: 0, mismatches: [{ row_group:, column:, page:, ... }] }
+  i.pages(0, "name").map(&:checksum)   # => [:ok, :mismatch, ...] (:absent when a page has no CRC)
+  i.to_h(checksums: true)              # or report(checksums: true), Visualizer.new(file, checksums: true)
 end
 ```
 
@@ -332,6 +347,7 @@ end
 bin/herringbone inspect FILE [OUT.html]   # HTML page to OUT.html, or to stdout
 bin/herringbone inspect FILE --text       # text summary (add --pages to list every page header)
 bin/herringbone inspect FILE --json       # everything as JSON
+bin/herringbone inspect FILE --text --verify-checksums  # also check page CRCs (any output form)
 ```
 
 ## Command line
@@ -340,7 +356,7 @@ bin/herringbone inspect FILE --json       # everything as JSON
 bin/herringbone schema FILE
 bin/herringbone meta FILE
 bin/herringbone cat FILE [N]
-bin/herringbone inspect FILE [OUT.html | --text [--pages] | --json]
+bin/herringbone inspect FILE [OUT.html | --text [--pages] | --json] [--verify-checksums]
 ```
 
 ## Development

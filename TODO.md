@@ -37,11 +37,22 @@ as a self-contained HTML page (design and idea from
 [Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1):
 `bin/herringbone inspect FILE [OUT]`, `--text`, `--json`.
 
+Follow-ups — done:
+- `reader.inspector`
+- Opt-in page CRC verification: `Inspector#verify_checksums`, `to_h(checksums: true)`,
+  `report(checksums: true)`, `Visualizer.new(io, checksums: true)`, CLI `--verify-checksums`
+  (per page ok/mismatch/absent, a summary badge and a per-page column in the HTML)
+- ARROW:schema decoded in pure Ruby (`Inspector::ArrowSchema`, a small flatbuffer reader):
+  Arrow field names and types (pyarrow's spelling), nested children, timestamp time zones,
+  dictionary encoding, extension names and field/schema metadata, shown next to the Parquet
+  schema; falls back to the abbreviated display with an error note when it can't be decoded
+- Page header statistics compared with the ColumnIndex (`chunk.index_mismatches`,
+  `inspector.index_mismatches`): narrower index bounds, differing null counts, null pages with
+  values and page count mismatches are flagged in the report and the HTML
+
 Possible follow-ups:
-- `reader.inspector` convenience (`Inspector.new(reader)` works already)
-- Verify page CRCs (needs reading page bodies, so opt-in)
-- Decode the ARROW:schema flatbuffer to show Arrow types next to Parquet ones
-- Compare page statistics with the page index and flag disagreements
+- Compare the OffsetIndex page sizes/first rows with the page headers the same way (tests do,
+  the inspector doesn't report it)
 
 ## 4. Pushdown structures
 

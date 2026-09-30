@@ -188,4 +188,85 @@ class VisualizerTest < Minitest::Test
     _, _, status = Open3.capture3(ruby, BIN, "html", path)
     refute status.success?, "the old html command is gone"
   end
+
+  def test_checksums_are_verified_on_request
+    path = File.join(FIXTURES_DIR, "parquet-testing", "datapage_v1-corrupt-checksum.parquet")
+    plain = embedded_data(render(path))
+    assert_nil plain["file"]["checksums"]
+    assert_equal [1], plain["row_groups"].flat_map { |g| g["chunks"].flat_map { |c| c["pages"].map { |p| p[12] } } }.uniq
+    html = render(path, checksums: true)
+    check_html(html, "checksums")
+    data = embedded_data(html)
+    assert_equal({ "ok" => 2, "mismatch" => 2, "absent" => 0 }, data["file"]["checksums"])
+    chunks = data["row_groups"][0]["chunks"]
+    assert_equal [[3, 2], [2, 3]], chunks.map { |c| c["pages"].map { |p| p[12] } }
+    assert_equal [1, 1], chunks.map { |c| c["crc_bad"] }
+    ok = embedded_data(render(File.join(FIXTURES_DIR, "parquet-testing", "rle-dict-snappy-checksum.parquet"), checksums: true))
+    assert_equal({ "ok" => 2, "mismatch" => 0, "absent" => 2 }, ok["file"]["checksums"])
+    assert_equal [[2, 0], [2, 0]], ok["row_groups"][0]["chunks"].map { |c| c["pages"].map { |p| p[12] } }
+  end
+
+  def test_arrow_types_are_embedded
+    data = embedded_data(render(File.join(FIXTURES_DIR, "generated", "logical_temporal.parquet")))
+    assert_equal "timestamp[us, tz=America/New_York]", data["schema"].find { |n| n["name"] == "ts_us_tz_ny" }["arrow_type"]
+    kv = data["kv"].find { |x| x["key"] == "ARROW:schema" }
+    assert_equal 11, kv["arrow_schema"]["fields"].size
+    assert_nil data["arrow_error"]
+    io = StringIO.new("".b)
+    Herringbone::Writer.open(io, Herringbone::Schema.define { int64 :id }, metadata: { "ARROW:schema" => "/////w==" }) { |w| w << [1] }
+    broken = embedded_data(Visualizer.new(StringIO.new(io.string)).to_html)
+    assert_match(/could not decode ARROW:schema/, broken["arrow_error"])
+    assert_match(/could not decode/, broken["kv"][0]["arrow_error"])
+  end
+
+  def test_index_mismatches_are_embedded
+    path = File.join(FIXTURES_DIR, "parquet-testing", "repeated_primitive_no_list.parquet")
+    i = File.open(path, "rb") { |io| Herringbone.inspect_file(io) }
+    assert_equal 0, embedded_data(Visualizer.new(i).to_html)["file"]["index_mismatches"]
+    c = i.chunk(0, "Int32_list")
+    ci = c.column_index.dup
+    ci.min_values = [3]
+    c.instance_variable_set(:@column_index, ci)
+    c.remove_instance_variable(:@index_mismatches)
+    data = embedded_data(Visualizer.new(i).to_html)
+    assert_equal 1, data["file"]["index_mismatches"]
+    assert_equal [[1, "min", "0", "3"]], data["row_groups"][0]["chunks"][0]["idx_mm"]
+  end
+
+  def test_inline_javascript_is_valid_with_every_feature
+    node = ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).map { |d| File.join(d, "node") }.find { |f| File.executable?(f) }
+    skip "node is not installed" unless node
+    js = inline_script(render(File.join(FIXTURES_DIR, "parquet-testing", "datapage_v1-corrupt-checksum.parquet"), checksums: true))
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, "page.js")
+      File.write(file, js)
+      out, status = Open3.capture2e(node, "--check", file)
+      assert status.success?, out
+    end
+  end
+
+  def test_cli_inspect_verify_checksums
+    path = File.join(FIXTURES_DIR, "parquet-testing", "datapage_v1-corrupt-checksum.parquet")
+    ruby = RbConfig.ruby
+    text, status = Open3.capture2(ruby, BIN, "inspect", path, "--text", "--verify-checksums")
+    assert status.success?
+    assert_match(/page CRCs: 2 ok, 2 mismatched/, text)
+    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json", "--verify-checksums")
+    assert status.success?
+    assert_equal 2, JSON.parse(json)["summary"]["checksums"]["mismatch"]
+    plain, = Open3.capture2(ruby, BIN, "inspect", path, "--json")
+    assert_nil JSON.parse(plain)["summary"]["checksums"]
+    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--verify-checksums")
+    assert status.success?
+    assert_equal 2, embedded_data(html)["file"]["checksums"]["mismatch"]
+    Dir.mktmpdir do |dir|
+      out = File.join(dir, "layout.html")
+      _, err, status = Open3.capture3(ruby, BIN, "inspect", path, out, "--verify-checksums")
+      assert status.success?, err
+      assert_equal 2, embedded_data(File.read(out))["file"]["checksums"]["ok"]
+    end
+    _, _, status = Open3.capture3(ruby, BIN, "inspect", path, "--pages")
+    refute status.success?, "--pages needs --text"
+  end
+
 end
