@@ -67,17 +67,37 @@ module Herringbone
 
       # The next data page as [defs, reps, values], or nil after the last one
       def next_page
+        page = next_stream or return nil
+        n = page.remaining
+        defs, reps = page.read_levels(n)
+        non_null = defs ? defs.count(@max_def) : n
+        values = page.read_values(non_null)
+        if (conv = page.converter)
+          if @lazy
+            @page_converter = conv
+          else
+            values.map!(&conv)
+          end
+        else
+          @page_converter = nil
+        end
+        [defs, reps, values]
+      end
+
+      # The next data page as a PageStream::Page that decodes its levels and values on demand,
+      # or nil after the last one. Values come out physical; apply Page#converter to them.
+      def next_stream
         while @seen < @total
           header, body = read_page
           case header.type
           when Format::PageType::DICTIONARY_PAGE
             read_dictionary(header, body)
           when Format::PageType::DATA_PAGE
-            page = read_data_page_v1(header, body)
+            page = data_page_v1(header, body)
             @seen += header.data_page_header.num_values
             return page
           when Format::PageType::DATA_PAGE_V2
-            page = read_data_page_v2(header, body)
+            page = data_page_v2(header, body)
             @seen += header.data_page_header_v2.num_values
             return page
           end
@@ -145,84 +165,82 @@ module Herringbone
         @dictionary = vals
       end
 
-      def read_data_page_v1(header, body)
+      def data_page_v1(header, body)
         dh = header.data_page_header
         n = dh.num_values
         data = decompress(body, header.uncompressed_page_size)
         pos = 0
         reps = defs = nil
-        reps, pos = read_levels(data, pos, dh.repetition_level_encoding, @max_rep, n) if @max_rep.positive?
-        non_null = n
-        if @max_def.positive?
-          defs, pos = read_levels(data, pos, dh.definition_level_encoding, @max_def, n)
-          non_null = defs.count(@max_def)
-        end
-        [defs, reps, decode_values(data, pos, non_null, dh.encoding)]
+        reps, pos = level_decoder(data, pos, dh.repetition_level_encoding, @max_rep, n) if @max_rep.positive?
+        defs, pos = level_decoder(data, pos, dh.definition_level_encoding, @max_def, n) if @max_def.positive?
+        values, conv = value_decoder(data, pos, dh.encoding)
+        PageStream::Page.new(n, defs, reps, values, conv)
       end
 
-      def read_data_page_v2(header, body)
+      def data_page_v2(header, body)
         dh = header.data_page_header_v2
         n = dh.num_values
         rep_len = dh.repetition_levels_byte_length
         def_len = dh.definition_levels_byte_length
         reps = defs = nil
-        reps = Encodings::RLE.decode_hybrid(body, 0, rep_len, RLE_WIDTH[@max_rep], n) if @max_rep.positive?
-        non_null = n
-        if @max_def.positive?
-          defs = Encodings::RLE.decode_hybrid(body, rep_len, rep_len + def_len, RLE_WIDTH[@max_def], n)
-          non_null = defs.count(@max_def)
-        end
+        reps = PageStream::HybridDecoder.new(body, 0, rep_len, RLE_WIDTH[@max_rep]) if @max_rep.positive?
+        defs = PageStream::HybridDecoder.new(body, rep_len, rep_len + def_len, RLE_WIDTH[@max_def]) if @max_def.positive?
         data = body.byteslice(rep_len + def_len, body.bytesize - rep_len - def_len)
         if dh.is_compressed != false
           data = decompress(data, header.uncompressed_page_size - rep_len - def_len)
         end
-        [defs, reps, decode_values(data, 0, non_null, dh.encoding)]
+        values, conv = value_decoder(data, 0, dh.encoding)
+        PageStream::Page.new(n, defs, reps, values, conv)
       end
 
       RLE_WIDTH = Hash.new { |h, k| h[k] = k.bit_length }
 
-      def read_levels(data, pos, encoding, max, n)
+      # [decoder, position after the levels]
+      def level_decoder(data, pos, encoding, max, n)
         width = RLE_WIDTH[max]
         case encoding
         when E::RLE
-          len = data.byteslice(pos, 4).unpack1("V")
+          len = data.byteslice(pos, 4)&.unpack1("V") or raise DecodeError, "Truncated levels"
           start = pos + 4
-          [Encodings::RLE.decode_hybrid(data, start, start + len, width, n), start + len]
+          [PageStream::HybridDecoder.new(data, start, start + len, width), start + len]
         when E::BIT_PACKED
-          [Encodings::RLE.decode_legacy_bit_packed(data, pos, width, n), pos + (n * width + 7) / 8]
+          levels = Encodings::RLE.decode_legacy_bit_packed(data, pos, width, n)
+          [PageStream::ArrayDecoder.new(levels), pos + (n * width + 7) / 8]
         else
           raise UnsupportedError, "Unsupported level encoding #{E::NAMES[encoding] || encoding}"
         end
       end
 
-      def decode_values(data, pos, count, encoding)
+      FIXED_FORMATS = {
+        T::INT32 => ["l<", 4], T::INT64 => ["q<", 8], T::FLOAT => ["e", 4], T::DOUBLE => ["E", 8]
+      }.freeze
+
+      # [value decoder, converter still to apply to its values (nil for dictionary pages)]
+      def value_decoder(data, pos, encoding)
         type = @column.type
-        vals = case encoding
+        decoder = case encoding
         when E::PLAIN
-          Encodings::Plain.decode(data, pos, count, type, @column.type_length).first
+          case type
+          when T::BOOLEAN then PageStream::BooleanDecoder.new(data, pos)
+          when T::INT96 then PageStream::Int96Decoder.new(data, pos)
+          when T::BYTE_ARRAY then PageStream::ByteArrayDecoder.new(data, pos)
+          when T::FIXED_LEN_BYTE_ARRAY then PageStream::FixedBytesDecoder.new(data, pos, @column.type_length)
+          else PageStream::FixedDecoder.new(data, pos, *FIXED_FORMATS.fetch(type))
+          end
         when E::PLAIN_DICTIONARY, E::RLE_DICTIONARY
           raise FormatError, "Dictionary-encoded page without a dictionary in #{@column.dotted_path}" unless @dictionary
-          @page_converter = nil
-          return [] if count.zero?
-          width = data.getbyte(pos)
-          indices = Encodings::RLE.decode_hybrid(data, pos + 1, data.bytesize, width, count)
-          dict = @dictionary
-          raise FormatError, "Dictionary index out of range in #{@column.dotted_path}" if indices.max >= dict.size
-          @page_converter = nil
-          return indices.map! { |i| dict[i] }
+          # Dictionary values are converted once, when the dictionary page is read
+          return [PageStream::DictionaryDecoder.new(data, pos, @dictionary, @column.dotted_path), nil]
         when E::RLE
           raise UnsupportedError, "RLE value encoding is only supported for BOOLEAN" unless type == T::BOOLEAN
-          len = data.byteslice(pos, 4).unpack1("V")
-          Encodings::RLE.decode_hybrid(data, pos + 4, pos + 4 + len, 1, count).map! { |v| v == 1 }
+          PageStream::RleBooleanDecoder.new(data, pos)
         when E::DELTA_BINARY_PACKED
           bits = type == T::INT32 ? 32 : 64
-          vals, = Encodings::Delta.decode_binary_packed(data, pos, bits, count)
-          raise FormatError, "DELTA_BINARY_PACKED page has #{vals.size} values, need #{count}" if vals.size < count
-          vals
+          PageStream::ArrayDecoder.new(Encodings::Delta.decode_binary_packed(data, pos, bits).first)
         when E::DELTA_LENGTH_BYTE_ARRAY
-          Encodings::Delta.decode_length_byte_array(data, pos, count).first
+          PageStream::DeltaLengthDecoder.new(data, pos)
         when E::DELTA_BYTE_ARRAY
-          Encodings::Delta.decode_byte_array(data, pos, count).first
+          PageStream::DeltaByteArrayDecoder.new(data, pos)
         when E::BYTE_STREAM_SPLIT
           width = case type
           when T::INT32, T::FLOAT then 4
@@ -230,17 +248,11 @@ module Herringbone
           when T::FIXED_LEN_BYTE_ARRAY then @column.type_length
           else raise UnsupportedError, "BYTE_STREAM_SPLIT is not valid for #{T::NAMES[type]}"
           end
-          plain, = Encodings::ByteStreamSplit.decode(data, pos, count, width)
-          Encodings::Plain.decode(plain, 0, count, type, @column.type_length).first
+          PageStream::ByteStreamSplitDecoder.new(data, pos, width, type, @column.type_length)
         else
           raise UnsupportedError, "Unsupported encoding #{E::NAMES[encoding] || encoding}"
         end
-        if @lazy
-          @page_converter = @converter
-        elsif @converter
-          vals.map!(&@converter)
-        end
-        vals
+        [decoder, @converter]
       end
     end
   end

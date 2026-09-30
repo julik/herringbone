@@ -15,7 +15,9 @@ require "tmpdir"
 require_relative "dataset"
 
 ROWS = Integer(ENV.fetch("ROWS", 1_000_000))
-FILE = ENV.fetch("FILE") { File.join(Dir.tmpdir, "herringbone-streaming-#{ROWS}.parquet") }
+# PAGE_ROWS: rows per data page (the writer default is 20_000; other writers produce much bigger pages)
+PAGE_ROWS = Integer(ENV.fetch("PAGE_ROWS", 20_000))
+FILE = ENV.fetch("FILE") { File.join(Dir.tmpdir, "herringbone-streaming-#{ROWS}-#{PAGE_ROWS}.parquet") }
 
 def measure(label)
   reader, writer = IO.pipe
@@ -51,9 +53,11 @@ end
 unless File.exist?(FILE)
   puts "Writing #{ROWS} rows in one row group to #{FILE}..."
   pid = fork do
-    Herringbone::Writer.open(FILE, Dataset.herringbone_schema, row_group_size: 1_000_000,
-      row_group_bytes: 4 * 1024 * 1024 * 1024) do |w|
-      Dataset.each_record(ROWS) { |r| w << r }
+    File.open(FILE, "wb") do |f|
+      Herringbone::Writer.open(f, Dataset.herringbone_schema, row_group_size: 1_000_000, page_row_limit: PAGE_ROWS,
+        page_size: 64 * 1024 * 1024, row_group_bytes: 4 * 1024 * 1024 * 1024) do |w|
+        Dataset.each_record(ROWS) { |r| w << r }
+      end
     end
     exit!(0)
   end

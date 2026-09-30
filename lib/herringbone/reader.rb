@@ -452,5 +452,6 @@ module Herringbone
   end
 end
 
+require_relative "reader/page_stream"
 require_relative "reader/column_chunk_reader"
 require_relative "reader/column_cursor"
