@@ -12,6 +12,8 @@ Gem::Specification.new do |spec|
     "Snappy and LZ4 are implemented in Ruby; ZSTD and Brotli are used when their gems are present."
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
-  spec.files = Dir["lib/**/*.rb", "README.md", "LICENSE"]
+  spec.files = Dir["lib/**/*.rb", "bin/*", "README.md", "LICENSE"]
+  spec.bindir = "bin"
+  spec.executables = ["parakiet"]
   spec.require_paths = ["lib"]
 end

@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Usage:
+#   parakiet schema FILE        print the schema
+#   parakiet meta FILE          print row groups, codecs and encodings
+#   parakiet cat FILE [N]       print rows as JSON lines (optionally only the first N)
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+require "parakiet"
+require "json"
+
+def jsonable(v)
+  case v
+  when Hash then v.to_h { |k, x| [k.to_s, jsonable(x)] }
+  when Array then v.map { |x| jsonable(x) }
+  when String then v.encoding == Encoding::BINARY && !v.ascii_only? ? v.unpack1("H*") : v
+  when Float then v.finite? ? v : v.to_s
+  when Time then v.iso8601(9)
+  when Date then v.iso8601
+  when Integer, true, false, nil then v
+  else v.to_s
+  end
+end
+
+command, path, limit = ARGV
+unless %w[schema meta cat].include?(command) && path
+  warn "usage: parakiet (schema|meta|cat) FILE [N]"
+  exit 1
+end
+
+Parakiet::Reader.open(path) do |r|
+  case command
+  when "schema"
+    puts r.schema.inspect
+  when "meta"
+    puts "rows: #{r.num_rows}, row groups: #{r.num_row_groups}, created by: #{r.created_by}"
+    r.key_value_metadata.each { |k, v| puts "  #{k} = #{v.to_s[0, 80]}" }
+    r.row_groups.each_with_index do |rg, i|
+      puts "row group #{i}: #{rg.num_rows} rows"
+      rg.columns.each do |cc|
+        m = cc.meta_data
+        encodings = m.encodings.map { |e| Parakiet::Format::Encoding::NAMES[e] }.join(",")
+        puts "  #{m.path_in_schema.join(".")}: #{Parakiet::Format::Codec::NAMES[m.codec]} #{encodings} " \
+          "#{m.total_compressed_size}/#{m.total_uncompressed_size} bytes"
+      end
+    end
+  when "cat"
+    n = limit&.to_i
+    r.each_row.with_index do |row, i|
+      break if n && i >= n
+      puts JSON.generate(jsonable(row))
+    end
+  end
+end
