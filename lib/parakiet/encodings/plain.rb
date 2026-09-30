@@ -69,16 +69,15 @@ module Parakiet
         when Format::Type::INT96
           values.flat_map { |nanos, day| [nanos, day] }.pack("Q<L<" * values.size)
         when Format::Type::BYTE_ARRAY
-          out = String.new(capacity: values.sum { |v| v.bytesize + 4 }, encoding: Encoding::BINARY)
-          values.each { |v| out << [v.bytesize].pack("V") << v.b }
-          out
+          # pack("a*") copies raw bytes whatever the string's encoding, without an intermediate copy
+          args = []
+          values.each { |v| args << v.bytesize << v }
+          args.pack("Va*" * values.size)
         when Format::Type::FIXED_LEN_BYTE_ARRAY
-          out = String.new(capacity: values.size * type_length, encoding: Encoding::BINARY)
           values.each do |v|
             raise EncodeError, "Expected #{type_length} bytes, got #{v.bytesize}" if v.bytesize != type_length
-            out << v.b
           end
-          out
+          values.pack("a*" * values.size)
         else
           raise EncodeError, "Unknown physical type #{type}"
         end

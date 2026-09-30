@@ -96,7 +96,7 @@ module Parakiet
       def read_uleb(data, pos)
         result = 0
         shift = 0
-        loop do
+        while true
           b = data.getbyte(pos)
           raise DecodeError, "Truncated varint" unless b
           pos += 1
@@ -149,6 +149,14 @@ module Parakiet
         out = String.new(encoding: Encoding::BINARY)
         n = values.size
         value_bytes = (width + 7) / 8
+        return out if n.zero?
+        min, max = values.minmax
+        if min == max
+          # A single run, the common case for levels of columns without nulls
+          write_uleb(out, n << 1)
+          value_bytes.times { |k| out << ((min >> (8 * k)) & 0xFF) }
+          return out
+        end
         literal_start = nil
         i = 0
         while i < n

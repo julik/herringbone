@@ -354,6 +354,8 @@ module Parakiet
           vi = -1
           return defs.map { |d| d == max ? vals[vi += 1] : nil }
         end
+        return read_simple_list(f) if f.kind == :list && f.element.leaf? && f.element.column.max_repetition_level == 1
+
         out = Array.new(n) { read(f) }
         f.leaves.each do |col|
           if @ei[col.index] != (@defs[col.index] || @vals[col.index]).size
@@ -364,6 +366,46 @@ module Parakiet
       end
 
       private
+
+      # Fast path for a top-level list of primitives (the most common nested shape)
+      def read_simple_list(field)
+        col = field.element.column
+        defs = @defs[col.index]
+        reps = @reps[col.index]
+        vals = @vals[col.index]
+        max_def = col.max_definition_level
+        list_def = field.def_level
+        item_def = field.item_def
+        out = []
+        cur = nil
+        vi = 0
+        i = 0
+        n = defs.size
+        while i < n
+          d = defs[i]
+          if reps[i].zero?
+            if d < list_def
+              out << nil
+              i += 1
+              next
+            end
+            cur = []
+            out << cur
+            if d < item_def
+              i += 1
+              next
+            end
+          end
+          if d == max_def
+            cur << vals[vi]
+            vi += 1
+          else
+            cur << nil
+          end
+          i += 1
+        end
+        out
+      end
 
       def read(field)
         c = field.first_leaf.index
@@ -395,7 +437,7 @@ module Parakiet
           out = []
           reps = @reps[c]
           rl = field.rep_level
-          loop do
+          while true
             out << read(field.element)
             r = reps[@ei[c]]
             break if r.nil? || r < rl
@@ -409,7 +451,7 @@ module Parakiet
           out = {}
           reps = @reps[c]
           rl = field.rep_level
-          loop do
+          while true
             k = read(field.key)
             out[k] = field.value ? read(field.value) : nil
             r = reps[@ei[c]]

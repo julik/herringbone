@@ -81,8 +81,22 @@ module Parakiet
     # Appends a row (a Hash keyed by top-level field names, as Strings or Symbols)
     def <<(row)
       raise Error, "Writer is closed" if @closed
-      @schema.fields.each do |field|
-        shred(field, lookup(row, field.name), 0, 0)
+      row = row.to_h unless row.is_a?(Hash)
+      @plan.each do |field, name, sym, buf, encoder|
+        value = row.fetch(name) { row[sym] }
+        if buf.nil?
+          shred(field, value, 0, 0)
+        elsif value.nil?
+          raise EncodeError, "Field #{name} is required but got nil" unless field.optional
+          buf.defs << 0
+        else
+          buf.defs << field.def_level
+          begin
+            buf.values << encoder.call(value)
+          rescue ArgumentError, TypeError, NoMethodError => e
+            raise EncodeError, "Cannot write #{value.inspect} to #{name}: #{e.message}"
+          end
+        end
       end
       @buffered_rows += 1
       flush_row_group if @buffered_rows >= @row_group_size
@@ -137,7 +151,14 @@ module Parakiet
     ColumnBuffer = Struct.new(:defs, :reps, :values)
 
     def reset_buffers
-      @buffers = @schema.columns.map { ColumnBuffer.new([], [], []) }
+      @buffers = @schema.columns.map do |col|
+        ColumnBuffer.new([], col.max_repetition_level.positive? ? [] : nil, [])
+      end
+      # Top-level, non-repeated leaves are written directly, everything else is shredded
+      @plan = @schema.fields.map do |field|
+        flat = field.leaf? && field.column.max_repetition_level.zero?
+        [field, field.name, field.name.to_sym, flat ? @buffers[field.column.index] : nil, flat ? field.column.encoder : nil]
+      end
       @buffered_rows = 0
     end
 
@@ -164,7 +185,7 @@ module Parakiet
         field.leaves.each do |col|
           buf = @buffers[col.index]
           buf.defs << parent_def
-          buf.reps << rep
+          buf.reps&.<< rep
         end
         return
       end
@@ -174,7 +195,7 @@ module Parakiet
       when :leaf
         buf = @buffers[field.column.index]
         buf.defs << d
-        buf.reps << rep
+        buf.reps&.<< rep
         begin
           buf.values << field.column.encoder.call(value)
         rescue ArgumentError, TypeError, NoMethodError => e
@@ -188,7 +209,7 @@ module Parakiet
           field.leaves.each do |col|
             buf = @buffers[col.index]
             buf.defs << d
-            buf.reps << rep
+            buf.reps&.<< rep
           end
         else
           value.each_with_index do |el, i|
@@ -201,7 +222,7 @@ module Parakiet
           field.leaves.each do |col|
             buf = @buffers[col.index]
             buf.defs << d
-            buf.reps << rep
+            buf.reps&.<< rep
           end
         else
           value.each_with_index do |(k, v), i|
@@ -253,7 +274,7 @@ module Parakiet
       page_ranges(buf, col).each do |from, to|
         n = to - from
         defs = buf.defs[from, n]
-        reps = buf.reps[from, n]
+        reps = buf.reps&.slice(from, n)
         non_null = max_def.zero? ? n : defs.count(max_def)
         page_values = (indices || values)[value_index, non_null]
         value_index += non_null
@@ -296,46 +317,38 @@ module Parakiet
 
     # Returns [dictionary_values, indices] or nil when a dictionary is not worthwhile
     def build_dictionary(values, type, type_length)
-      lookup = {}
-      indices = values.map { |v| lookup[v] ||= lookup.size }
-      return nil if lookup.size > values.size / 2 + 1 && values.size > 16
-      dict = lookup.keys
+      dict = values.uniq
+      return nil if dict.size > values.size / 2 + 1 && values.size > 16
       size = case type
       when T::BYTE_ARRAY then dict.sum { |v| v.bytesize + 4 }
       when T::FIXED_LEN_BYTE_ARRAY then dict.size * type_length
       else dict.size * 8
       end
       return nil if size > MAX_DICTIONARY_BYTES
-      [dict, indices]
+      index = dict.each_with_index.to_h
+      [dict, values.map(&index)]
     end
 
-    # Splits a column buffer into pages of roughly @page_size bytes, cutting only at row starts
+    # Splits a column buffer into pages of roughly @page_size bytes. Repeated columns
+    # are only cut where a new row starts.
     def page_ranges(buf, col)
       n = buf.defs.size
-      return [[0, 0]] if n.zero?
-      reps = col.max_repetition_level.positive? ? buf.reps : nil
-      max_def = col.max_definition_level
       width = value_width(col)
+      values = buf.values
+      bytes = n + (width ? values.size * width : values.sum(&:bytesize) + 4 * values.size)
+      pages = (bytes + @page_size - 1) / @page_size
+      return [[0, n]] if pages <= 1
+      per = (n + pages - 1) / pages
+      reps = buf.reps
       ranges = []
       start = 0
-      size = 0
-      vi = 0
-      values = buf.values
-      i = 0
-      while i < n
-        if size >= @page_size && i > start && (reps.nil? || reps[i].zero?)
-          ranges << [start, i]
-          start = i
-          size = 0
-        end
-        size += 1
-        if max_def.zero? || buf.defs[i] == max_def
-          size += width || values[vi].bytesize + 4
-          vi += 1
-        end
-        i += 1
+      while start < n
+        stop = start + per
+        stop = n if stop > n
+        stop += 1 while reps && stop < n && reps[stop] != 0
+        ranges << [start, stop]
+        start = stop
       end
-      ranges << [start, n]
       ranges
     end
 

@@ -291,7 +291,7 @@ module Parakiet
       when T::BOOLEAN then ->(v) { v ? true : false }
       when T::INT32, T::INT64 then ->(v) { Integer(v) }
       when T::FLOAT, T::DOUBLE then ->(v) { Float(v) }
-      when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY then ->(v) { v.to_s.b }
+      when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY then ->(v) { v.is_a?(String) ? v : v.to_s }
       when T::INT96
         lambda do |v|
           return v if v.is_a?(Array)

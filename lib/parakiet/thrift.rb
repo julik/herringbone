@@ -68,7 +68,7 @@ module Parakiet
       def read_varint
         result = 0
         shift = 0
-        loop do
+        while true
           b = read_byte
           result |= (b & 0x7F) << shift
           return result if b < 0x80
@@ -101,7 +101,7 @@ module Parakiet
         obj = klass.new
         fields = klass.fields_by_id
         last_id = 0
-        loop do
+        while true
           header = read_byte
           wire = header & 0x0F
           break if wire == T_STOP
@@ -181,7 +181,7 @@ module Parakiet
             end
           end
         when T_STRUCT
-          loop do
+          while true
             header = read_byte
             w = header & 0x0F
             break if w == T_STOP

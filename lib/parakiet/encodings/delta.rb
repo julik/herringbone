@@ -96,9 +96,7 @@ module Parakiet
       end
 
       def encode_length_byte_array(values)
-        out = encode_binary_packed(values.map(&:bytesize), 32)
-        values.each { |v| out << v.b }
-        out
+        encode_binary_packed(values.map(&:bytesize), 32) << values.pack("a*" * values.size)
       end
 
       def decode_byte_array(data, pos, count)
@@ -118,7 +116,6 @@ module Parakiet
         prefixes = []
         suffixes = []
         values.each do |v|
-          v = v.b
           max = [prev.bytesize, v.bytesize].min
           n = 0
           n += 1 while n < max && prev.getbyte(n) == v.getbyte(n)

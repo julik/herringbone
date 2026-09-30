@@ -13,6 +13,7 @@ module Parakiet
   class UnsupportedError < Error; end
 end
 
+require_relative "parakiet/io_buffer_support"
 require_relative "parakiet/codecs/snappy"
 require_relative "parakiet/codecs/lz4"
 require_relative "parakiet/thrift"

@@ -23,6 +23,82 @@ module Parakiet
       # @return [String] decompressed bytes in ASCII-8BIT
       def decompress(input)
         src = input.encoding == Encoding::BINARY ? input : input.b
+        return decompress_io_buffer(src) if IOBufferSupport::AVAILABLE
+        decompress_string(src)
+      end
+
+      # Decompresses into a preallocated IO::Buffer: copies do not allocate intermediate Strings.
+      def decompress_io_buffer(src)
+        n = src.bytesize
+        expected, pos = read_varint(src, n)
+        return "".b if expected.zero? && pos == n
+        out = IO::Buffer.new([expected, 1].max)
+        inbuf = IO::Buffer.for(src)
+        op = 0
+        while pos < n
+          tag = src.getbyte(pos)
+          pos += 1
+          kind = tag & 3
+          if kind == 0
+            len = tag >> 2
+            if len >= 60
+              nbytes = len - 59
+              raise Error, "truncated literal length" if pos + nbytes > n
+              len = 0
+              nbytes.times { |i| len |= src.getbyte(pos + i) << (8 * i) }
+              pos += nbytes
+            end
+            len += 1
+            raise Error, "literal overruns input" if pos + len > n
+            raise Error, "output exceeds declared length" if op + len > expected
+            out.copy(inbuf, op, len, pos)
+            op += len
+            pos += len
+            next
+          elsif kind == 1
+            raise Error, "truncated copy" if pos >= n
+            len = ((tag >> 2) & 7) + 4
+            offset = ((tag >> 5) << 8) | src.getbyte(pos)
+            pos += 1
+          elsif kind == 2
+            raise Error, "truncated copy" if pos + 2 > n
+            len = (tag >> 2) + 1
+            offset = src.getbyte(pos) | (src.getbyte(pos + 1) << 8)
+            pos += 2
+          else
+            raise Error, "truncated copy" if pos + 4 > n
+            len = (tag >> 2) + 1
+            offset = src.getbyte(pos) | (src.getbyte(pos + 1) << 8) |
+              (src.getbyte(pos + 2) << 16) | (src.getbyte(pos + 3) << 24)
+            pos += 4
+          end
+          raise Error, "invalid copy offset #{offset}" if offset == 0 || offset > op
+          raise Error, "output exceeds declared length" if op + len > expected
+          if offset >= len
+            out.copy(out, op, len, op - offset)
+          else
+            # Overlapping copy of a pattern with period `offset`: each copy doubles the
+            # replicated region, and never overlaps its own source.
+            from = op - offset
+            done = 0
+            step = offset
+            while done < len
+              chunk = len - done
+              chunk = step if chunk > step
+              out.copy(out, op + done, chunk, from)
+              done += chunk
+              step <<= 1
+            end
+          end
+          op += len
+        end
+        raise Error, "decompressed #{op} bytes, expected #{expected}" if op != expected
+        out.get_string(0, expected)
+      ensure
+        inbuf&.free
+      end
+
+      def decompress_string(src)
         n = src.bytesize
         expected, pos = read_varint(src, n)
         out = String.new(capacity: expected, encoding: Encoding::BINARY)
@@ -109,7 +185,7 @@ module Parakiet
         value = 0
         shift = 0
         pos = 0
-        loop do
+        while true
           raise Error, "truncated length preamble" if pos >= n
           byte = src.getbyte(pos)
           pos += 1
@@ -132,14 +208,17 @@ module Parakiet
 
       # Mirrors CompressFragment from the reference implementation. Table entries are
       # positions relative to `base`; matches never cross the block boundary.
+      # The 4-byte little-endian word at every position of the block is unpacked up front
+      # (in C, via String#unpack) so hashing and match checks are single Array lookups.
       def compress_block(src, base, len, out, table)
         ip_end = base + len
         next_emit = base
 
         if len >= INPUT_MARGIN
+          words = block_words(src, base, len)
           ip_limit = ip_end - INPUT_MARGIN
           ip = base + 1
-          next_hash = hash32(src, ip)
+          next_hash = ((words[1][0] * HASH_MUL) & 0xffffffff) >> HASH_SHIFT
           done = false
 
           until done
@@ -147,7 +226,7 @@ module Parakiet
             skip = 32
             next_ip = ip
             candidate = nil
-            loop do
+            while true
               ip = next_ip
               h = next_hash
               next_ip = ip + (skip >> 5)
@@ -156,21 +235,21 @@ module Parakiet
                 done = true
                 break
               end
-              next_hash = hash32(src, next_ip)
-              candidate = base + table[h]
+              rel_next = next_ip - base
+              next_hash = ((words[rel_next & 3][rel_next >> 2] * HASH_MUL) & 0xffffffff) >> HASH_SHIFT
+              rel = table[h]
+              candidate = base + rel
               table[h] = ip - base
-              break if src.getbyte(ip) == src.getbyte(candidate) &&
-                src.getbyte(ip + 1) == src.getbyte(candidate + 1) &&
-                src.getbyte(ip + 2) == src.getbyte(candidate + 2) &&
-                src.getbyte(ip + 3) == src.getbyte(candidate + 3)
+              rel_ip = ip - base
+              break if words[rel_ip & 3][rel_ip >> 2] == words[rel & 3][rel >> 2]
             end
             break if done
 
             emit_literal(out, src, next_emit, ip - next_emit)
 
             # Emit copies for as long as the position right after a copy matches again.
-            loop do
-              matched = 4 + match_length(src, candidate + 4, ip + 4, ip_end)
+            while true
+              matched = 4 + match_length_words(words, src, base, candidate + 4, ip + 4, ip_end)
               emit_copy(out, ip - candidate, matched)
               ip += matched
               next_emit = ip
@@ -178,28 +257,52 @@ module Parakiet
                 done = true
                 break
               end
-              table[hash32(src, ip - 1)] = ip - 1 - base
-              h = hash32(src, ip)
-              candidate = base + table[h]
-              table[h] = ip - base
-              break unless src.getbyte(ip) == src.getbyte(candidate) &&
-                src.getbyte(ip + 1) == src.getbyte(candidate + 1) &&
-                src.getbyte(ip + 2) == src.getbyte(candidate + 2) &&
-                src.getbyte(ip + 3) == src.getbyte(candidate + 3)
+              rel_ip = ip - base
+              prev = rel_ip - 1
+              table[((words[prev & 3][prev >> 2] * HASH_MUL) & 0xffffffff) >> HASH_SHIFT] = prev
+              cur = words[rel_ip & 3][rel_ip >> 2]
+              h = ((cur * HASH_MUL) & 0xffffffff) >> HASH_SHIFT
+              rel = table[h]
+              candidate = base + rel
+              table[h] = rel_ip
+              break unless cur == words[rel & 3][rel >> 2]
             end
             break if done
 
             ip += 1
-            next_hash = hash32(src, ip)
+            rel_ip = ip - base
+            next_hash = ((words[rel_ip & 3][rel_ip >> 2] * HASH_MUL) & 0xffffffff) >> HASH_SHIFT
           end
         end
 
         emit_literal(out, src, next_emit, ip_end - next_emit) if next_emit < ip_end
       end
 
-      def hash32(src, i)
-        v = src.getbyte(i) | (src.getbyte(i + 1) << 8) | (src.getbyte(i + 2) << 16) | (src.getbyte(i + 3) << 24)
-        ((v * HASH_MUL) & 0xffffffff) >> HASH_SHIFT
+      # words[k][j] is the 4-byte little-endian value at base + 4 * j + k, so the word at
+      # relative position i is words[i & 3][i >> 2]
+      def block_words(src, base, len)
+        Array.new(4) { |k| src.byteslice(base + k, len - k).unpack("V*") }
+      end
+
+      # Like match_length, but compares 4 bytes at a time using the unpacked block words,
+      # which avoids allocating substrings for the (common) short matches.
+      def match_length_words(words, src, base, s1, s2, limit)
+        start = s2
+        r1 = s1 - base
+        r2 = s2 - base
+        last_word = limit - base - 4
+        while r2 <= last_word && words[r1 & 3][r1 >> 2] == words[r2 & 3][r2 >> 2]
+          r1 += 4
+          r2 += 4
+          return (base + r2 - start) + match_length(src, base + r1, base + r2, limit) if r2 - (start - base) >= 64
+        end
+        s1 = base + r1
+        s2 = base + r2
+        while s2 < limit && src.getbyte(s1) == src.getbyte(s2)
+          s1 += 1
+          s2 += 1
+        end
+        s2 - start
       end
 
       # Number of equal bytes at s1 and s2 (s1 < s2), not reading past limit. Gallops
@@ -265,7 +368,7 @@ module Parakiet
         end
       end
 
-      private_class_method :read_varint, :write_varint, :compress_block, :hash32,
+      private_class_method :decompress_io_buffer, :decompress_string, :read_varint, :write_varint, :compress_block, :block_words, :match_length_words,
         :match_length, :emit_literal, :emit_copy, :emit_copy_upto64
     end
   end

@@ -187,7 +187,7 @@ module Parakiet
 
           lit = token >> 4
           if lit == 15
-            loop do
+            while true
               raise Error, "Truncated LZ4 literal length" if ip >= iend
               b = src.getbyte(ip)
               ip += 1
@@ -211,7 +211,7 @@ module Parakiet
 
           mlen = token & 15
           if mlen == 15
-            loop do
+            while true
               raise Error, "Truncated LZ4 match length" if ip >= iend
               b = src.getbyte(ip)
               ip += 1
@@ -275,7 +275,7 @@ module Parakiet
         ip += 1 # header checksum
         raise Error, "Truncated LZ4 frame descriptor" if ip > n
 
-        loop do
+        while true
           raise Error, "Truncated LZ4 frame block header" if ip + 4 > n
           bsize = le32(src, ip)
           ip += 4
