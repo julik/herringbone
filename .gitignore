@@ -1,5 +1,16 @@
+# Bundler / packaging
 /Gemfile.lock
-/pkg/
-/tmp/
-*.gem
 /benchmark/Gemfile.lock
+/pkg/
+*.gem
+
+# Scratch and benchmark output (fixtures live in test/fixtures and are tracked explicitly)
+/tmp/
+/bench.*
+/*.parquet
+/benchmark/*.parquet
+/benchmark/*.log
+
+# Local tool state
+/.claude/
+.DS_Store
