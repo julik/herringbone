@@ -108,7 +108,10 @@ class InteropTest < Minitest::Test
 
   def setup
     status = self.class.pyarrow_status
-    skip status if status
+    return unless status
+    # CI sets HERRINGBONE_REQUIRE_INTEROP so a broken Python setup fails instead of skipping
+    flunk status if ENV["HERRINGBONE_REQUIRE_INTEROP"]
+    skip status
   end
 
   # -- per-case tests --
