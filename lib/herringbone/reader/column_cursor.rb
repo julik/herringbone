@@ -22,12 +22,49 @@ module Herringbone
         @bd = @br = nil
         @bi = 0
         @started = false
+        @row = 0       # rows handed out or skipped so far
+        @page_idx = -1 # index of the current data page within the chunk
+      end
+
+      # Rows handed out or skipped so far
+      attr_reader :row
+
+      # Moves forward to row +target+ of the chunk (0-based). With an OffsetIndex, pages before
+      # the one holding +target+ are not read at all; otherwise rows are skipped page by page,
+      # decoding levels but not building values.
+      def seek(target)
+        raise ArgumentError, "Cannot seek backwards (at row #{@row}, asked for #{target})" if target < @row
+        return if target == @row
+        locs = @src.locations
+        if locs
+          j = locs.bsearch_index { |loc| loc.first_row_index > target }
+          j = (j || locs.size) - 1
+          if j > @page_idx
+            @src.jump_to_page(j)
+            @page = nil
+            @bd = @br = nil
+            @bi = 0
+            @page_idx = j - 1
+            @row = locs[j].first_row_index
+            @started = true # pages listed in an OffsetIndex start at row boundaries
+          end
+        end
+        skip(target - @row)
+      end
+
+      # Moves past the next +k+ rows without building their values
+      def skip(k)
+        return if k <= 0
+        @repeated ? take_repeated(k, false) : take_flat(k, false)
+        @row += k
+        nil
       end
 
       # [definition_levels, repetition_levels, values] of the next +k+ rows. Levels are nil
       # when the column's max level is 0.
       def take(k)
         pieces = @repeated ? take_repeated(k) : take_flat(k)
+        @row += k
         return pieces.first if pieces.size == 1
         defs = @max_def.positive? ? [] : nil
         reps = @repeated ? [] : nil
@@ -42,14 +79,19 @@ module Herringbone
 
       private
 
-      def take_flat(k)
+      def take_flat(k, keep = true)
         pieces = []
         while k > 0
           load_page! while @page.nil? || @page.remaining.zero?
           t = @page.remaining
           t = k if k < t
           defs, = @page.read_levels(t)
-          pieces << [defs, nil, values(defs ? defs.count(@max_def) : t)]
+          nv = defs ? defs.count(@max_def) : t
+          if keep
+            pieces << [defs, nil, values(nv)]
+          else
+            @page.skip_values(nv)
+          end
           k -= t
         end
         pieces
@@ -57,7 +99,7 @@ module Herringbone
 
       # Collects entries until +k+ rows have started and the next row start (or the end of the
       # column) is reached. Values are read from a page before moving on to the next one.
-      def take_repeated(k)
+      def take_repeated(k, keep = true)
         pieces = []
         rows = 0
         defs = @max_def.positive? ? [] : nil
@@ -68,7 +110,7 @@ module Herringbone
               @bd, @br = @page.read_levels(LOOKAHEAD)
               @bi = 0
             else
-              pieces << [defs, reps, values(defs ? defs.count(@max_def) : reps.size)] unless reps.empty?
+              flush(pieces, defs, reps, keep)
               defs = @max_def.positive? ? [] : nil
               reps = []
               break unless load_page
@@ -100,8 +142,19 @@ module Herringbone
           end
           break if done
         end
-        pieces << [defs, reps, values(defs ? defs.count(@max_def) : reps.size)] unless reps.empty?
+        flush(pieces, defs, reps, keep)
         pieces
+      end
+
+      # Reads (or skips) the values belonging to the collected entries of the current page
+      def flush(pieces, defs, reps, keep)
+        return if reps.empty?
+        nv = defs ? defs.count(@max_def) : reps.size
+        if keep
+          pieces << [defs, reps, values(nv)]
+        else
+          @page.skip_values(nv)
+        end
       end
 
       def values(n)
@@ -118,6 +171,7 @@ module Herringbone
       # Moves to the next data page; false at the end of the chunk
       def load_page
         @page = @src.next_stream or return false
+        @page_idx += 1
         @bd = @br = nil
         @bi = 0
         true

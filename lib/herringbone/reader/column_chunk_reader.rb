@@ -45,6 +45,9 @@ module Herringbone
         # Some writers store 0 when there is no dictionary page
         start = dict if dict && dict.positive? && dict < start
         @pos = start
+        @start = start
+        @locations = nil # OffsetIndex page locations, when jumping between pages
+        @page_number = nil
         @total = @meta.num_values
         @seen = 0
         @buf = "".b
@@ -87,7 +90,7 @@ module Herringbone
       # The next data page as a PageStream::Page that decodes its levels and values on demand,
       # or nil after the last one. Values come out physical; apply Page#converter to them.
       def next_stream
-        while @seen < @total
+        while more_pages?
           header, body = read_page
           case header.type
           when Format::PageType::DICTIONARY_PAGE
@@ -95,16 +98,30 @@ module Herringbone
           when Format::PageType::DATA_PAGE
             page = data_page_v1(header, body)
             @seen += header.data_page_header.num_values
+            @page_number += 1 if @page_number
             return page
           when Format::PageType::DATA_PAGE_V2
             page = data_page_v2(header, body)
             @seen += header.data_page_header_v2.num_values
+            @page_number += 1 if @page_number
             return page
           end
         end
         nil
       rescue Thrift::Error => e
         raise FormatError, "Corrupt page header in #{@column.dotted_path}: #{e.message}"
+      end
+
+      # The chunk's data page locations from its OffsetIndex (enables #jump_to_page)
+      attr_accessor :locations
+
+      # Continues reading at data page +index+ of the OffsetIndex. The dictionary page (which
+      # the OffsetIndex does not list) is read first if it has not been yet.
+      def jump_to_page(index)
+        raise ArgumentError, "No OffsetIndex for #{@column.dotted_path}" unless @locations
+        load_dictionary
+        @pos = @locations.fetch(index).offset
+        @page_number = index
       end
 
       # Whether all of the chunk's values have been returned
@@ -115,9 +132,29 @@ module Herringbone
 
       private
 
+      def more_pages?
+        @page_number ? @page_number < @locations.size : @seen < @total
+      end
+
+      # Reads the dictionary page at the start of the chunk, if there is one
+      def load_dictionary
+        return if @dictionary || @dictionary_checked
+        @dictionary_checked = true
+        first_data = @locations.first&.offset
+        return if first_data.nil? || @start >= first_data
+        saved = @pos
+        @pos = @start
+        header, body = read_page
+        read_dictionary(header, body) if header.type == Format::PageType::DICTIONARY_PAGE
+        @pos = saved
+      end
+
       # Reads the page header at @pos and the page body after it
       def read_page
-        want = HEADER_GUESS
+        # With an OffsetIndex the page's size (header included) is known, so read exactly that
+        loc = @page_number && @locations[@page_number]
+        exact = loc && loc.offset == @pos && loc.compressed_page_size.positive?
+        want = exact ? loc.compressed_page_size : HEADER_GUESS
         begin
           buf, off = window(@pos, want)
           header, hend = Format::PageHeader.decode(buf, off)
@@ -130,7 +167,7 @@ module Herringbone
         hlen = hend - off
         size = header.compressed_page_size
         raise FormatError, "Negative page size in #{@column.dotted_path}" if size.nil? || size.negative?
-        buf, off = window(@pos + hlen, size + READ_AHEAD, size)
+        buf, off = window(@pos + hlen, size + (exact ? 0 : READ_AHEAD), size)
         if buf.bytesize - off < size
           raise FormatError, "Column #{@column.dotted_path}: page overruns the file (read #{@seen} of #{@total} values)"
         end

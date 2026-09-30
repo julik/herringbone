@@ -33,6 +33,12 @@ module Herringbone
         def read_values(n)
           n.zero? ? [] : @values.read(n)
         end
+
+        # Moves past the next +n+ values without returning them
+        def skip_values(n)
+          return if n.zero?
+          @values.respond_to?(:skip) ? @values.skip(n) : @values.read(n)
+        end
       end
 
       # A decoder over an Array that is already decoded (legacy encodings, booleans, deltas)
@@ -131,6 +137,11 @@ module Herringbone
           @pos += bytes
           out
         end
+
+        def skip(n)
+          raise DecodeError, "Truncated PLAIN data" if @pos + n * @width > @data.bytesize
+          @pos += n * @width
+        end
       end
 
       class Int96Decoder < FixedDecoder
@@ -161,6 +172,11 @@ module Herringbone
           @pos += n * @width
           out
         end
+
+        def skip(n)
+          raise DecodeError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
+          @pos += n * @width
+        end
       end
 
       # PLAIN BYTE_ARRAY: 4-byte length, then the bytes
@@ -188,6 +204,19 @@ module Herringbone
           @pos = pos
           out
         end
+
+        # Walks the length prefixes without creating Strings
+        def skip(n)
+          data = @data
+          size = data.bytesize
+          pos = @pos
+          n.times do
+            raise DecodeError, "Truncated BYTE_ARRAY data" if pos + 4 > size
+            pos += 4 + (data.getbyte(pos) | (data.getbyte(pos + 1) << 8) | (data.getbyte(pos + 2) << 16) | (data.getbyte(pos + 3) << 24))
+          end
+          raise DecodeError, "BYTE_ARRAY value overruns page" if pos > size
+          @pos = pos
+        end
       end
 
       # PLAIN BOOLEAN: one bit per value, LSB first
@@ -211,6 +240,11 @@ module Herringbone
           @indices = HybridDecoder.new(data, pos + 1, data.bytesize, data.getbyte(pos).to_i)
           @dictionary = dictionary
           @path = path
+        end
+
+        # Indices are decoded but not looked up
+        def skip(n)
+          @indices.read(n)
         end
 
         def read(n)

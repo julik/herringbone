@@ -45,9 +45,11 @@ module Herringbone
 
   # Rows of a file as an Array of Hashes. Options: keys: (:string, :symbol), time_zone: (see Reader)
   # With as: :columns, a Hash of column name => Array of values instead (faster for wide files).
-  def read(io, columns: nil, as: :rows, **options)
+  # where:, from: and limit: select rows, see Reader#each_batch.
+  def read(io, columns: nil, as: :rows, where: nil, from: nil, limit: nil, **options)
     raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
-    Reader.open(io, **options) { |r| as == :columns ? r.read_columns(columns: columns) : r.rows(columns: columns) }
+    select = { columns: columns, where: where, from: from, limit: limit }
+    Reader.open(io, **options) { |r| as == :columns ? r.read_columns(**select) : r.rows(**select) }
   end
 
   # Writes an Enumerable of rows to +io+. Without a schema, one is inferred from the first rows.

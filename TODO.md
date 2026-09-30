@@ -22,10 +22,11 @@ column; rows are assembled in batches (`each_batch(size)`, `each_row` on top of 
 converted to Ruby objects per batch. 1M rows in one row group: 662 → ~160 MB peak RSS growth,
 107k → 158k rows/s (`benchmark/streaming_read.rb`). `keys: :symbol` and `time_zone:` options.
 
-Possible follow-ups:
-- Decode within a page incrementally (RLE runs, PLAIN values) to bound memory by the batch
-  alone; today a decoded page (up to ~200k entries for dictionary-encoded 1MB pages) is held
-- Use the OffsetIndex to skip pages/rows (`each_row(from:)`)
+Pages are decoded incrementally (levels run by run, values by per-encoding decoders), so only
+the batch being assembled becomes Ruby objects: 1M rows in 1M-row pages 599 → 210 MB.
+Column-order batches (`each_batch(as: :columns)`, `read_columns`) are 25–30% faster than rows.
+`where:` / `from:` / `limit:` select rows using statistics, bloom filters and the page index
+(see section 4); `scan_plan` shows what would be read.
 
 ## 3. Inspecting files without reading the data — done
 
@@ -61,7 +62,9 @@ Possible follow-ups:
 ColumnIndex + OffsetIndex for every column chunk (column index where a sort order is defined),
 `page_row_limit:` (20k rows per page), sort orders for unsigned/decimal/float16, 64-byte
 truncation of byte-array bounds. Verified against DataFusion's page pruning in CI.
-Possible follow-up: use page indexes when reading (skip pages for row ranges / predicates).
+Reading uses them: `where:` rules out pages with the ColumnIndex and columns jump to the needed
+pages with the OffsetIndex (also for `from:`), reading exactly the page bytes.
+Possible follow-ups: `where:` on list/map elements; OR conditions.
 
 ### Bloom filters — done (reading and writing)
 

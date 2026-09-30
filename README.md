@@ -81,6 +81,38 @@ row group size. Reading 1M rows stored in a single row group (as parquet-rs writ
 about 60–160 MB RSS growth instead of 660 MB. `column` and `read_row_group` return whole
 columns, so they hold them in memory.
 
+`each_batch(size, as: :columns)` yields `{ "id" => [...], "name" => [...] }` per batch instead
+of row Hashes, which is 25–30% faster when you process data column by column.
+`reader.read_columns` and `Herringbone.read(io, as: :columns)` return a whole file that way.
+
+### Selecting rows: `where:`, `from:`, `limit:`
+
+`each_row`, `each_batch`, `rows`, `read_columns` and `Herringbone.read` take filters:
+
+```ruby
+reader.rows(where: { user_id: 42 })
+reader.rows(where: { status: %w[paid shipped], created_at: 1.week.ago.. })  # IN, Ranges
+reader.rows(where: { "address.city" => "Amsterdam", deleted_at: nil })     # struct members, IS NULL
+reader.rows(where: { amount: ->(v) { v && v > 100 } })                      # any callable
+reader.rows(from: 1_000_000, limit: 100)                                     # rows 1,000,000..1,000,099
+reader.each_batch(10_000, as: :columns, columns: %w[id amount], where: { day: Date.today }) { |b| ... }
+```
+
+All conditions must hold; filtered columns need not be among `columns:`. Conditions work on any
+column that is not inside a list or map. The file is used to avoid reading data wherever it can:
+
+- row groups whose min/max statistics or null counts rule a condition out are skipped, as are
+  row groups whose bloom filter says an equality value is absent;
+- within the remaining row groups, the page index (written by Herringbone, parquet-mr, Arrow and
+  others) rules out pages, and the offset index lets each column jump straight to the pages it
+  needs; `from:` uses it to jump to a row without reading the pages before it;
+- every row that is read is then checked, so results are exact.
+
+On a 1M-row file with 20k-row pages, a lookup of one `id` takes 0.1 s instead of 6.3 s for a
+full scan. Filters help most on columns the data is sorted or clustered by; sort rows by the
+columns you filter on when writing. `reader.scan_plan(where: ..., from: ...)` shows which row
+groups and row ranges a read would touch, without reading anything.
+
 Options, for `Reader.new` and `Reader.open`, and per call for `each_row`, `each_batch` and `rows`:
 
 | option | default | |

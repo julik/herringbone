@@ -95,57 +95,98 @@ module Herringbone
     # as: :rows (default) yields an Array of row Hashes; as: :columns yields a Hash of top-level
     # field name => Array of that field's values in the batch, which skips building a Hash per row
     # and is noticeably faster when you process data column by column.
-    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone, as: :rows)
-      return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone, as: as) unless block_given?
+    #
+    # where: only yields rows matching all conditions (see Reader::Filter). Row groups and pages
+    # that cannot match are skipped using statistics, bloom filters and the page index, and the
+    # remaining rows are checked one by one. Filtered columns need not be in +columns+.
+    # from: skips the first rows of the file (jumping over pages with the page index), and
+    # limit: stops after yielding that many rows.
+    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone, as: :rows,
+      where: nil, from: nil, limit: nil)
+      unless block_given?
+        return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone, as: as,
+          where: where, from: from, limit: limit)
+      end
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
       raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
+      raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
+      return self if limit&.zero?
       columnar = as == :columns
       symbolize = check_keys(keys) == :symbol
-      fields = select_fields(columns)
-      names = row_keys(fields, symbolize)
+      out_fields = select_fields(columns)
+      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      fields = filter ? out_fields | filter.fields : out_fields
+      names = row_keys(out_fields, symbolize)
+      nout = out_fields.size
       converters = converters_for(time_zone)
       assemblers = fields.map { |f| Assembler.new(f, symbolize) }
+      left_to_yield = limit
       pending = pending_rows = nil
-      row_groups.each do |rg|
-        left = rg.num_rows
-        next unless left.positive?
+      emit = lambda do |data, k|
+        if columnar
+          if pending
+            pending.each_with_index { |col, j| col.concat(data[j]) }
+          else
+            pending = data
+          end
+          pending_rows = (pending_rows || 0) + k
+          if pending_rows >= size
+            yield names.zip(pending).to_h
+            pending = pending_rows = nil
+          end
+        else
+          rows = build_rows(names, data, k)
+          if pending
+            pending.concat(rows)
+          else
+            pending = rows
+          end
+          pending_rows = pending.size
+          if pending_rows >= size
+            yield pending
+            pending = pending_rows = nil
+          end
+        end
+      end
+
+      plan_rows(filter, from).each do |rg_index, ranges|
+        rg = row_groups[rg_index]
+        partial = ranges != [[0, rg.num_rows]]
         cursors = fields.map do |f|
           f.leaves.map do |col|
             reader = ColumnChunkReader.new(@io, rg.columns.fetch(col.index), col, converter: converters[col.index], lazy: true)
+            reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
             [col.index, ColumnCursor.new(reader)]
           end
         end
-        while left.positive?
-          # Rows still missing from the current batch (pending_rows counts rows in both modes)
-          k = pending ? size - pending_rows : size
-          raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
-          k = left if left < k
-          data = assemblers.each_with_index.map do |asm, j|
-            asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
-          end
-          left -= k
-          if columnar
-            if pending
-              pending.each_with_index { |col, j| col.concat(data[j]) }
-            else
-              pending = data
+        ranges.each do |first, stop|
+          cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } }
+          left = stop - first
+          while left.positive?
+            # Rows still missing from the current batch (pending_rows counts rows in both modes)
+            k = pending ? size - pending_rows : size
+            raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
+            k = left if left < k
+            data = assemblers.each_with_index.map do |asm, j|
+              asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
             end
-            pending_rows = (pending_rows || 0) + k
-            next if pending_rows < size
-            yield names.zip(pending).to_h
-            pending = pending_rows = nil
-          else
-            rows = build_rows(names, data, k)
-            if pending
-              pending.concat(rows)
-            else
-              pending = rows
+            left -= k
+            kept = k
+            if filter
+              keep = filter.matching_rows(data, fields, k, symbolize)
+              kept = keep.size
+              next if kept.zero?
+              data = data.first(nout).map { |col| keep.map { |i| col[i] } } if kept < k
             end
-            pending_rows = pending.size
-            next if pending_rows < size
-            yield pending
-            pending = pending_rows = nil
+            data = data.first(nout) if data.size > nout
+            if left_to_yield && kept >= left_to_yield
+              emit.call(data.map { |col| col.first(left_to_yield) }, left_to_yield)
+              yield(columnar ? names.zip(pending).to_h : pending) if pending
+              return self
+            end
+            left_to_yield -= kept if left_to_yield
+            emit.call(data, kept)
           end
         end
       end
@@ -153,29 +194,59 @@ module Herringbone
       self
     end
 
+    # What a read with +where:+ / +from:+ would touch, without reading any data: an Array of
+    # { row_group:, rows:, ranges: [[first_row, end_row), ...] } for the row groups that are
+    # read. Row groups ruled out entirely are left out.
+    def scan_plan(where: nil, from: nil)
+      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      plan_rows(filter, from).map do |rg_index, ranges|
+        { row_group: rg_index, rows: ranges.sum { |s, e| e - s }, ranges: ranges }
+      end
+    end
+
+    # [ColumnIndex or nil, OffsetIndex or nil] of a leaf column in a row group
+    def page_index(row_group_index, column)
+      column = @schema.column(column) unless column.is_a?(Schema::Column)
+      raise ArgumentError, "No such leaf column" unless column
+      @page_indexes ||= {}
+      @page_indexes[[row_group_index, column.index]] ||= begin
+        chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
+        [read_struct(Format::ColumnIndex, chunk.column_index_offset, chunk.column_index_length),
+          read_struct(Format::OffsetIndex, chunk.offset_index_offset, chunk.offset_index_length)]
+      end
+    end
+
     # All rows in column order: a Hash of top-level field name => Array of values, read in
     # batches (so only the resulting Arrays are held, not whole decoded row groups)
-    def read_columns(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: 65_536)
+    def read_columns(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: 65_536, where: nil, from: nil, limit: nil)
       fields = select_fields(columns)
       out = row_keys(fields, check_keys(keys) == :symbol).to_h { |name| [name, []] }
-      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone, as: :columns) do |batch|
+      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone, as: :columns,
+        where: where, from: from, limit: limit) do |batch|
         batch.each { |name, values| out[name].concat(values) }
       end
       out
     end
 
     # Yields each row as a Hash of top-level field name => value
-    def each_row(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: DEFAULT_BATCH_SIZE, &block)
-      return enum_for(:each_row, columns: columns, keys: keys, time_zone: time_zone, batch_size: batch_size) unless block
-      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone) { |rows| rows.each(&block) }
+    def each_row(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: DEFAULT_BATCH_SIZE,
+      where: nil, from: nil, limit: nil, &block)
+      unless block
+        return enum_for(:each_row, columns: columns, keys: keys, time_zone: time_zone, batch_size: batch_size,
+          where: where, from: from, limit: limit)
+      end
+      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone,
+        where: where, from: from, limit: limit) { |rows| rows.each(&block) }
       self
     end
     alias_method :each, :each_row
 
     # Rows as an Array of Hashes
-    def rows(columns: nil, keys: @keys, time_zone: @time_zone)
+    def rows(columns: nil, keys: @keys, time_zone: @time_zone, where: nil, from: nil, limit: nil)
       out = []
-      each_batch(columns: columns, keys: keys, time_zone: time_zone) { |batch| out.concat(batch) }
+      each_batch(columns: columns, keys: keys, time_zone: time_zone, where: where, from: from, limit: limit) do |batch|
+        out.concat(batch)
+      end
       out
     end
 
@@ -210,6 +281,38 @@ module Herringbone
     end
 
     private
+
+    # [[row_group_index, [[first_row, end_row), ...]], ...] to read, after ruling out row groups
+    # (statistics, bloom filters) and pages (page index), and skipping the first +from+ rows
+    def plan_rows(filter, from)
+      from = Integer(from || 0)
+      raise ArgumentError, "from: must not be negative" if from.negative?
+      offset = 0
+      plan = []
+      row_groups.each_with_index do |rg, i|
+        n = rg.num_rows
+        first = from - offset
+        offset += n
+        next if n.zero? || first >= n
+        ranges = [[first.positive? ? first : 0, n]]
+        if filter
+          next unless filter.row_group_may_match?(self, i)
+          ranges = Filter.intersect(ranges, filter.page_ranges(self, i))
+        end
+        plan << [i, ranges] unless ranges.empty?
+      end
+      plan
+    end
+
+    def read_struct(klass, offset, length)
+      return nil unless offset && length&.positive?
+      @io.seek(offset)
+      bytes = @io.read(length)
+      return nil unless bytes&.bytesize == length
+      klass.decode(bytes.b).first
+    rescue Thrift::Error
+      nil # a damaged index only means pages cannot be skipped
+    end
 
     def select_fields(columns)
       return @schema.fields unless columns
@@ -486,3 +589,4 @@ end
 require_relative "reader/page_stream"
 require_relative "reader/column_chunk_reader"
 require_relative "reader/column_cursor"
+require_relative "reader/scan"
