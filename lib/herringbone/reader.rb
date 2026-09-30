@@ -89,19 +89,24 @@ module Herringbone
       self
     end
 
-    # Yields Arrays of up to +size+ row Hashes (all batches are full except the last one;
-    # batches span row groups). Only one page per column and the current batch are held in
-    # memory.
-    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone)
-      return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone) unless block_given?
+    # Yields batches of up to +size+ rows (all batches are full except the last one; batches span
+    # row groups). Only one page per column and the current batch are held in memory.
+    #
+    # as: :rows (default) yields an Array of row Hashes; as: :columns yields a Hash of top-level
+    # field name => Array of that field's values in the batch, which skips building a Hash per row
+    # and is noticeably faster when you process data column by column.
+    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone, as: :rows)
+      return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone, as: as) unless block_given?
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
+      raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
+      columnar = as == :columns
       symbolize = check_keys(keys) == :symbol
       fields = select_fields(columns)
       names = row_keys(fields, symbolize)
       converters = converters_for(time_zone)
       assemblers = fields.map { |f| Assembler.new(f, symbolize) }
-      pending = nil
+      pending = pending_rows = nil
       row_groups.each do |rg|
         left = rg.num_rows
         next unless left.positive?
@@ -112,25 +117,51 @@ module Herringbone
           end
         end
         while left.positive?
-          k = pending ? size - pending.size : size
+          # Rows still missing from the current batch (pending_rows counts rows in both modes)
+          k = pending ? size - pending_rows : size
+          raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
           k = left if left < k
           data = assemblers.each_with_index.map do |asm, j|
             asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
           end
-          rows = build_rows(names, data, k)
           left -= k
-          if pending
-            pending.concat(rows)
+          if columnar
+            if pending
+              pending.each_with_index { |col, j| col.concat(data[j]) }
+            else
+              pending = data
+            end
+            pending_rows = (pending_rows || 0) + k
+            next if pending_rows < size
+            yield names.zip(pending).to_h
+            pending = pending_rows = nil
           else
-            pending = rows
+            rows = build_rows(names, data, k)
+            if pending
+              pending.concat(rows)
+            else
+              pending = rows
+            end
+            pending_rows = pending.size
+            next if pending_rows < size
+            yield pending
+            pending = pending_rows = nil
           end
-          next if pending.size < size
-          yield pending
-          pending = nil
         end
       end
-      yield pending if pending
+      yield(columnar ? names.zip(pending).to_h : pending) if pending
       self
+    end
+
+    # All rows in column order: a Hash of top-level field name => Array of values, read in
+    # batches (so only the resulting Arrays are held, not whole decoded row groups)
+    def read_columns(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: 65_536)
+      fields = select_fields(columns)
+      out = row_keys(fields, check_keys(keys) == :symbol).to_h { |name| [name, []] }
+      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone, as: :columns) do |batch|
+        batch.each { |name, values| out[name].concat(values) }
+      end
+      out
     end
 
     # Yields each row as a Hash of top-level field name => value
