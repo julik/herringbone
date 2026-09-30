@@ -364,8 +364,8 @@ class ActiveRecordTest < Minitest::Test
 
       Dir.mktmpdir do |dir|
         path = File.join(dir, "export.parquet")
-        Herringbone.export(model.all, path)
-        assert_equal 25, Herringbone::Reader.open(path, &:num_rows)
+        File.open(path, "wb") { |f| Herringbone.export(model.all, f) }
+        assert_equal 25, File.open(path, "rb") { |f| Herringbone::Reader.open(f, &:num_rows) }
       end
     end
   end

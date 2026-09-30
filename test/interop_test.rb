@@ -47,7 +47,7 @@ class InteropTest < Minitest::Test
         cases.each_value do |c|
           c.path = File.join(dir, "#{c.name}.parquet")
           begin
-            Herringbone::Writer.open(c.path, c.schema, **c.options) { |w| w.write_rows(c.rows) }
+            File.open(c.path, "wb") { |f| Herringbone::Writer.open(f, c.schema, **c.options) { |w| w.write_rows(c.rows) } }
           rescue StandardError => e
             c.path = nil
             c.options = c.options.merge(write_error: "#{e.class}: #{e.message}")
@@ -184,7 +184,8 @@ class InteropTest < Minitest::Test
       Canonical.dump(c.schema.fields.to_h { |f| [f.name, pyarrow_view(f, Canonical.value(f, row.fetch(f.name) { row[f.name.to_sym] }))] })
     end
     from_pyarrow = r["rows"].map { |row| Canonical.dump(row) }
-    reader = Herringbone::Reader.open(c.path)
+    file = File.open(c.path, "rb")
+    reader = Herringbone::Reader.new(file)
     from_herringbone = canonical_lines(reader.schema, reader.rows)
 
     expected.each_with_index do |e, i|
@@ -198,7 +199,7 @@ class InteropTest < Minitest::Test
     check_null_counts(c, reader, r)
     check_codecs(c, r)
   ensure
-    reader&.close
+    file&.close
   end
 
   # pyarrow reads ENUM columns (without an ARROW:schema) as binary

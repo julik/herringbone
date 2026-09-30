@@ -34,12 +34,17 @@ module Herringbone
 
   module_function
 
-  def open(path, &block) = Reader.open(path, &block)
-  def read(path, columns: nil) = Reader.open(path) { |r| r.rows(columns: columns) }
+  # All of these take IOs, never paths: Herringbone does not open files itself.
+  #   File.open("data.parquet", "rb") { |f| Herringbone.read(f) }
 
-  # Writes an Enumerable of row Hashes. Without a schema, one is inferred from the first rows.
-  def write(path, rows, schema: nil, **options)
+  def open(io, **options, &block) = Reader.open(io, **options, &block)
+
+  # Rows of a file as an Array of Hashes. Options: keys: (:string, :symbol), time_zone: (see Reader)
+  def read(io, columns: nil, **options) = Reader.open(io, **options) { |r| r.rows(columns: columns) }
+
+  # Writes an Enumerable of rows to +io+. Without a schema, one is inferred from the first rows.
+  def write(io, rows, schema: nil, **options)
     schema ||= Schema.infer(rows)
-    Writer.open(path, schema, **options) { |w| w.write_rows(rows) }
+    Writer.open(io, schema, **options) { |w| w.write_rows(rows) }
   end
 end

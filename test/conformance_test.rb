@@ -32,29 +32,31 @@ class ConformanceTest < Minitest::Test
   private
 
   def check_file(path, expected)
-    Herringbone::Reader.open(path) do |reader|
-      assert_equal expected["num_rows"], reader.num_rows, "num_rows"
-      assert_equal expected["num_row_groups"], reader.num_row_groups, "num_row_groups"
-      expected_schema = expected["schema"].map do |c|
-        [c["path"], c["physical_type"], c["max_definition_level"], c["max_repetition_level"]]
-      end
-      actual_schema = reader.schema.columns.map do |c|
-        [c.path, TYPE_NAMES[c.type].to_s, c.max_definition_level, c.max_repetition_level]
-      end
-      assert_equal expected_schema, actual_schema, "schema"
-
-      next unless expected["rows"]
-
-      schema = reader.schema
-      lines = []
-      first_rows = []
-      reader.each_row do |row|
-        canonical = Canonical.row(schema, row)
-        first_rows << canonical if first_rows.size < 50
-        lines << Canonical.dump(canonical)
-      end
-      assert_equal expected["rows"], JSON.parse(Canonical.dump(first_rows)), "first rows"
-      assert_equal expected["row_hash"], Canonical.row_hash(lines), "row hash of all rows"
-    end
+    File.open(path, "rb") { |f| check_reader(Herringbone::Reader.new(f), expected) }
   end
+
+  def check_reader(reader, expected)
+    assert_equal expected["num_rows"], reader.num_rows, "num_rows"
+    assert_equal expected["num_row_groups"], reader.num_row_groups, "num_row_groups"
+    expected_schema = expected["schema"].map do |c|
+      [c["path"], c["physical_type"], c["max_definition_level"], c["max_repetition_level"]]
+    end
+    actual_schema = reader.schema.columns.map do |c|
+      [c.path, TYPE_NAMES[c.type].to_s, c.max_definition_level, c.max_repetition_level]
+    end
+    assert_equal expected_schema, actual_schema, "schema"
+
+    return unless expected["rows"]
+
+    schema = reader.schema
+    lines = []
+    first_rows = []
+    reader.each_row do |row|
+      canonical = Canonical.row(schema, row)
+      first_rows << canonical if first_rows.size < 50
+      lines << Canonical.dump(canonical)
+    end
+    assert_equal expected["rows"], JSON.parse(Canonical.dump(first_rows)), "first rows"
+    assert_equal expected["row_hash"], Canonical.row_hash(lines), "row hash of all rows"
+    end
 end

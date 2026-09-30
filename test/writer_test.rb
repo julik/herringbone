@@ -602,10 +602,10 @@ def test_dictionary_encoded_floats_keep_negative_zero
     assert_equal :BYTE_ARRAY, types["s"]
     assert_equal :BOOLEAN, types["bool"]
     assert_equal :FIXED_LEN_BYTE_ARRAY, types["dec"]
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "infer.parquet")
-      Herringbone.write(path, rows)
-      read = Herringbone.read(path)
+    io = StringIO.new("".b)
+    Herringbone.write(io, rows)
+    begin
+      read = Herringbone.read(StringIO.new(io.string))
       assert_equal 1, read[0]["i"]
       assert_equal 2.0, read[1]["f"]
       assert_equal "é", read[0]["s"]
@@ -622,8 +622,8 @@ def test_dictionary_encoded_floats_keep_negative_zero
       assert_equal [nil, { "k" => nil }], read[2]["lh"]
       assert_equal [], read[1]["lh"]
       assert_equal(-5, read[2]["i"])
-      assert_equal 3, Herringbone.open(path, &:num_rows)
-      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], Herringbone.read(path, columns: ["i"])
+      assert_equal 3, Herringbone.open(StringIO.new(io.string), &:num_rows)
+      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], Herringbone.read(StringIO.new(io.string), columns: ["i"])
     end
   end
 
@@ -636,7 +636,9 @@ def test_dictionary_encoded_floats_keep_negative_zero
   def test_writer_open_with_block_writes_file
     Dir.mktmpdir do |dir|
       path = File.join(dir, "a.parquet")
-      Herringbone::Writer.open(path, NESTED_SCHEMA, compression: :gzip) { |w| w.write_rows(NESTED_ROWS) }
+      File.open(path, "wb") do |f|
+        Herringbone::Writer.open(f, NESTED_SCHEMA, compression: :gzip) { |w| w.write_rows(NESTED_ROWS) }
+      end
       assert_roundtrip(NESTED_SCHEMA, NESTED_ROWS, File.binread(path))
     end
   end

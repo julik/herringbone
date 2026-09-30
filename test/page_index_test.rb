@@ -166,7 +166,9 @@ class PageIndexTest < Minitest::Test
     Dir.mktmpdir do |dir|
       path = File.join(dir, "pruning.parquet")
       rows = Array.new(50_000) { |i| { id: i, v: (i % 97) * 1.5 } }
-      Herringbone.write(path, rows, schema: { id: { type: :int64, null: false }, v: :double }, page_row_limit: 5000)
+      File.open(path, "wb") do |f|
+        Herringbone.write(f, rows, schema: { id: { type: :int64, null: false }, v: :double }, page_row_limit: 5000)
+      end
       script = File.join(__dir__, "support", "datafusion_prune.py")
       out, err, st = Open3.capture3(python, script, path, "select count(*) as c from t where id between 12000 and 12999")
       assert st.success?, err

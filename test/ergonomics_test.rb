@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "tmpdir"
+require "pathname"
 
 # Writer conveniences: row shapes, Hash schemas, type coercions, error messages, file handling
 class ErgonomicsTest < Minitest::Test
@@ -186,37 +187,46 @@ class ErgonomicsTest < Minitest::Test
     assert_equal [1, 2], roundtrip(schema, rows).map { |r| r["a"] }
   end
 
-  def test_open_with_path_is_atomic
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "out.parquet")
-      schema = Herringbone::Schema.define(a: :int32)
-      assert_raises(RuntimeError) do
-        Herringbone::Writer.open(path, schema) do |w|
-          w << { a: 1 }
-          raise "boom"
-        end
-      end
-      assert_empty Dir.children(dir), "no file and no temp file after a failed write"
-
-      File.write(path, "previous contents")
-      assert_raises(Herringbone::EncodeError) { Herringbone::Writer.open(path, schema) { |w| w << { a: "x" } } }
-      assert_equal "previous contents", File.read(path), "an existing file survives a failed write"
-
-      result = Herringbone::Writer.open(path, schema) { |w| w << { a: 7 }; :done }
-      assert_equal :done, result
-      assert_equal [{ "a" => 7 }], Herringbone.read(path)
-      assert_equal ["out.parquet"], Dir.children(dir)
+  def test_writer_rejects_paths
+    [String.new("out.parquet"), Pathname.new("out.parquet"), nil, 42].each do |target|
+      error = assert_raises(ArgumentError) { Herringbone::Writer.new(target, { a: :int32 }) }
+      assert_match(/expects an IO that responds to #write/, error.message)
     end
+    assert_raises(ArgumentError) { Herringbone.write("out.parquet", [{ a: 1 }]) }
+  end
+
+  def test_failed_block_aborts_without_footer
+    io = StringIO.new("".b)
+    assert_raises(RuntimeError) do
+      Herringbone::Writer.open(io, { a: :int32 }) do |w|
+        w << { a: 1 }
+        raise "boom"
+      end
+    end
+    refute io.closed?
+    assert_equal "PAR1", io.string, "only the leading magic, no footer after a failed write"
+  end
+
+  def test_open_returns_block_value_and_leaves_io_open
+    io = StringIO.new("".b)
+    assert_equal :done, Herringbone::Writer.open(io, { a: :int32 }) { |w| w << [7]; :done }
+    refute io.closed?
+    assert_equal [{ "a" => 7 }], Herringbone.read(StringIO.new(io.string))
   end
 
   def test_open_without_block
+    io = StringIO.new("".b)
+    w = Herringbone::Writer.open(io, { a: :int32 })
+    w << [1]
+    w.close
+    assert_equal [{ "a" => 1 }], Herringbone.read(StringIO.new(io.string))
+  end
+
+  def test_writes_to_a_file_opened_by_the_caller
     Dir.mktmpdir do |dir|
       path = File.join(dir, "out.parquet")
-      w = Herringbone::Writer.open(path, { a: :int32 })
-      w << [1]
-      refute File.exist?(path)
-      w.close
-      assert_equal [{ "a" => 1 }], Herringbone.read(path)
+      File.open(path, "wb") { |f| Herringbone.write(f, [{ a: 1 }, { a: 2 }]) }
+      assert_equal [1, 2], File.open(path, "rb") { |f| Herringbone.read(f) }.map { |r| r["a"] }
     end
   end
 

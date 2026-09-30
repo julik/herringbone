@@ -8,15 +8,17 @@ module Herringbone
   #     string :name
   #     list :tags, :string
   #   end
-  #   Herringbone::Writer.open("out.parquet", schema) do |w|
-  #     w << { "id" => 1, "name" => "one", "tags" => ["a", "b"] }
-  #     w << [2, "two", []]           # Arrays are taken in schema order
-  #     w << order                    # objects responding to #attributes (ActiveRecord) or #to_h
+  #   File.open("out.parquet", "wb") do |file|
+  #     Herringbone::Writer.open(file, schema) do |w|
+  #       w << { "id" => 1, "name" => "one", "tags" => ["a", "b"] }
+  #       w << [2, "two", []]           # Arrays are taken in schema order
+  #       w << order                    # objects responding to #attributes (ActiveRecord) or #to_h
+  #     end
   #   end
   #
-  # +schema+ is a Herringbone::Schema or a Hash spec (see Schema.define). The target is a path or an IO;
-  # paths are written to a temporary file next to the target and renamed into place on close, so a
-  # failed write never leaves a truncated file behind.
+  # +schema+ is a Herringbone::Schema or a Hash spec (see Schema.define). The output is any IO that
+  # responds to #write (a File, StringIO, Tempfile, socket, pipe...); it is written sequentially and
+  # never seeked, rewound or closed by the writer. Herringbone does not open files by path.
   #
   # Options:
   #   compression:     :snappy (default), :zstd, :gzip, :lz4 (LZ4_RAW), :lz4_hadoop, :brotli, :none
@@ -62,12 +64,15 @@ module Herringbone
 
     # Opens a writer on a path or an IO. With a block, the file is finished when the block returns
     # (or discarded if it raises) and the block's value is returned; without one, call #close.
-    def self.open(target, schema, **options)
-      writer = new(target, schema, **options)
+    # Opens a writer on +io+. With a block, the file is finished (footer written) when the block
+    # returns and the block's value is returned; if the block raises, the writer is aborted and no
+    # footer is written. Without a block, call #close to finish. The IO is never closed.
+    def self.open(io, schema, **options)
+      writer = new(io, schema, **options)
       return writer unless block_given?
       begin
         result = yield writer
-      rescue Exception # rubocop:disable Lint/RescueException -- also discard on Interrupt
+      rescue Exception # rubocop:disable Lint/RescueException -- also abort on Interrupt
         writer.abort
         raise
       end
@@ -75,7 +80,7 @@ module Herringbone
       result
     end
 
-    def initialize(target, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
+    def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
       page_size: 1024 * 1024, page_row_limit: 20_000, page_index: true, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
       @schema = Schema.coerce(schema)
       schema = @schema
@@ -103,7 +108,7 @@ module Herringbone
       @pos = 0
       @closed = false
       @bytes_per_row = nil
-      open_target(target)
+      @io = Writer.check_io!(io)
       write_raw(MAGIC)
       reset_buffers
     end
@@ -188,16 +193,19 @@ module Herringbone
       write_raw(MAGIC)
       @io.flush if @io.respond_to?(:flush)
       @closed = true
-      finish_target
     end
 
-    # Stops writing without producing a file: a temporary file is deleted, an IO is left as is
+    # Stops writing without finishing the file (no footer is written). Whatever was already written
+    # to the IO stays there; discarding it is up to the caller.
     def abort
-      return if @closed
       @closed = true
-      return unless @temp_path
-      @io.close unless @io.closed?
-      File.unlink(@temp_path) if File.exist?(@temp_path)
+    end
+
+    # Pathname responds to #write too (writing a whole file by path), so it is rejected explicitly
+    def self.check_io!(io)
+      return io if io.respond_to?(:write) && !io.is_a?(String) && !(defined?(Pathname) && io.is_a?(Pathname))
+      raise ArgumentError, "Herringbone::Writer expects an IO that responds to #write " \
+        "(e.g. File.open(path, \"wb\") or StringIO.new), got #{io.class}"
     end
 
     private
@@ -230,23 +238,6 @@ module Herringbone
       when T::FIXED_LEN_BYTE_ARRAY then ByteValues.new(width: col.type_length, dictionary: use_dictionary?(col))
       else []
       end
-    end
-
-    def open_target(target)
-      if target.respond_to?(:write)
-        @io = target
-      else
-        @path = target.to_s
-        dir = File.dirname(@path)
-        @temp_path = File.join(dir, ".#{File.basename(@path)}.#{Process.pid}.#{rand(1 << 32).to_s(36)}.tmp")
-        @io = File.open(@temp_path, "wb")
-      end
-    end
-
-    def finish_target
-      return unless @temp_path
-      @io.close
-      File.rename(@temp_path, @path)
     end
 
     # Flushes when the buffered values reach row_group_bytes (or row_group_size rows). The bytes per

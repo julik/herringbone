@@ -131,15 +131,17 @@ module Herringbone
 end
 
 module Herringbone
-  # Exports an ActiveRecord model or relation to a Parquet file (or IO):
+  # Exports an ActiveRecord model or relation as Parquet into an IO:
   #
-  #   Herringbone.export(Order.where(created_at: 1.year.ago..), "orders.parquet", compression: :zstd)
+  #   File.open("orders.parquet", "wb") do |file|
+  #     Herringbone.export(Order.where(created_at: 1.year.ago..), file, compression: :zstd)
+  #   end
   #
   # The schema comes from Schema.from_active_record (pass only:/except:/enums: to shape it, or
   # schema: to use your own). Records are loaded with find_each(batch_size:) when the relation
   # supports it, and each record's attributes are written, so memory stays bounded. Other options
   # go to Writer. Returns the number of rows written.
-  def self.export(relation, target, schema: nil, only: nil, except: nil, enums: :string, batch_size: 1000, **writer_options)
+  def self.export(relation, io, schema: nil, only: nil, except: nil, enums: :string, batch_size: 1000, **writer_options)
     model = if relation.respond_to?(:klass) then relation.klass
     elsif relation.respond_to?(:columns) then relation
     end
@@ -147,7 +149,7 @@ module Herringbone
       raise ArgumentError, "Cannot derive a schema from #{relation.class}; pass schema:" unless model
       schema = Schema.from_active_record(model, only: only, except: except, enums: enums)
     end
-    Writer.open(target, schema, **writer_options) do |writer|
+    Writer.open(io, schema, **writer_options) do |writer|
       if relation.respond_to?(:find_each)
         relation.find_each(batch_size: batch_size) { |record| writer << record }
       else

@@ -1,49 +1,67 @@
 # frozen_string_literal: true
 
 module Herringbone
-  # Reads Parquet files.
+  # Reads Parquet files from a random-access IO. Herringbone never opens files by path: the
+  # caller opens (and closes) the IO.
   #
-  #   Herringbone::Reader.open("data.parquet") do |reader|
+  #   File.open("data.parquet", "rb") do |file|
+  #     reader = Herringbone::Reader.new(file)
   #     reader.each_row { |row| p row }            # rows as Hashes with String keys
+  #     reader.each_batch(1000) { |rows| ... }     # Arrays of row Hashes
   #     reader.column("name")                      # all values of a top-level field
   #     reader.each_row(columns: ["id"]) { ... }   # projection
   #   end
+  #
+  # Rows are read in batches: pages are read and decoded one at a time per column, so memory use
+  # depends on the batch size and the page size, not on the size of the row groups.
+  #
+  # Options (for Reader.new / Reader.open, and per call for each_row, each_batch and rows):
+  #   keys:      :string (default) or :symbol, for row Hashes and Hashes built from structs.
+  #              Map keys are always the stored values.
+  #   time_zone: return timestamps in this zone instead of UTC. A UTC offset ("+02:00", or
+  #              seconds as an Integer), a timezone object Time#getlocal accepts (e.g. a
+  #              TZInfo::Timezone), or anything responding to #at such as an
+  #              ActiveSupport::TimeZone (Time.zone), which yields ActiveSupport::TimeWithZone.
   class Reader
     include Enumerable
 
     MAGIC = "PAR1"
+    DEFAULT_BATCH_SIZE = 1024
+    KEY_MODES = %i[string symbol].freeze
 
-    attr_reader :metadata, :schema
+    attr_reader :metadata, :schema, :io
 
-    def self.open(path)
-      io = File.open(path, "rb")
-      reader = new(io)
+    # Yields a Reader for +io+ and returns the block's value (or returns the Reader without a
+    # block). The IO is not closed: it belongs to the caller.
+    def self.open(io, **options)
+      reader = new(io, **options)
       return reader unless block_given?
-      begin
-        yield reader
-      ensure
-        io.close
-      end
+      yield reader
     end
 
-    # +source+ is an IO (opened in binary mode), a path, or a String of Parquet bytes when
-    # +string: true+ is given.
-    def initialize(source)
-      @io = case source
-      when String then File.open(source, "rb")
-      when Pathname then File.open(source.to_s, "rb")
-      else source
+    # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...).
+    # Use Reader.from_string for a String of Parquet bytes.
+    def initialize(io, keys: :string, time_zone: nil)
+      unless io.respond_to?(:seek) && io.respond_to?(:read)
+        raise ArgumentError, "Herringbone::Reader expects an IO that supports #seek and #read " \
+          "(e.g. File.open(path, \"rb\")), got #{io.class == String ? "a String" : io.class}" \
+          "#{" (use Reader.from_string for Parquet bytes)" if io.is_a?(String)}"
       end
+      @keys = check_keys(keys)
+      @time_zone = time_zone
+      @zone_converter = zone_converter(time_zone)
+      @io = io
       @metadata = read_footer
       @schema = Schema.from_elements(@metadata.schema)
     end
 
-    def self.from_string(bytes)
-      new(StringIO.new(bytes.b))
+    def self.from_string(bytes, **options)
+      new(StringIO.new(bytes.b), **options)
     end
 
+    # Does nothing: the IO belongs to the caller, who closes it. Kept for compatibility.
     def close
-      @io.close
+      nil
     end
 
     def num_rows = @metadata.num_rows
@@ -71,26 +89,64 @@ module Herringbone
       self
     end
 
-    # Yields each row as a Hash of top-level field name => value
-    def each_row(columns: nil, &block)
-      return enum_for(:each_row, columns: columns) unless block
+    # Yields Arrays of up to +size+ row Hashes (all batches are full except the last one;
+    # batches span row groups). Only one page per column and the current batch are held in
+    # memory.
+    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone)
+      return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone) unless block_given?
+      size = Integer(size)
+      raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
+      symbolize = check_keys(keys) == :symbol
       fields = select_fields(columns)
-      row_groups.each_index do |rg|
-        data = read_row_group_fields(rg, fields)
-        n = row_groups[rg].num_rows
-        names = fields.map(&:name)
-        n.times do |i|
-          row = {}
-          names.each_with_index { |name, j| row[name] = data[j][i] }
-          yield row
+      names = row_keys(fields, symbolize)
+      converters = converters_for(time_zone)
+      assemblers = fields.map { |f| Assembler.new(f, symbolize) }
+      pending = nil
+      row_groups.each do |rg|
+        left = rg.num_rows
+        next unless left.positive?
+        cursors = fields.map do |f|
+          f.leaves.map do |col|
+            reader = ColumnChunkReader.new(@io, rg.columns.fetch(col.index), col, converter: converters[col.index], lazy: true)
+            [col.index, ColumnCursor.new(reader)]
+          end
+        end
+        while left.positive?
+          k = pending ? size - pending.size : size
+          k = left if left < k
+          data = assemblers.each_with_index.map do |asm, j|
+            asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
+          end
+          rows = build_rows(names, data, k)
+          left -= k
+          if pending
+            pending.concat(rows)
+          else
+            pending = rows
+          end
+          next if pending.size < size
+          yield pending
+          pending = nil
         end
       end
+      yield pending if pending
+      self
+    end
+
+    # Yields each row as a Hash of top-level field name => value
+    def each_row(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: DEFAULT_BATCH_SIZE, &block)
+      return enum_for(:each_row, columns: columns, keys: keys, time_zone: time_zone, batch_size: batch_size) unless block
+      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone) { |rows| rows.each(&block) }
       self
     end
     alias_method :each, :each_row
 
     # Rows as an Array of Hashes
-    def rows(columns: nil) = each_row(columns: columns).to_a
+    def rows(columns: nil, keys: @keys, time_zone: @time_zone)
+      out = []
+      each_batch(columns: columns, keys: keys, time_zone: time_zone) { |batch| out.concat(batch) }
+      out
+    end
 
     # All values of a single top-level field, across all row groups
     def column(name)
@@ -101,7 +157,7 @@ module Herringbone
     # Hash of field name => Array of values, for the given row group
     def read_row_group(index, columns: nil)
       fields = select_fields(columns)
-      fields.map(&:name).zip(read_row_group_fields(index, fields)).to_h
+      row_keys(fields, @keys == :symbol).zip(read_row_group_fields(index, fields)).to_h
     end
 
     # Raw column data for a leaf column: [definition_levels, repetition_levels, values].
@@ -110,7 +166,7 @@ module Herringbone
       column = @schema.column(column) unless column.is_a?(Schema::Column)
       raise ArgumentError, "No such leaf column" unless column
       chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
-      ColumnChunkReader.new(@io, chunk, column).read
+      ColumnChunkReader.new(@io, chunk, column, converter: converter_for(column, @zone_converter)).read
     end
 
     def codec_ids
@@ -129,15 +185,101 @@ module Herringbone
       Array(columns).map { |c| @schema.field(c) or raise ArgumentError, "No such column #{c.inspect}" }
     end
 
+    def check_keys(keys)
+      keys = keys.to_sym if keys.is_a?(String)
+      return keys if KEY_MODES.include?(keys)
+      raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}"
+    end
+
+    def row_keys(fields, symbolize)
+      fields.map { |f| symbolize ? f.name.to_sym : -f.name }
+    end
+
+    def build_rows(names, data, k)
+      return Array.new(k) { {} } if names.empty?
+      return data.first.map { |v| { names.first => v } } if names.size == 1
+      nf = names.size
+      Array.new(k) do |i|
+        row = {}
+        j = 0
+        while j < nf
+          row[names[j]] = data[j][i]
+          j += 1
+        end
+        row
+      end
+    end
+
+    # Converters per leaf column index, with the time zone applied to timestamps
+    def converters_for(time_zone)
+      zc = time_zone.equal?(@time_zone) ? @zone_converter : zone_converter(time_zone)
+      @schema.columns.map { |col| converter_for(col, zc) }
+    end
+
+    def converter_for(column, zone_converter)
+      base = column.converter
+      return base unless zone_converter && base && instant_column?(column)
+      ->(v) { zone_converter.call(base.call(v)) }
+    end
+
+    # Timestamps that denote an instant (UTC-adjusted TIMESTAMP, INT96). Local timestamps
+    # (isAdjustedToUTC = false) are wall-clock values and are left as they are.
+    def instant_column?(column)
+      return true if column.type == Format::Type::INT96
+      kind, _unit, utc = Types.logical_of(column.node)
+      kind == :timestamp && utc
+    end
+
+    OFFSET_PATTERN = /\A([+-])(\d\d)(?::?(\d\d)(?::?(\d\d))?)?\z/
+
+    # A lambda turning a UTC Time into the zone, or nil for UTC
+    def zone_converter(zone)
+      case zone
+      when nil then nil
+      when Integer
+        return nil if zone.zero?
+        Time.at(0).getlocal(zone) # validates the range
+        ->(t) { t.getlocal(zone) }
+      when String
+        return nil if zone.match?(/\A(?:utc|z)\z/i)
+        if (m = OFFSET_PATTERN.match(zone))
+          # As seconds, since Ruby 3.0 only parses "+HH:MM" offset strings
+          return zone_converter((m[1] == "-" ? -1 : 1) * (m[2].to_i * 3600 + m[3].to_i * 60 + m[4].to_i))
+        end
+        if defined?(::ActiveSupport::TimeZone) && (tz = ::ActiveSupport::TimeZone[zone])
+          return ->(t) { tz.at(t) }
+        end
+        if defined?(::TZInfo::Timezone)
+          tz = ::TZInfo::Timezone.get(zone)
+          return ->(t) { t.getlocal(tz) }
+        end
+        raise ArgumentError, "Unknown time zone #{zone.inspect}: use a UTC offset like \"+02:00\", " \
+          "a timezone object (e.g. TZInfo::Timezone.get(#{zone.inspect})) or an ActiveSupport::TimeZone"
+      else
+        return ->(t) { zone.at(t) } if zone.respond_to?(:at)
+        if zone.respond_to?(:utc_to_local)
+          Time.at(0).getlocal(zone)
+          return ->(t) { t.getlocal(zone) }
+        end
+        raise ArgumentError, "Unsupported time_zone: #{zone.inspect}"
+      end
+    rescue ArgumentError => e
+      raise if e.message.start_with?("Unknown time zone", "Unsupported time_zone", "Invalid time_zone")
+      raise ArgumentError, "Invalid time_zone #{zone.inspect}: #{e.message}"
+    end
+
     def read_row_group_fields(rg, fields)
       rg_meta = row_groups.fetch(rg)
       n = rg_meta.num_rows
+      symbolize = @keys == :symbol
       fields.map do |field|
         chunks = {}
         field.leaves.each do |col|
-          chunks[col.index] = ColumnChunkReader.new(@io, rg_meta.columns.fetch(col.index), col).read
+          reader = ColumnChunkReader.new(@io, rg_meta.columns.fetch(col.index), col,
+            converter: converter_for(col, @zone_converter))
+          chunks[col.index] = reader.read
         end
-        Assembler.new(field, chunks).read_rows(n)
+        Assembler.new(field, symbolize).read_rows(n, chunks)
       end
     end
 
@@ -158,201 +300,18 @@ module Herringbone
       raise FormatError, "Corrupt file metadata: #{e.message}"
     end
 
-    # Decodes all pages of one column chunk into levels and values
-    class ColumnChunkReader
-      T = Format::Type
-      E = Format::Encoding
-
-      def initialize(io, chunk, column)
-        @io = io
-        @chunk = chunk
-        @column = column
-        @meta = chunk.meta_data or raise UnsupportedError, "Column chunk without metadata (encrypted?)"
-        raise UnsupportedError, "Column chunks in external files are not supported" if chunk.file_path
-        @max_def = column.max_definition_level
-        @max_rep = column.max_repetition_level
-        @converter = column.converter
-      end
-
-      def read
-        buf = read_bytes
-        defs = @max_def.positive? ? [] : nil
-        reps = @max_rep.positive? ? [] : nil
-        values = []
-        pos = 0
-        total = @meta.num_values
-        seen = 0
-        while seen < total && pos < buf.bytesize
-          header, pos = decode_page_header(buf, pos)
-          size = header.compressed_page_size
-          # Some old writers under-report total_compressed_size; read on past the declared end
-          extend_buffer(buf, pos + size - buf.bytesize) if pos + size > buf.bytesize
-          raise FormatError, "Page overruns column chunk" if pos + size > buf.bytesize
-          body = buf.byteslice(pos, size)
-          pos += size
-          case header.type
-          when Format::PageType::DICTIONARY_PAGE
-            read_dictionary(header, body)
-          when Format::PageType::DATA_PAGE
-            seen += read_data_page_v1(header, body, defs, reps, values)
-          when Format::PageType::DATA_PAGE_V2
-            seen += read_data_page_v2(header, body, defs, reps, values)
-          end
-        end
-        raise FormatError, "Column #{@column.dotted_path}: read #{seen} of #{total} values" if seen < total
-        [defs, reps, values]
-      rescue Thrift::Error => e
-        raise FormatError, "Corrupt page header in #{@column.dotted_path}: #{e.message}"
-      end
-
-      private
-
-      def read_bytes
-        start = @meta.data_page_offset
-        dict = @meta.dictionary_page_offset
-        # Some writers store 0 when there is no dictionary page
-        start = dict if dict && dict.positive? && dict < start
-        @start = start
-        @io.seek(start)
-        len = @meta.total_compressed_size
-        (@io.read(len) || "".b).b
-      end
-
-      def extend_buffer(buf, nbytes)
-        @io.seek(@start + buf.bytesize)
-        more = @io.read(nbytes)
-        buf << more.b if more
-      end
-
-      def decode_page_header(buf, pos)
-        Format::PageHeader.decode(buf, pos)
-      rescue Thrift::Error
-        # The header may straddle the declared end of the chunk
-        before = buf.bytesize
-        extend_buffer(buf, 1024)
-        raise if buf.bytesize == before
-        Format::PageHeader.decode(buf, pos)
-      end
-
-      def decompress(body, size)
-        Compression.decompress(@meta.codec, body, size)
-      rescue UnsupportedError => e
-        raise e, "#{e.message} (column #{@column.dotted_path})"
-      end
-
-      def read_dictionary(header, body)
-        dh = header.dictionary_page_header
-        data = decompress(body, header.uncompressed_page_size)
-        vals, = Encodings::Plain.decode(data, 0, dh.num_values, @column.type, @column.type_length)
-        vals.map!(&@converter) if @converter
-        @dictionary = vals
-      end
-
-      def read_data_page_v1(header, body, defs, reps, values)
-        dh = header.data_page_header
-        n = dh.num_values
-        data = decompress(body, header.uncompressed_page_size)
-        pos = 0
-        if @max_rep.positive?
-          levels, pos = read_levels(data, pos, dh.repetition_level_encoding, @max_rep, n)
-          reps.concat(levels)
-        end
-        non_null = n
-        if @max_def.positive?
-          levels, pos = read_levels(data, pos, dh.definition_level_encoding, @max_def, n)
-          non_null = levels.count(@max_def)
-          defs.concat(levels)
-        end
-        values.concat(decode_values(data, pos, non_null, dh.encoding))
-        n
-      end
-
-      def read_data_page_v2(header, body, defs, reps, values)
-        dh = header.data_page_header_v2
-        n = dh.num_values
-        rep_len = dh.repetition_levels_byte_length
-        def_len = dh.definition_levels_byte_length
-        if @max_rep.positive?
-          reps.concat(Encodings::RLE.decode_hybrid(body, 0, rep_len, RLE_WIDTH[@max_rep], n))
-        end
-        non_null = n
-        if @max_def.positive?
-          levels = Encodings::RLE.decode_hybrid(body, rep_len, rep_len + def_len, RLE_WIDTH[@max_def], n)
-          non_null = levels.count(@max_def)
-          defs.concat(levels)
-        end
-        data = body.byteslice(rep_len + def_len, body.bytesize - rep_len - def_len)
-        if dh.is_compressed != false
-          data = decompress(data, header.uncompressed_page_size - rep_len - def_len)
-        end
-        values.concat(decode_values(data, 0, non_null, dh.encoding))
-        n
-      end
-
-      RLE_WIDTH = Hash.new { |h, k| h[k] = k.bit_length }
-
-      def read_levels(data, pos, encoding, max, n)
-        width = RLE_WIDTH[max]
-        case encoding
-        when E::RLE
-          len = data.byteslice(pos, 4).unpack1("V")
-          start = pos + 4
-          [Encodings::RLE.decode_hybrid(data, start, start + len, width, n), start + len]
-        when E::BIT_PACKED
-          [Encodings::RLE.decode_legacy_bit_packed(data, pos, width, n), pos + (n * width + 7) / 8]
-        else
-          raise UnsupportedError, "Unsupported level encoding #{E::NAMES[encoding] || encoding}"
-        end
-      end
-
-      def decode_values(data, pos, count, encoding)
-        type = @column.type
-        vals = case encoding
-        when E::PLAIN
-          Encodings::Plain.decode(data, pos, count, type, @column.type_length).first
-        when E::PLAIN_DICTIONARY, E::RLE_DICTIONARY
-          raise FormatError, "Dictionary-encoded page without a dictionary in #{@column.dotted_path}" unless @dictionary
-          return [] if count.zero?
-          width = data.getbyte(pos)
-          indices = Encodings::RLE.decode_hybrid(data, pos + 1, data.bytesize, width, count)
-          dict = @dictionary
-          raise FormatError, "Dictionary index out of range in #{@column.dotted_path}" if indices.max >= dict.size
-          return indices.map! { |i| dict[i] }
-        when E::RLE
-          raise UnsupportedError, "RLE value encoding is only supported for BOOLEAN" unless type == T::BOOLEAN
-          len = data.byteslice(pos, 4).unpack1("V")
-          Encodings::RLE.decode_hybrid(data, pos + 4, pos + 4 + len, 1, count).map! { |v| v == 1 }
-        when E::DELTA_BINARY_PACKED
-          bits = type == T::INT32 ? 32 : 64
-          vals, = Encodings::Delta.decode_binary_packed(data, pos, bits, count)
-          raise FormatError, "DELTA_BINARY_PACKED page has #{vals.size} values, need #{count}" if vals.size < count
-          vals
-        when E::DELTA_LENGTH_BYTE_ARRAY
-          Encodings::Delta.decode_length_byte_array(data, pos, count).first
-        when E::DELTA_BYTE_ARRAY
-          Encodings::Delta.decode_byte_array(data, pos, count).first
-        when E::BYTE_STREAM_SPLIT
-          width = case type
-          when T::INT32, T::FLOAT then 4
-          when T::INT64, T::DOUBLE then 8
-          when T::FIXED_LEN_BYTE_ARRAY then @column.type_length
-          else raise UnsupportedError, "BYTE_STREAM_SPLIT is not valid for #{T::NAMES[type]}"
-          end
-          plain, = Encodings::ByteStreamSplit.decode(data, pos, count, width)
-          Encodings::Plain.decode(plain, 0, count, type, @column.type_length).first
-        else
-          raise UnsupportedError, "Unsupported encoding #{E::NAMES[encoding] || encoding}"
-        end
-        vals.map!(&@converter) if @converter
-        vals
-      end
-    end
-
     # Rebuilds nested values of one top-level field from the levels of its leaf columns
     # (the "record assembly" half of the Dremel algorithm).
     class Assembler
-      def initialize(field, chunks)
+      def initialize(field, symbolize = false)
         @field = field
+        @symbolize = symbolize
+        @keys = {} # struct child Field => Hash key
+      end
+
+      # Assembles +n+ values of the field from +chunks+ (leaf column index =>
+      # [defs, reps, values] holding exactly those rows)
+      def read_rows(n, chunks)
         @defs = {}
         @reps = {}
         @vals = {}
@@ -363,9 +322,7 @@ module Herringbone
         end
         @ei = Hash.new(0) # entry cursor per leaf column
         @vi = Hash.new(0) # value cursor per leaf column
-      end
 
-      def read_rows(n)
         f = @field
         if f.leaf? && f.column.max_repetition_level.zero?
           idx = f.column.index
@@ -430,6 +387,10 @@ module Herringbone
         out
       end
 
+      def key_for(field)
+        @keys[field] ||= @symbolize ? field.name.to_sym : -field.name
+      end
+
       def read(field)
         c = field.first_leaf.index
         kind = field.kind
@@ -450,7 +411,7 @@ module Herringbone
           @vals[c][v]
         when :struct
           h = {}
-          field.children.each { |ch| h[ch.name] = read(ch) }
+          field.children.each { |ch| h[key_for(ch)] = read(ch) }
           h
         when :list
           if d < field.item_def
@@ -490,3 +451,6 @@ module Herringbone
     end
   end
 end
+
+require_relative "reader/column_chunk_reader"
+require_relative "reader/column_cursor"

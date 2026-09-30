@@ -10,6 +10,10 @@ class CodecAvailabilityTest < Minitest::Test
   ZSTD_FILE = File.join(FIXTURES_DIR, "generated", "codec_zstd.parquet")
   BROTLI_FILE = File.join(FIXTURES_DIR, "generated", "codec_brotli.parquet")
 
+  def open_fixture(path, &block)
+    File.open(path, "rb") { |f| Herringbone::Reader.open(f, &block) }
+  end
+
   # Runs the block as if the optional codec gems were not installed
   def without_codec_gems(&block)
     Compression.instance_variable_set(:@libraries, {})
@@ -37,15 +41,14 @@ class CodecAvailabilityTest < Minitest::Test
     end
   end
 
-  def test_writer_to_path_leaves_no_file_for_missing_codec
-    Dir.mktmpdir do |dir|
-      without_codec_gems do
-        assert_raises(Herringbone::MissingCodecError) do
-          Herringbone::Writer.open(File.join(dir, "x.parquet"), { a: :int32 }, compression: :zstd) { |w| w << [1] }
-        end
+  def test_writer_writes_nothing_for_missing_codec
+    io = StringIO.new("".b)
+    without_codec_gems do
+      assert_raises(Herringbone::MissingCodecError) do
+        Herringbone::Writer.open(io, { a: :int32 }, compression: :zstd) { |w| w << [1] }
       end
-      assert_empty Dir.children(dir)
     end
+    assert_empty io.string, "the codec is checked before anything is written"
   end
 
   def test_missing_codec_is_an_unsupported_error
@@ -67,7 +70,7 @@ class CodecAvailabilityTest < Minitest::Test
 
   def test_reading_names_codec_gem_and_column
     without_codec_gems do
-      Herringbone::Reader.open(ZSTD_FILE) do |reader|
+      open_fixture(ZSTD_FILE) do |reader|
         assert_equal [:zstd], reader.codecs
         assert_equal [:zstd], reader.missing_codecs
         assert_raises(Herringbone::MissingCodecError) { reader.ensure_codecs_available! }
@@ -76,7 +79,7 @@ class CodecAvailabilityTest < Minitest::Test
         assert_match(/\(column \w+\)\z/, error.message)
         assert_equal "zstd-ruby", error.gem_name
       end
-      Herringbone::Reader.open(BROTLI_FILE) do |reader|
+      open_fixture(BROTLI_FILE) do |reader|
         assert_equal [:brotli], reader.missing_codecs
       end
     end
@@ -84,7 +87,7 @@ class CodecAvailabilityTest < Minitest::Test
 
   def test_metadata_is_readable_without_the_codec
     without_codec_gems do
-      Herringbone::Reader.open(ZSTD_FILE) do |reader|
+      open_fixture(ZSTD_FILE) do |reader|
         assert_operator reader.num_rows, :>, 0
         refute_empty reader.schema.columns
       end
