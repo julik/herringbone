@@ -37,6 +37,19 @@ module Parakiet
       end
     end
 
+    # Whether a value of wire type +wire+ can be read as declared +type+
+    def self.compatible?(wire, type)
+      case type
+      when :bool then wire == T_TRUE || wire == T_FALSE
+      when :byte then wire == T_BYTE
+      when :i16, :i32, :i64 then wire == T_I16 || wire == T_I32 || wire == T_I64
+      when :double then wire == T_DOUBLE
+      when :binary, :string then wire == T_BINARY
+      when Array then wire == T_LIST || wire == T_SET
+      else wire == T_STRUCT
+      end
+    end
+
     class Reader
       attr_reader :pos
 
@@ -96,7 +109,7 @@ module Parakiet
           fid = delta.zero? ? read_zigzag : last_id + delta
           last_id = fid
           field = fields[fid]
-          if field
+          if field && Thrift.compatible?(wire, field.type)
             obj.instance_variable_set(field.ivar, read_value(wire, field.type))
           else
             skip(wire)
@@ -129,7 +142,12 @@ module Parakiet
         size = header >> 4
         size = read_varint if size == 15
         elem_wire = header & 0x0F
-        elem_type = type.is_a?(Array) ? type[1] : nil
+        elem_type = type[1]
+        bool_elems = elem_wire == T_TRUE || elem_wire == T_FALSE
+        unless size.zero? || (bool_elems && elem_type == :bool) || Thrift.compatible?(elem_wire, elem_type)
+          size.times { bool_elems ? read_byte : skip(elem_wire) }
+          return nil
+        end
         Array.new(size) do
           if elem_wire == T_TRUE || elem_wire == T_FALSE
             # Booleans inside lists are encoded as full bytes

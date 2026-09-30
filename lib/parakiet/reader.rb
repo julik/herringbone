@@ -162,8 +162,10 @@ module Parakiet
         total = @meta.num_values
         seen = 0
         while seen < total && pos < buf.bytesize
-          header, pos = Format::PageHeader.decode(buf, pos)
+          header, pos = decode_page_header(buf, pos)
           size = header.compressed_page_size
+          # Some old writers under-report total_compressed_size; read on past the declared end
+          extend_buffer(buf, pos + size - buf.bytesize) if pos + size > buf.bytesize
           raise FormatError, "Page overruns column chunk" if pos + size > buf.bytesize
           body = buf.byteslice(pos, size)
           pos += size
@@ -189,9 +191,26 @@ module Parakiet
         dict = @meta.dictionary_page_offset
         # Some writers store 0 when there is no dictionary page
         start = dict if dict && dict.positive? && dict < start
+        @start = start
         @io.seek(start)
         len = @meta.total_compressed_size
         (@io.read(len) || "".b).b
+      end
+
+      def extend_buffer(buf, nbytes)
+        @io.seek(@start + buf.bytesize)
+        more = @io.read(nbytes)
+        buf << more.b if more
+      end
+
+      def decode_page_header(buf, pos)
+        Format::PageHeader.decode(buf, pos)
+      rescue Thrift::Error
+        # The header may straddle the declared end of the chunk
+        before = buf.bytesize
+        extend_buffer(buf, 1024)
+        raise if buf.bytesize == before
+        Format::PageHeader.decode(buf, pos)
       end
 
       def decompress(body, size)

@@ -22,6 +22,7 @@ module Parakiet
     end
 
     def decompress(codec, data, uncompressed_size)
+      return "".b if uncompressed_size.zero? && data.empty?
       out = case codec
       when Format::Codec::UNCOMPRESSED then data
       when Format::Codec::SNAPPY then Codecs::Snappy.decompress(data)

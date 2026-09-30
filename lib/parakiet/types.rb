@@ -163,7 +163,7 @@ module Parakiet
           return ->(v) { v & mask }
         end
       when :date
-        return ->(v) { Date.jd(EPOCH_JD + v) } if type == T::INT32
+        return ->(v) { Date.jd(EPOCH_JD + v, Date::GREGORIAN) } if type == T::INT32
       when :timestamp
         return timestamp_reader(a) if type == T::INT64
       when :decimal

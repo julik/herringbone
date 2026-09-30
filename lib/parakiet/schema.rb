@@ -271,7 +271,10 @@ module Parakiet
         rd = d + 1
         rr = parent_rep + 1
         key = build_field(kv.children[0], rd, rr)
-        value = kv.children[1] && build_field(kv.children[1], rd, rr)
+        # A map without values is read as a list of its keys, like Arrow does
+        return Field.new(kind: :list, name: node.name, optional: optional, def_level: d,
+          rep_level: rr, item_def: rd, element: key, node: node) unless kv.children[1]
+        value = build_field(kv.children[1], rd, rr)
         Field.new(kind: :map, name: node.name, optional: optional, def_level: d,
           rep_level: rr, item_def: rd, key: key, value: value, node: node)
       else
