@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # Compact buffer for the values of a BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY column while a row
   # group is being collected. Instead of holding on to one Ruby String per value, it either
   #

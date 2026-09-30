@@ -14,7 +14,7 @@ packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB
 660 → 416 MB at 64MB.
 
 Possible follow-ups:
-- `Parakiet.export(relation, path)` convenience that combines `from_active_record` and `find_each`
+- `Herringbone.export(relation, path)` convenience that combines `from_active_record` and `find_each`
 
 ## 2. Reading ergonomics
 
@@ -28,7 +28,7 @@ Possible follow-ups:
 
 - A visualizer that renders a file's layout as a self-contained HTML page with SVG: schema tree,
   row groups, column chunks and pages drawn to scale (compressed vs uncompressed size), codecs,
-  encodings, dictionary pages, statistics, key/value metadata. `bin/parakiet html FILE > out.html`
+  encodings, dictionary pages, statistics, key/value metadata. `bin/herringbone html FILE > out.html`
 - Methods to examine a file from its footer and page headers only, without decoding values:
   `reader.inspect_layout` / `reader.pages(row_group, column)` returning page headers (type,
   sizes, encoding, value counts, statistics, offsets), per-column totals and compression ratios,

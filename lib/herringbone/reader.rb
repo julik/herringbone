@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # Reads Parquet files.
   #
-  #   Parakiet::Reader.open("data.parquet") do |reader|
+  #   Herringbone::Reader.open("data.parquet") do |reader|
   #     reader.each_row { |row| p row }            # rows as Hashes with String keys
   #     reader.column("name")                      # all values of a top-level field
   #     reader.each_row(columns: ["id"]) { ... }   # projection

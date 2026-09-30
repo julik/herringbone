@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # Parquet file metadata structures, mirroring parquet.thrift.
   # Enums are plain i32 on the wire; constants below give them names.
   module Format

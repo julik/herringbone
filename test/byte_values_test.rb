@@ -3,7 +3,7 @@
 require_relative "test_helper"
 
 class ByteValuesTest < Minitest::Test
-  BV = Parakiet::ByteValues
+  BV = Herringbone::ByteValues
 
   def test_dictionary_mode_for_low_cardinality
     bv = BV.new

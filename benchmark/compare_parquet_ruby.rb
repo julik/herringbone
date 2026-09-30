@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-# Compares parakiet with parquet-ruby (https://github.com/njaremko/parquet-ruby, Rust/arrow-rs).
+# Compares herringbone with parquet-ruby (https://github.com/njaremko/parquet-ruby, Rust/arrow-rs).
 #
 #   cd benchmark && bundle install
 #   ROWS=500000 bundle exec ruby compare_parquet_ruby.rb
 #
 # Every case runs in a forked child so peak memory is measured in isolation. The input rows are
 # generated once in the parent (not timed) and shared with the children copy-on-write.
-require "parakiet"
+require "herringbone"
 require "parquet"
 require "get_process_mem"
 require "tmpdir"
 require_relative "dataset"
 
 ROWS = Integer(ENV.fetch("ROWS", 500_000))
-DIR = Dir.mktmpdir("parakiet-bench")
+DIR = Dir.mktmpdir("herringbone-bench")
 
 def measure(label)
   reader, writer = IO.pipe
@@ -50,26 +50,26 @@ end
 puts "Generating #{ROWS} rows..."
 ROWS_HASHES = Dataset.each_record(ROWS).to_a
 ROWS_ARRAYS = ROWS_HASHES.map { |r| Dataset.parquet_ruby_row(r) } # parquet-ruby takes Arrays in schema order
-puts "parakiet #{Parakiet::VERSION}, parquet-ruby #{Gem.loaded_specs["parquet"].version}, #{RUBY_DESCRIPTION}"
+puts "herringbone #{Herringbone::VERSION}, parquet-ruby #{Gem.loaded_specs["parquet"].version}, #{RUBY_DESCRIPTION}"
 puts
 
-parakiet_file = File.join(DIR, "parakiet.parquet")
+herringbone_file = File.join(DIR, "herringbone.parquet")
 parquet_ruby_file = File.join(DIR, "parquet_ruby.parquet")
 size = ->(path) { "#{(File.size(path) / 1024.0 / 1024).round(1)} MB" }
 
 puts "== Write (snappy)"
-measure("parakiet Writer (hash rows)") do
-  Parakiet::Writer.open(parakiet_file, Dataset.parakiet_schema, compression: :snappy) { |w| w.write_rows(ROWS_HASHES) }
-  size.call(parakiet_file)
+measure("herringbone Writer (hash rows)") do
+  Herringbone::Writer.open(herringbone_file, Dataset.herringbone_schema, compression: :snappy) { |w| w.write_rows(ROWS_HASHES) }
+  size.call(herringbone_file)
 end
-measure("parakiet Writer (hash rows, uncompressed)") do
-  path = File.join(DIR, "parakiet_none.parquet")
-  Parakiet::Writer.open(path, Dataset.parakiet_schema, compression: :none) { |w| w.write_rows(ROWS_HASHES) }
+measure("herringbone Writer (hash rows, uncompressed)") do
+  path = File.join(DIR, "herringbone_none.parquet")
+  Herringbone::Writer.open(path, Dataset.herringbone_schema, compression: :none) { |w| w.write_rows(ROWS_HASHES) }
   size.call(path)
 end
-measure("parakiet Writer (hash rows, zstd via zstd-ruby)") do
-  path = File.join(DIR, "parakiet_zstd.parquet")
-  Parakiet::Writer.open(path, Dataset.parakiet_schema, compression: :zstd) { |w| w.write_rows(ROWS_HASHES) }
+measure("herringbone Writer (hash rows, zstd via zstd-ruby)") do
+  path = File.join(DIR, "herringbone_zstd.parquet")
+  Herringbone::Writer.open(path, Dataset.herringbone_schema, compression: :zstd) { |w| w.write_rows(ROWS_HASHES) }
   size.call(path)
 end
 measure("parquet-ruby write_rows (array rows)") do
@@ -80,10 +80,10 @@ end
 # Both files exist now (the children wrote them), so cross-reading also checks interop
 puts
 puts "== Read all rows"
-{ "parakiet file" => parakiet_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
-  measure("parakiet each_row, #{name}") do
+{ "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
+  measure("herringbone each_row, #{name}") do
     n = 0
-    Parakiet::Reader.open(path) { |r| r.each_row { n += 1 } }
+    Herringbone::Reader.open(path) { |r| r.each_row { n += 1 } }
     "#{n} rows"
   end
   measure("parquet-ruby each_row, #{name}") do
@@ -95,9 +95,9 @@ end
 
 puts
 puts "== Read one column (amount)"
-{ "parakiet file" => parakiet_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
-  measure("parakiet column, #{name}") do
-    sum = Parakiet::Reader.open(path) { |r| r.column("amount").sum }
+{ "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
+  measure("herringbone column, #{name}") do
+    sum = Herringbone::Reader.open(path) { |r| r.column("amount").sum }
     "sum=#{sum.to_s("F")}"
   end
   measure("parquet-ruby each_column, #{name}") do
@@ -109,8 +109,8 @@ end
 
 puts
 puts "== Round trip check"
-a = Parakiet::Reader.open(parquet_ruby_file) { |r| r.each_row.first(3) }
-b = Parakiet::Reader.open(parakiet_file) { |r| r.each_row.first(3) }
-c = Parquet.each_row(parakiet_file).first(3)
-puts "parakiet reads parquet-ruby's file identically to its own: #{a == b}"
-puts "parquet-ruby reads parakiet's file (first row): #{c.first.inspect}"
+a = Herringbone::Reader.open(parquet_ruby_file) { |r| r.each_row.first(3) }
+b = Herringbone::Reader.open(herringbone_file) { |r| r.each_row.first(3) }
+c = Parquet.each_row(herringbone_file).first(3)
+puts "herringbone reads parquet-ruby's file identically to its own: #{a == b}"
+puts "parquet-ruby reads herringbone's file (first row): #{c.first.inspect}"

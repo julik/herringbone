@@ -3,7 +3,7 @@
 require_relative "../test_helper"
 
 class LZ4Test < Minitest::Test
-  LZ4 = Parakiet::Codecs::LZ4
+  LZ4 = Herringbone::Codecs::LZ4
   DIR = File.join(FIXTURES_DIR, "lz4")
 
   def fixture(name)

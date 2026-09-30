@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # Minimal Thrift Compact Protocol implementation, just enough for Parquet metadata.
-  # Structs are described declaratively (see Parakiet::Thrift::Struct) so that
+  # Structs are described declaratively (see Herringbone::Thrift::Struct) so that
   # both the reader and the writer are driven by the same field tables.
   module Thrift
     class Error < StandardError; end

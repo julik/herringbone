@@ -4,7 +4,7 @@ require_relative "test_helper"
 
 # Unit tests for the low-level encodings and the Thrift compact protocol
 class RLEEncodingTest < Minitest::Test
-  RLE = Parakiet::Encodings::RLE
+  RLE = Herringbone::Encodings::RLE
 
   # Reference LSB-first bit packer, independent of the implementation under test
   def reference_pack(values, width)
@@ -110,7 +110,7 @@ class RLEEncodingTest < Minitest::Test
 
   def test_decode_hybrid_raises_when_exhausted
     enc = RLE.encode_hybrid([1] * 8, 1)
-    assert_raises(Parakiet::DecodeError) { RLE.decode_hybrid(enc, 0, enc.bytesize, 1, 9) }
+    assert_raises(Herringbone::DecodeError) { RLE.decode_hybrid(enc, 0, enc.bytesize, 1, 9) }
   end
 
   def test_legacy_bit_packed
@@ -121,7 +121,7 @@ class RLEEncodingTest < Minitest::Test
 end
 
 class DeltaEncodingTest < Minitest::Test
-  Delta = Parakiet::Encodings::Delta
+  Delta = Herringbone::Encodings::Delta
 
   I32_MIN = -2**31
   I32_MAX = 2**31 - 1
@@ -195,9 +195,9 @@ class DeltaEncodingTest < Minitest::Test
 
   def test_rejects_bad_header
     bad = [0x80, 0x01, 0x00, 0x01, 0x00].pack("C*") # zero miniblocks
-    assert_raises(Parakiet::DecodeError) { Delta.decode_binary_packed(bad, 0, 32) }
+    assert_raises(Herringbone::DecodeError) { Delta.decode_binary_packed(bad, 0, 32) }
     bad = [0x0c, 0x03, 0x01, 0x00].pack("C*") # 12/3 = 4 values per miniblock, not multiple of 8
-    assert_raises(Parakiet::DecodeError) { Delta.decode_binary_packed(bad, 0, 32) }
+    assert_raises(Herringbone::DecodeError) { Delta.decode_binary_packed(bad, 0, 32) }
   end
 
   def test_wrap
@@ -234,14 +234,14 @@ class DeltaEncodingTest < Minitest::Test
 
   def test_byte_array_rejects_bad_prefix
     enc = Delta.encode_binary_packed([3], 32) + Delta.encode_length_byte_array(["x"])
-    assert_raises(Parakiet::DecodeError) { Delta.decode_byte_array(enc, 0, 1) }
+    assert_raises(Herringbone::DecodeError) { Delta.decode_byte_array(enc, 0, 1) }
   end
 end
 
 class ByteStreamSplitTest < Minitest::Test
-  BSS = Parakiet::Encodings::ByteStreamSplit
-  Plain = Parakiet::Encodings::Plain
-  T = Parakiet::Format::Type
+  BSS = Herringbone::Encodings::ByteStreamSplit
+  Plain = Herringbone::Encodings::Plain
+  T = Herringbone::Format::Type
 
   def test_roundtrip_widths
     rng = Random.new(5)
@@ -270,13 +270,13 @@ class ByteStreamSplitTest < Minitest::Test
   end
 
   def test_truncated
-    assert_raises(Parakiet::DecodeError) { BSS.decode("\x00".b * 7, 0, 2, 4) }
+    assert_raises(Herringbone::DecodeError) { BSS.decode("\x00".b * 7, 0, 2, 4) }
   end
 end
 
 class PlainEncodingTest < Minitest::Test
-  Plain = Parakiet::Encodings::Plain
-  T = Parakiet::Format::Type
+  Plain = Herringbone::Encodings::Plain
+  T = Herringbone::Format::Type
 
   def roundtrip(values, type, length = nil)
     enc = Plain.encode(values, type, length)
@@ -330,7 +330,7 @@ class PlainEncodingTest < Minitest::Test
   def test_fixed_len_byte_array
     values = ["abc", "\x00\x00\x00".b, "\xFF\xFE\xFD".b]
     assert_equal values.map(&:b), roundtrip(values, T::FIXED_LEN_BYTE_ARRAY, 3)
-    assert_raises(Parakiet::EncodeError) { Plain.encode(["ab"], T::FIXED_LEN_BYTE_ARRAY, 3) }
+    assert_raises(Herringbone::EncodeError) { Plain.encode(["ab"], T::FIXED_LEN_BYTE_ARRAY, 3) }
   end
 
   def test_empty
@@ -341,21 +341,21 @@ class PlainEncodingTest < Minitest::Test
   end
 
   def test_truncated_input_raises
-    assert_raises(Parakiet::DecodeError) { Plain.decode("\x00\x00".b, 0, 1, T::INT32) }
-    assert_raises(Parakiet::DecodeError) { Plain.decode("\x00".b * 8, 0, 1, T::INT96) }
-    assert_raises(Parakiet::DecodeError) { Plain.decode("\x05\x00\x00\x00ab".b, 0, 1, T::BYTE_ARRAY) }
-    assert_raises(Parakiet::DecodeError) { Plain.decode("\x05\x00".b, 0, 1, T::BYTE_ARRAY) }
-    assert_raises(Parakiet::DecodeError) { Plain.decode("ab".b, 0, 1, T::FIXED_LEN_BYTE_ARRAY, 3) }
-    assert_raises(Parakiet::DecodeError) { Plain.decode("".b, 0, 9, T::BOOLEAN) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("\x00\x00".b, 0, 1, T::INT32) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("\x00".b * 8, 0, 1, T::INT96) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("\x05\x00\x00\x00ab".b, 0, 1, T::BYTE_ARRAY) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("\x05\x00".b, 0, 1, T::BYTE_ARRAY) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("ab".b, 0, 1, T::FIXED_LEN_BYTE_ARRAY, 3) }
+    assert_raises(Herringbone::DecodeError) { Plain.decode("".b, 0, 9, T::BOOLEAN) }
   end
 end
 
 class ThriftCompactTest < Minitest::Test
-  F = Parakiet::Format
-  Th = Parakiet::Thrift
+  F = Herringbone::Format
+  Th = Herringbone::Thrift
 
   # A struct exercising field-id deltas > 15, negative ids of every type
-  class Sample < Parakiet::Thrift::Struct
+  class Sample < Herringbone::Thrift::Struct
     field 1, :flag, :bool
     field 2, :tiny, :byte
     field 3, :small, :i16

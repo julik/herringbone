@@ -18,8 +18,8 @@ module Dataset
 
   module_function
 
-  def parakiet_schema
-    Parakiet::Schema.define do
+  def herringbone_schema
+    Herringbone::Schema.define do
       int64 :id, null: false
       int64 :user_id, null: false
       enum :status, values: STATUSES, null: false

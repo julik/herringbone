@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # Writes Parquet files.
   #
-  #   schema = Parakiet::Schema.define do
+  #   schema = Herringbone::Schema.define do
   #     int64 :id, null: false
   #     string :name
   #     list :tags, :string
   #   end
-  #   Parakiet::Writer.open("out.parquet", schema) do |w|
+  #   Herringbone::Writer.open("out.parquet", schema) do |w|
   #     w << { "id" => 1, "name" => "one", "tags" => ["a", "b"] }
   #     w << [2, "two", []]           # Arrays are taken in schema order
   #     w << order                    # objects responding to #attributes (ActiveRecord) or #to_h
   #   end
   #
-  # +schema+ is a Parakiet::Schema or a Hash spec (see Schema.define). The target is a path or an IO;
+  # +schema+ is a Herringbone::Schema or a Hash spec (see Schema.define). The target is a path or an IO;
   # paths are written to a temporary file next to the target and renamed into place on close, so a
   # failed write never leaves a truncated file behind.
   #
@@ -167,7 +167,7 @@ module Parakiet
         num_rows: @total_rows,
         row_groups: @row_groups,
         key_value_metadata: @metadata.empty? ? nil : @metadata.map { |k, v| Format::KeyValue.new(key: k.to_s, value: v&.to_s) },
-        created_by: "parakiet version #{VERSION}",
+        created_by: "herringbone version #{VERSION}",
         column_orders: @schema.columns.map { Format::ColumnOrder.new(type_order: Format::TypeDefinedOrder.new) }
       )
       footer = meta.encode

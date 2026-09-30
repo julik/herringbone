@@ -5,7 +5,7 @@ require "stringio"
 require "zstd-ruby"
 require "brotli"
 
-module Parakiet
+module Herringbone
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby,
   # GZIP uses zlib, ZSTD and Brotli use the zstd-ruby and brotli gems.
   module Compression

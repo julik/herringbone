@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   class Schema
     # Builds a schema from an ActiveRecord model, so that the Hashes returned by
     # +record.attributes+ can be written directly:
     #
-    #   schema = Parakiet::Schema.from_active_record(Order)
-    #   Parakiet::Writer.open("orders.parquet", schema) do |w|
+    #   schema = Herringbone::Schema.from_active_record(Order)
+    #   Herringbone::Writer.open("orders.parquet", schema) do |w|
     #     Order.find_each { |order| w << order.attributes }
     #   end
     #

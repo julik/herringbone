@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require_relative "lib/parakiet/version"
+require_relative "lib/herringbone/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "parakiet"
-  spec.version = Parakiet::VERSION
+  spec.name = "herringbone"
+  spec.version = Herringbone::VERSION
   spec.authors = ["Julik Tarkhanov"]
   spec.email = ["me@julik.nl"]
   spec.summary = "Pure-Ruby Apache Parquet reader and writer"
@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 3.0"
   spec.files = Dir["lib/**/*.rb", "bin/*", "README.md", "LICENSE"]
   spec.bindir = "bin"
-  spec.executables = ["parakiet"]
+  spec.executables = ["herringbone"]
   spec.require_paths = ["lib"]
 
   spec.add_dependency "bigdecimal"

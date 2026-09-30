@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # A Parquet schema. Holds two views of the same tree:
   #
   # * the physical tree of Schema::Node (what is stored in the footer as SchemaElements),
@@ -196,7 +196,7 @@ module Parakiet
       case schema
       when Schema then schema
       when Hash then define(schema)
-      else raise ArgumentError, "Expected a Parakiet::Schema or a Hash, got #{schema.class}"
+      else raise ArgumentError, "Expected a Herringbone::Schema or a Hash, got #{schema.class}"
       end
     end
 
@@ -319,7 +319,7 @@ module Parakiet
         node.children&.each { |c| walk.call(c, depth + 1) }
       end
       @root.children.each { |c| walk.call(c, 0) }
-      "#<Parakiet::Schema\n#{lines.join("\n")}>"
+      "#<Herringbone::Schema\n#{lines.join("\n")}>"
     end
     alias_method :to_s, :inspect
 
@@ -393,7 +393,7 @@ module Parakiet
 
     # DSL for defining schemas:
     #
-    #   Parakiet::Schema.define do
+    #   Herringbone::Schema.define do
     #     int64 :id, null: false
     #     string :name
     #     list :tags, :string

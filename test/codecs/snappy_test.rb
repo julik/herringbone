@@ -3,7 +3,7 @@
 require_relative "../test_helper"
 
 class SnappyTest < Minitest::Test
-  Snappy = Parakiet::Codecs::Snappy
+  Snappy = Herringbone::Codecs::Snappy
 
   def roundtrip(data)
     compressed = Snappy.compress(data)

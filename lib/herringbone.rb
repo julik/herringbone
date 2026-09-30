@@ -2,10 +2,10 @@
 
 require "stringio"
 require "pathname"
-require_relative "parakiet/version"
+require_relative "herringbone/version"
 
 # Pure-Ruby reader and writer for Apache Parquet files
-module Parakiet
+module Herringbone
   class Error < StandardError; end
   class FormatError < Error; end
   class DecodeError < FormatError; end
@@ -13,23 +13,23 @@ module Parakiet
   class UnsupportedError < Error; end
 end
 
-require_relative "parakiet/io_buffer_support"
-require_relative "parakiet/codecs/snappy"
-require_relative "parakiet/codecs/lz4"
-require_relative "parakiet/thrift"
-require_relative "parakiet/format"
-require_relative "parakiet/encodings/rle"
-require_relative "parakiet/encodings/plain"
-require_relative "parakiet/encodings/delta"
-require_relative "parakiet/compression"
-require_relative "parakiet/types"
-require_relative "parakiet/schema"
-require_relative "parakiet/active_record"
-require_relative "parakiet/reader"
-require_relative "parakiet/byte_values"
-require_relative "parakiet/writer"
+require_relative "herringbone/io_buffer_support"
+require_relative "herringbone/codecs/snappy"
+require_relative "herringbone/codecs/lz4"
+require_relative "herringbone/thrift"
+require_relative "herringbone/format"
+require_relative "herringbone/encodings/rle"
+require_relative "herringbone/encodings/plain"
+require_relative "herringbone/encodings/delta"
+require_relative "herringbone/compression"
+require_relative "herringbone/types"
+require_relative "herringbone/schema"
+require_relative "herringbone/active_record"
+require_relative "herringbone/reader"
+require_relative "herringbone/byte_values"
+require_relative "herringbone/writer"
 
-module Parakiet
+module Herringbone
   Delta = Encodings::Delta
 
   module_function

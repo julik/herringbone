@@ -5,7 +5,7 @@ require_relative "support/canonical"
 
 # Reads every fixture and compares the result with the pyarrow-generated expectations
 class ConformanceTest < Minitest::Test
-  TYPE_NAMES = Parakiet::Format::Type::NAMES
+  TYPE_NAMES = Herringbone::Format::Type::NAMES
 
   # Files whose expected behaviour differs on purpose, with the reason
   SKIPS = {
@@ -28,7 +28,7 @@ class ConformanceTest < Minitest::Test
   private
 
   def check_file(path, expected)
-    Parakiet::Reader.open(path) do |reader|
+    Herringbone::Reader.open(path) do |reader|
       assert_equal expected["num_rows"], reader.num_rows, "num_rows"
       assert_equal expected["num_row_groups"], reader.num_row_groups, "num_row_groups"
       expected_schema = expected["schema"].map do |c|

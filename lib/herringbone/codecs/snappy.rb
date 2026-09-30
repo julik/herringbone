@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   module Codecs
     # Pure-Ruby implementation of the raw Snappy block format (as used by Parquet),
     # see https://github.com/google/snappy/blob/main/format_description.txt

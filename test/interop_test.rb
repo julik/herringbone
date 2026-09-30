@@ -7,18 +7,18 @@ require "open3"
 require "tmpdir"
 require "fileutils"
 
-# Cross-validation with pyarrow: files written by parakiet are read by pyarrow (with page CRC
-# verification and statistics checks) and by parakiet, and both results are compared with the
-# data that was written. Set PARAKIET_PYTHON to a Python interpreter that has pyarrow installed.
-# PARAKIET_FUZZ_SEED and PARAKIET_FUZZ_ITERATIONS control the randomized part.
+# Cross-validation with pyarrow: files written by herringbone are read by pyarrow (with page CRC
+# verification and statistics checks) and by herringbone, and both results are compared with the
+# data that was written. Set HERRINGBONE_PYTHON to a Python interpreter that has pyarrow installed.
+# HERRINGBONE_FUZZ_SEED and HERRINGBONE_FUZZ_ITERATIONS control the randomized part.
 class InteropTest < Minitest::Test
   include WriterHelpers
   extend WriterHelpers
 
-  PYTHON = ENV["PARAKIET_PYTHON"]
+  PYTHON = ENV["HERRINGBONE_PYTHON"]
   DUMP_SCRIPT = File.expand_path("support/pyarrow_dump.py", __dir__)
-  FUZZ_SEED = Integer(ENV.fetch("PARAKIET_FUZZ_SEED", "20240930"))
-  FUZZ_ITERATIONS = Integer(ENV.fetch("PARAKIET_FUZZ_ITERATIONS", "50"))
+  FUZZ_SEED = Integer(ENV.fetch("HERRINGBONE_FUZZ_SEED", "20240930"))
+  FUZZ_ITERATIONS = Integer(ENV.fetch("HERRINGBONE_FUZZ_ITERATIONS", "50"))
 
   Case = Struct.new(:name, :schema, :rows, :options, :path, keyword_init: true)
 
@@ -26,7 +26,7 @@ class InteropTest < Minitest::Test
     def pyarrow_status
       return @pyarrow_status if defined?(@pyarrow_status)
       @pyarrow_status = if PYTHON.nil? || PYTHON.empty?
-        "PARAKIET_PYTHON is not set"
+        "HERRINGBONE_PYTHON is not set"
       else
         out, status = Open3.capture2e(PYTHON, DUMP_SCRIPT, "--check")
         status.success? ? nil : "#{PYTHON} cannot import pyarrow: #{out.lines.last}"
@@ -42,12 +42,12 @@ class InteropTest < Minitest::Test
     # Writes every case to disk and reads all of them with a single pyarrow process
     def results
       @results ||= begin
-        dir = Dir.mktmpdir("parakiet-interop")
+        dir = Dir.mktmpdir("herringbone-interop")
         Minitest.after_run { FileUtils.rm_rf(dir) }
         cases.each_value do |c|
           c.path = File.join(dir, "#{c.name}.parquet")
           begin
-            Parakiet::Writer.open(c.path, c.schema, **c.options) { |w| w.write_rows(c.rows) }
+            Herringbone::Writer.open(c.path, c.schema, **c.options) { |w| w.write_rows(c.rows) }
           rescue StandardError => e
             c.path = nil
             c.options = c.options.merge(write_error: "#{e.class}: #{e.message}")
@@ -166,7 +166,7 @@ class InteropTest < Minitest::Test
 
   def result_for(c)
     results = self.class.results
-    flunk "parakiet failed to write #{c.name}: #{c.options[:write_error]}" unless c.path
+    flunk "herringbone failed to write #{c.name}: #{c.options[:write_error]}" unless c.path
     results.fetch(c.path)
   end
 
@@ -181,15 +181,15 @@ class InteropTest < Minitest::Test
       Canonical.dump(c.schema.fields.to_h { |f| [f.name, pyarrow_view(f, Canonical.value(f, row.fetch(f.name) { row[f.name.to_sym] }))] })
     end
     from_pyarrow = r["rows"].map { |row| Canonical.dump(row) }
-    reader = Parakiet::Reader.open(c.path)
-    from_parakiet = canonical_lines(reader.schema, reader.rows)
+    reader = Herringbone::Reader.open(c.path)
+    from_herringbone = canonical_lines(reader.schema, reader.rows)
 
     expected.each_with_index do |e, i|
       assert_equal expected_pyarrow[i], from_pyarrow[i], "#{c.name}: pyarrow row #{i}"
-      assert_equal e, from_parakiet[i], "#{c.name}: parakiet row #{i}"
+      assert_equal e, from_herringbone[i], "#{c.name}: herringbone row #{i}"
     end
     assert_equal expected.size, from_pyarrow.size
-    assert_equal expected.size, from_parakiet.size
+    assert_equal expected.size, from_herringbone.size
 
     assert_equal [], r["stats_errors"], "#{c.name}: statistics disagree with data"
     check_null_counts(c, reader, r)
@@ -206,7 +206,7 @@ class InteropTest < Minitest::Test
     when :list then cv.map { |e| pyarrow_view(field.element, e) }
     when :map then cv.map { |k, v| [pyarrow_view(field.key, k), field.value ? pyarrow_view(field.value, v) : nil] }
     else
-      Parakiet::Types.logical_of(field.node).first == :enum ? { "base64" => [cv].pack("m0") } : cv
+      Herringbone::Types.logical_of(field.node).first == :enum ? { "base64" => [cv].pack("m0") } : cv
     end
   end
 
@@ -257,7 +257,7 @@ class InteropTest < Minitest::Test
       specs = Array.new(@rng.rand(1..5)) { spec(1) }
       specs.unshift({ kind: :leaf, name: "row_id", type: "i64", null: false })
       decl = method(:declare)
-      schema = Parakiet::Schema.define { specs.each { |s| decl.call(self, s) } }
+      schema = Herringbone::Schema.define { specs.each { |s| decl.call(self, s) } }
       rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], s[:name] == "row_id" ? i : value(s)] } }
       codecs = WriterHelpers::CODECS.select { |c| WriterHelpers.codec_available?(c) }
       opts = {
@@ -269,8 +269,8 @@ class InteropTest < Minitest::Test
       encodings = {}
       schema.columns.each do |col|
         next unless @rng.rand(3).zero?
-        valid = Parakiet::Writer::VALID_ENCODINGS.select { |_, types| types.include?(col.type) }.keys
-        enc = Parakiet::Writer::ENCODING_NAMES.key(valid.sample(random: @rng))
+        valid = Herringbone::Writer::VALID_ENCODINGS.select { |_, types| types.include?(col.type) }.keys
+        enc = Herringbone::Writer::ENCODING_NAMES.key(valid.sample(random: @rng))
         encodings[col.dotted_path] = enc
       end
       opts[:encodings] = encodings unless encodings.empty?

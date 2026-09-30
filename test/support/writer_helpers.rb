@@ -9,13 +9,13 @@ module WriterHelpers
   CODECS = %i[none snappy gzip lz4 lz4_hadoop zstd brotli].freeze
 
   def self.codec_available?(codec)
-    Parakiet::Compression.compress(Parakiet::Compression.codec_id(codec), "x".b)
+    Herringbone::Compression.compress(Herringbone::Compression.codec_id(codec), "x".b)
     true
-  rescue Parakiet::UnsupportedError
+  rescue Herringbone::UnsupportedError
     false
   end
 
-  ALL_TYPES_SCHEMA = Parakiet::Schema.define do
+  ALL_TYPES_SCHEMA = Herringbone::Schema.define do
     int64 :id, null: false
     boolean :bool
     boolean :bool_req, null: false
@@ -52,7 +52,7 @@ module WriterHelpers
     fixed :fx, length: 5
   end
 
-  NESTED_SCHEMA = Parakiet::Schema.define do
+  NESTED_SCHEMA = Herringbone::Schema.define do
     int32 :id, null: false
     list :l_nullable, :int32
     list :l_required_el, :string, element_null: false
@@ -228,14 +228,14 @@ module WriterHelpers
 
   def write_to_string(schema, rows, **options)
     io = StringIO.new("".b)
-    w = Parakiet::Writer.new(io, schema, **options)
+    w = Herringbone::Writer.new(io, schema, **options)
     rows.each { |r| w << r }
     w.close
     io.string
   end
 
   def reader_for(bytes)
-    Parakiet::Reader.new(StringIO.new(bytes))
+    Herringbone::Reader.new(StringIO.new(bytes))
   end
 
   def canonical_lines(schema, rows)
@@ -263,7 +263,7 @@ module WriterHelpers
     buf = bytes.byteslice(start, meta.total_compressed_size)
     pos = 0
     while pos < buf.bytesize
-      header, pos = Parakiet::Format::PageHeader.decode(buf, pos)
+      header, pos = Herringbone::Format::PageHeader.decode(buf, pos)
       body = buf.byteslice(pos, header.compressed_page_size)
       pos += header.compressed_page_size
       yield header, body
@@ -279,7 +279,7 @@ module WriterTestSchemas
   I64_MIN = WriterHelpers::I64_MIN
   I64_MAX = WriterHelpers::I64_MAX
 
-  ENCODING_SCHEMA = Parakiet::Schema.define do
+  ENCODING_SCHEMA = Herringbone::Schema.define do
     int32 :i32
     int64 :i64, null: false
     int32 :i32_bss

@@ -5,8 +5,8 @@ require_relative "test_helper"
 # Schema.from_active_record, tested against duck-typed models and (when the gems are
 # installed) a real in-memory SQLite ActiveRecord model.
 class ActiveRecordTest < Minitest::Test
-  T = Parakiet::Format::Type
-  C = Parakiet::Format::ConvertedType
+  T = Herringbone::Format::Type
+  C = Herringbone::Format::ConvertedType
 
   FakeColumn = Struct.new(:name, :type, :sql_type, :null, :limit, :precision, :scale, :array, keyword_init: true) do
     def initialize(null: true, array: false, **kw) = super
@@ -26,10 +26,10 @@ class ActiveRecordTest < Minitest::Test
 
   def node(schema, name) = schema.root.children.find { |n| n.name == name }
 
-  def kind(node) = Parakiet::Types.logical_of(node)
+  def kind(node) = Herringbone::Types.logical_of(node)
 
   def schema_for(*columns, **opts)
-    Parakiet::Schema.from_active_record(FakeModel.new(columns: columns, primary_key: "id"), **opts)
+    Herringbone::Schema.from_active_record(FakeModel.new(columns: columns, primary_key: "id"), **opts)
   end
 
   def test_integer_widths
@@ -73,7 +73,7 @@ class ActiveRecordTest < Minitest::Test
 
   def test_composite_primary_key
     model = FakeModel.new(columns: [col("a", :integer, "integer"), col("b", :string, "varchar")], primary_key: %w[a b])
-    s = Parakiet::Schema.from_active_record(model)
+    s = Herringbone::Schema.from_active_record(model)
     assert_equal %i[required required], s.root.children.map(&:repetition)
     assert_equal T::INT64, node(s, "a").type
   end
@@ -173,7 +173,7 @@ class ActiveRecordTest < Minitest::Test
       columns: [col("id", :integer, "integer"), col("status", :integer, "integer", null: false), col("kind", :string, "varchar")],
       defined_enums: { "status" => { "pending" => 0, "shipped" => 1 }, "kind" => { "a" => "a" } }
     )
-    s = Parakiet::Schema.from_active_record(model)
+    s = Herringbone::Schema.from_active_record(model)
     assert_equal [:string], kind(node(s, "status"))
     assert_equal :required, node(s, "status").repetition
     assert_equal [:string], kind(node(s, "kind"))
@@ -181,33 +181,33 @@ class ActiveRecordTest < Minitest::Test
 
     # Labels and stored values are accepted and written as labels; anything else is rejected
     io = StringIO.new("".b)
-    w = Parakiet::Writer.new(io, s)
+    w = Herringbone::Writer.new(io, s)
     w << { "id" => 1, "status" => "shipped", "kind" => "a" }
     w << { "id" => 2, "status" => 0 }
     w.close
-    assert_equal %w[shipped pending], Parakiet::Reader.new(StringIO.new(io.string)).rows.map { |r| r["status"] }
-    bad = Parakiet::Writer.new(StringIO.new("".b), s)
-    assert_raises(Parakiet::Error) { bad << { "id" => 3, "status" => "lost" } }
+    assert_equal %w[shipped pending], Herringbone::Reader.new(StringIO.new(io.string)).rows.map { |r| r["status"] }
+    bad = Herringbone::Writer.new(StringIO.new("".b), s)
+    assert_raises(Herringbone::Error) { bad << { "id" => 3, "status" => "lost" } }
 
-    s = Parakiet::Schema.from_active_record(model, enums: :enum)
+    s = Herringbone::Schema.from_active_record(model, enums: :enum)
     assert_equal [:enum], kind(node(s, "status"))
     assert_equal [:enum], kind(node(s, "kind"))
-    assert_raises(ArgumentError) { Parakiet::Schema.from_active_record(model, enums: :integer) }
+    assert_raises(ArgumentError) { Herringbone::Schema.from_active_record(model, enums: :integer) }
   end
 
   def test_model_without_defined_enums
-    s = Parakiet::Schema.from_active_record(BareModel.new([col("id", :integer, "integer"), col("x", :string)], "id"))
+    s = Herringbone::Schema.from_active_record(BareModel.new([col("id", :integer, "integer"), col("x", :string)], "id"))
     assert_equal %w[id x], s.root.children.map(&:name)
   end
 
   def test_only_and_except_keep_column_order
     columns = %w[id b a c].map { |n| col(n, :string) }
     model = FakeModel.new(columns: columns)
-    assert_equal %w[id b a c], Parakiet::Schema.from_active_record(model).root.children.map(&:name)
-    assert_equal %w[b c], Parakiet::Schema.from_active_record(model, only: [:c, "b"]).root.children.map(&:name)
-    assert_equal %w[id c], Parakiet::Schema.from_active_record(model, except: %w[a b]).root.children.map(&:name)
-    assert_equal %w[b], Parakiet::Schema.from_active_record(model, only: %w[a b], except: :a).root.children.map(&:name)
-    assert_raises(ArgumentError) { Parakiet::Schema.from_active_record(model, only: :nope) }
+    assert_equal %w[id b a c], Herringbone::Schema.from_active_record(model).root.children.map(&:name)
+    assert_equal %w[b c], Herringbone::Schema.from_active_record(model, only: [:c, "b"]).root.children.map(&:name)
+    assert_equal %w[id c], Herringbone::Schema.from_active_record(model, except: %w[a b]).root.children.map(&:name)
+    assert_equal %w[b], Herringbone::Schema.from_active_record(model, only: %w[a b], except: :a).root.children.map(&:name)
+    assert_raises(ArgumentError) { Herringbone::Schema.from_active_record(model, only: :nope) }
   end
 
   def test_round_trip_with_fake_model
@@ -229,7 +229,7 @@ class ActiveRecordTest < Minitest::Test
       ],
       defined_enums: { "status" => { "pending" => 0, "shipped" => 1 } }
     )
-    schema = Parakiet::Schema.from_active_record(model)
+    schema = Herringbone::Schema.from_active_record(model)
     t = Time.utc(2024, 5, 6, 7, 8, 9, 123_456)
     rows = [
       { "id" => 1, "name" => "Anna", "status" => "pending", "price" => BigDecimal("9.99"), "ratio" => 0.5,
@@ -240,10 +240,10 @@ class ActiveRecordTest < Minitest::Test
         "ship_on" => nil, "created_at" => t + 1, "uid" => nil, "clock" => nil, "doc" => nil, "tags" => [], "attrs" => nil }
     ]
     io = StringIO.new("".b)
-    w = Parakiet::Writer.new(io, schema)
+    w = Herringbone::Writer.new(io, schema)
     rows.each { |r| w << r }
     w.close
-    read = Parakiet::Reader.new(StringIO.new(io.string)).rows
+    read = Herringbone::Reader.new(StringIO.new(io.string)).rows
     # TIME reads back as microseconds since midnight, JSON as text
     expected = rows.map(&:dup)
     expected[0]["clock"] = ((12 * 60 + 34) * 60 + 56) * 1_000_000 + 789_000
@@ -270,7 +270,7 @@ class ActiveRecordTest < Minitest::Test
   def test_real_active_record_model
     with_active_record do
       ActiveRecord::Schema.define do
-        create_table :parakiet_orders, force: true do |t|
+        create_table :herringbone_orders, force: true do |t|
           t.string :customer, null: false
           t.integer :status, null: false, default: 0
           t.decimal :total, precision: 10, scale: 2
@@ -286,16 +286,16 @@ class ActiveRecordTest < Minitest::Test
         end
       end
       order = Class.new(ActiveRecord::Base) do
-        self.table_name = "parakiet_orders"
+        self.table_name = "herringbone_orders"
         enum :status, { pending: 0, shipped: 1, cancelled: 2 }
-        def self.name = "ParakietOrder"
+        def self.name = "HerringboneOrder"
       end
 
       order.create!(customer: "Anna", status: :shipped, total: BigDecimal("12.34"), ratio: 0.25, paid: true,
         ship_on: Date.new(2024, 3, 4), cutoff: "12:34:56.789", payload: { "a" => [1, 2] }, notes: "fragile", big: 2**40, small: -3)
       order.create!(customer: "Bob")
 
-      schema = Parakiet::Schema.from_active_record(order)
+      schema = Herringbone::Schema.from_active_record(order)
       assert_equal order.column_names, schema.root.children.map(&:name)
       assert_equal T::INT64, node(schema, "id").type
       assert_equal :required, node(schema, "id").repetition
@@ -309,11 +309,11 @@ class ActiveRecordTest < Minitest::Test
       assert_equal [:timestamp, :micros, true], kind(node(schema, "created_at"))
 
       io = StringIO.new("".b)
-      w = Parakiet::Writer.new(io, schema)
+      w = Herringbone::Writer.new(io, schema)
       order.find_each { |o| w << o.attributes }
       w.close
 
-      read = Parakiet::Reader.new(StringIO.new(io.string)).rows
+      read = Herringbone::Reader.new(StringIO.new(io.string)).rows
       expected = order.order(:id).map do |o|
         # JSON is read back as text, TIME as microseconds since midnight
         o.attributes.merge("payload" => o.payload&.to_json, "created_at" => o.created_at.utc,

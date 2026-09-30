@@ -7,7 +7,7 @@
 #   cd benchmark
 #   ROWS=20_000_000 [ROW_GROUP_BYTES=67108864] [ROW_GROUP_SIZE=100_000] [COMPRESSION=zstd] \
 #     bundle exec ruby rails_export.rb [out.parquet]
-require "parakiet"
+require "herringbone"
 require "get_process_mem"
 require_relative "dataset"
 
@@ -25,7 +25,7 @@ puts "Exporting #{rows} rows to #{path} (#{options.empty? ? "default options" : 
 puts format("%12s %9s %10s %9s %11s", "rows", "elapsed", "rows/s", "RSS MB", "GC runs")
 t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 peak = 0
-Parakiet::Writer.open(path, Dataset.parakiet_schema, **options) do |writer|
+Herringbone::Writer.open(path, Dataset.herringbone_schema, **options) do |writer|
   n = 0
   Dataset.each_record(rows, batch_size: 1000) do |attributes|
     writer << attributes
@@ -42,7 +42,7 @@ puts format("Done in %.1fs (%d rows/s), file %.1f MB, peak sampled RSS %d MB",
   elapsed, rows / elapsed, File.size(path) / 1048576.0, peak)
 
 # Verify: row count, and a handful of rows spread across the file match the source records
-Parakiet::Reader.open(path) do |reader|
+Herringbone::Reader.open(path) do |reader|
   raise "row count mismatch: #{reader.num_rows}" unless reader.num_rows == rows
   sample_groups = [0, reader.num_row_groups / 2, reader.num_row_groups - 1].uniq
   sample_groups.each do |rg|

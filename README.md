@@ -1,4 +1,4 @@
-# Parakiet
+# Herringbone
 
 A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) files.
 
@@ -11,7 +11,7 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 ## Installation
 
 ```ruby
-gem "parakiet"
+gem "herringbone"
 ```
 
 Snappy and LZ4 are implemented in Ruby, GZIP uses `zlib`, and ZSTD and Brotli come from the
@@ -20,10 +20,10 @@ Snappy and LZ4 are implemented in Ruby, GZIP uses `zlib`, and ZSTD and Brotli co
 ## Reading
 
 ```ruby
-require "parakiet"
+require "herringbone"
 
-Parakiet::Reader.open("data.parquet") do |reader|
-  reader.schema             # => #<Parakiet::Schema ...>
+Herringbone::Reader.open("data.parquet") do |reader|
+  reader.schema             # => #<Herringbone::Schema ...>
   reader.num_rows
 
   reader.each_row do |row|  # Hash with String keys, nested values as Hash/Array
@@ -35,13 +35,13 @@ Parakiet::Reader.open("data.parquet") do |reader|
   reader.read_row_group(0)  # => { "id" => [...], "name" => [...] }
 end
 
-Parakiet.read("data.parquet") # => Array of row Hashes
+Herringbone.read("data.parquet") # => Array of row Hashes
 ```
 
 ## Writing
 
 ```ruby
-schema = Parakiet::Schema.define do
+schema = Herringbone::Schema.define do
   int64 :id, null: false
   string :name
   enum :status, values: %w[pending paid shipped]
@@ -56,7 +56,7 @@ schema = Parakiet::Schema.define do
   timestamp :created_at
 end
 
-Parakiet::Writer.open("out.parquet", schema) do |w|
+Herringbone::Writer.open("out.parquet", schema) do |w|
   w << { "id" => 1, "name" => "Anna", "status" => "paid", "tags" => ["a", "b"],
          "scores" => { "x" => 1.5 }, "address" => { "city" => "Amsterdam" },
          "price" => BigDecimal("9.99"), "payload" => { "any" => ["json"] }, "created_at" => Time.now }
@@ -66,13 +66,13 @@ Parakiet::Writer.open("out.parquet", schema) do |w|
 end
 
 # Or with an inferred schema, optionally overriding some columns
-Parakiet.write("out.parquet", rows, schema: Parakiet::Schema.infer(rows, types: { payload: :json }))
+Herringbone.write("out.parquet", rows, schema: Herringbone::Schema.infer(rows, types: { payload: :json }))
 ```
 
 Schemas can also be given as a Hash, anywhere a schema is accepted:
 
 ```ruby
-Parakiet::Schema.define(
+Herringbone::Schema.define(
   id: { type: :int64, null: false },
   name: :string,
   tags: [:string],                                   # list of strings
@@ -80,7 +80,7 @@ Parakiet::Schema.define(
   price: { type: :decimal, precision: 12, scale: 2 },
   scores: { type: :map, key: :string, value: :double }
 )
-Parakiet::Writer.open("out.parquet", { id: :int64, name: :string }) { |w| w << [1, "x"] }
+Herringbone::Writer.open("out.parquet", { id: :int64, name: :string }) { |w| w << [1, "x"] }
 ```
 
 Column types in the DSL: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double
@@ -108,7 +108,7 @@ Columns accept the values Ruby and Rails code usually has at hand:
 | `decimal` | `BigDecimal`, Integer, Rational, Float, numeric Strings |
 | `uuid` | Strings with or without dashes, or 16 raw bytes |
 
-Values that don't fit raise `Parakiet::EncodeError` naming the row number and column path; the
+Values that don't fit raise `Herringbone::EncodeError` naming the row number and column path; the
 failed row is discarded and the writer can carry on.
 
 When given a path, the writer writes to a temporary file next to it and renames it into place on
@@ -132,13 +132,13 @@ Writer options:
 
 ## Exporting ActiveRecord models
 
-`Parakiet::Schema.from_active_record` builds a schema from a model's columns, so that
+`Herringbone::Schema.from_active_record` builds a schema from a model's columns, so that
 `record.attributes` can be written as-is. Rails is not a dependency: it only calls
 `columns`, `primary_key` and `defined_enums` on the model.
 
 ```ruby
-schema = Parakiet::Schema.from_active_record(Order)
-Parakiet::Writer.open("orders.parquet", schema) do |w|
+schema = Herringbone::Schema.from_active_record(Order)
+Herringbone::Writer.open("orders.parquet", schema) do |w|
   Order.find_each { |order| w << order.attributes }
 end
 ```
@@ -192,9 +192,9 @@ Column order follows `Model.columns`.
 ## Command line
 
 ```
-bin/parakiet schema FILE
-bin/parakiet meta FILE
-bin/parakiet cat FILE [N]
+bin/herringbone schema FILE
+bin/herringbone meta FILE
+bin/herringbone cat FILE [N]
 ```
 
 ## Development
@@ -202,7 +202,7 @@ bin/parakiet cat FILE [N]
 ```
 bundle install
 bundle exec rake test
-PARAKIET_PYTHON=/path/to/python-with-pyarrow bundle exec rake test   # also run pyarrow interop tests
+HERRINGBONE_PYTHON=/path/to/python-with-pyarrow bundle exec rake test   # also run pyarrow interop tests
 ```
 
 `test/fixtures/parquet-testing` holds files from [apache/parquet-testing](https://github.com/apache/parquet-testing)

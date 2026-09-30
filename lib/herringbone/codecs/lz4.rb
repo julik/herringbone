@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   module Codecs
     # Pure-Ruby LZ4: raw block format (Parquet LZ4_RAW), Hadoop-framed blocks
     # (Parquet's deprecated LZ4) and a decoder for the LZ4 frame format.

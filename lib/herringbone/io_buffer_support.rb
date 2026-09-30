@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   # IO::Buffer lets the decompressors copy bytes around without allocating a String per copy.
   # It still carries an "experimental" warning, which is silenced once here: the gem only uses
   # new/for/copy/get_string/free, and falls back to String operations where it is missing.
@@ -14,7 +14,7 @@ module Parakiet
         ensure
           Warning[:experimental] = previous
         end
-        ENV["PARAKIET_NO_IO_BUFFER"].nil?
+        ENV["HERRINGBONE_NO_IO_BUFFER"].nil?
       else
         false
       end

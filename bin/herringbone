@@ -2,11 +2,11 @@
 # frozen_string_literal: true
 
 # Usage:
-#   parakiet schema FILE        print the schema
-#   parakiet meta FILE          print row groups, codecs and encodings
-#   parakiet cat FILE [N]       print rows as JSON lines (optionally only the first N)
+#   herringbone schema FILE        print the schema
+#   herringbone meta FILE          print row groups, codecs and encodings
+#   herringbone cat FILE [N]       print rows as JSON lines (optionally only the first N)
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "parakiet"
+require "herringbone"
 require "json"
 
 def jsonable(v)
@@ -24,11 +24,11 @@ end
 
 command, path, limit = ARGV
 unless %w[schema meta cat].include?(command) && path
-  warn "usage: parakiet (schema|meta|cat) FILE [N]"
+  warn "usage: herringbone (schema|meta|cat) FILE [N]"
   exit 1
 end
 
-Parakiet::Reader.open(path) do |r|
+Herringbone::Reader.open(path) do |r|
   case command
   when "schema"
     puts r.schema.inspect
@@ -39,8 +39,8 @@ Parakiet::Reader.open(path) do |r|
       puts "row group #{i}: #{rg.num_rows} rows"
       rg.columns.each do |cc|
         m = cc.meta_data
-        encodings = m.encodings.map { |e| Parakiet::Format::Encoding::NAMES[e] }.join(",")
-        puts "  #{m.path_in_schema.join(".")}: #{Parakiet::Format::Codec::NAMES[m.codec]} #{encodings} " \
+        encodings = m.encodings.map { |e| Herringbone::Format::Encoding::NAMES[e] }.join(",")
+        puts "  #{m.path_in_schema.join(".")}: #{Herringbone::Format::Codec::NAMES[m.codec]} #{encodings} " \
           "#{m.total_compressed_size}/#{m.total_uncompressed_size} bytes"
       end
     end

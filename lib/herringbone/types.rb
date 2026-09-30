@@ -5,7 +5,7 @@ require "time"
 require "json"
 require "bigdecimal"
 
-module Parakiet
+module Herringbone
   # Conversion between physical Parquet values and Ruby objects, driven by the
   # logical type (or legacy converted type) of a column.
   #

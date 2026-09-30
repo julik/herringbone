@@ -3,7 +3,7 @@
 require "json"
 require "digest"
 
-# Converts values read by Parakiet into the canonical JSON form used by the
+# Converts values read by Herringbone into the canonical JSON form used by the
 # pyarrow-generated expectations (see test/fixtures/parquet-testing/README.md).
 module Canonical
   module_function
@@ -25,7 +25,7 @@ module Canonical
   FRACTION_DIGITS = { millis: 3, micros: 6, nanos: 9 }.freeze
 
   def leaf(node, v)
-    kind, a, b = Parakiet::Types.logical_of(node)
+    kind, a, b = Herringbone::Types.logical_of(node)
     type = node.type
     case v
     when Float
@@ -33,7 +33,7 @@ module Canonical
       return(v.positive? ? "Infinity" : "-Infinity") if v.infinite?
       v
     when Time
-      if type == Parakiet::Format::Type::INT96
+      if type == Herringbone::Format::Type::INT96
         timestamp(v, 9, false)
       else
         timestamp(v, FRACTION_DIGITS.fetch(a), b)

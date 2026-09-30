@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Parakiet
+module Herringbone
   module Encodings
     # Bit packing (LSB-first, as used by Parquet) and the RLE / bit-packed hybrid encoding
     # used for repetition/definition levels, dictionary indices and RLE booleans.

@@ -4,30 +4,30 @@ Machine: Apple Silicon (arm64-darwin24), ruby 3.4.1 without YJIT, 2026-09-30.
 Dataset: `dataset.rb`, 15 Rails-style columns (ids, 3 low-cardinality enum/string columns, decimal,
 nullable double/strings, int32, boolean, 2 timestamps, nullable date).
 
-## parakiet vs parquet-ruby 0.9.0 (1M rows) — `compare_parquet_ruby.rb`
+## herringbone vs parquet-ruby 0.9.0 (1M rows) — `compare_parquet_ruby.rb`
 
 "Peak RSS growth" is sampled every 20ms in a forked child, relative to the child's baseline.
-parquet-ruby writes one row group per file here (parquet-rs default); parakiet uses 100k-row groups.
+parquet-ruby writes one row group per file here (parquet-rs default); herringbone uses 100k-row groups.
 
 ```
-parakiet 0.1.0, parquet-ruby 0.9.0, ruby 3.4.1 (2024-12-25 revision 48d4efcb85) +PRISM [arm64-darwin24]
+herringbone 0.1.0, parquet-ruby 0.9.0, ruby 3.4.1 (2024-12-25 revision 48d4efcb85) +PRISM [arm64-darwin24]
 
 == Write (snappy)
-parakiet Writer (hash rows)                             23.01s      43k rows/s      291 MB peak RSS growth  44.2 MB
-parakiet Writer (hash rows, uncompressed)               10.93s      92k rows/s      296 MB peak RSS growth  94.4 MB
-parakiet Writer (hash rows, zstd via zstd-ruby)         11.23s      89k rows/s      317 MB peak RSS growth  25.7 MB
+herringbone Writer (hash rows)                             23.01s      43k rows/s      291 MB peak RSS growth  44.2 MB
+herringbone Writer (hash rows, uncompressed)               10.93s      92k rows/s      296 MB peak RSS growth  94.4 MB
+herringbone Writer (hash rows, zstd via zstd-ruby)         11.23s      89k rows/s      317 MB peak RSS growth  25.7 MB
 parquet-ruby write_rows (array rows)                     4.42s     226k rows/s      373 MB peak RSS growth  45.2 MB
 
 == Read all rows
-parakiet each_row, parakiet file                         9.71s     103k rows/s      249 MB peak RSS growth  1000000 rows
-parquet-ruby each_row, parakiet file                     5.25s     191k rows/s      255 MB peak RSS growth  1000000 rows
-parakiet each_row, parquet-ruby file                    14.36s      70k rows/s      759 MB peak RSS growth  1000000 rows
+herringbone each_row, herringbone file                         9.71s     103k rows/s      249 MB peak RSS growth  1000000 rows
+parquet-ruby each_row, herringbone file                     5.25s     191k rows/s      255 MB peak RSS growth  1000000 rows
+herringbone each_row, parquet-ruby file                    14.36s      70k rows/s      759 MB peak RSS growth  1000000 rows
 parquet-ruby each_row, parquet-ruby file                 5.34s     187k rows/s      268 MB peak RSS growth  1000000 rows
 
 == Read one column (amount)
-parakiet column, parakiet file                           2.50s     400k rows/s      246 MB peak RSS growth  sum=49970731364.8
-parquet-ruby each_column, parakiet file                  1.60s     627k rows/s      197 MB peak RSS growth  sum=49970731364.8
-parakiet column, parquet-ruby file                       2.42s     413k rows/s      288 MB peak RSS growth  sum=49970731364.8
+herringbone column, herringbone file                           2.50s     400k rows/s      246 MB peak RSS growth  sum=49970731364.8
+parquet-ruby each_column, herringbone file                  1.60s     627k rows/s      197 MB peak RSS growth  sum=49970731364.8
+herringbone column, parquet-ruby file                       2.42s     413k rows/s      288 MB peak RSS growth  sum=49970731364.8
 parquet-ruby each_column, parquet-ruby file              1.52s     656k rows/s      200 MB peak RSS growth  sum=49970731364.8
 
 ```
@@ -39,7 +39,7 @@ file with 100k-row groups, snappy. Live Ruby heap stays flat (~72k slots after e
 plateaus in the 450–490 MB range (malloc retaining freed page buffers), independent of row count.
 
 ```
-Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-parakiet/2d9676f4-e126-46c5-ab82-0da5b4975abe/scratchpad/export20m.parquet (row groups of 100000, snappy)
+Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-herringbone/2d9676f4-e126-46c5-ab82-0da5b4975abe/scratchpad/export20m.parquet (row groups of 100000, snappy)
         rows   elapsed     rows/s    RSS MB   file MB     GC runs
      1000000     18.7s      53361       300      44.2         302
      2000000     37.6s      53201       302      88.4         515
@@ -68,7 +68,7 @@ Verified 200 row groups, 20000000 rows; sampled rows match the source
 ## 20M-row export with the current defaults (zstd, row_group_bytes: 16MB)
 
 ```
-Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-parakiet/2d9676f4-e126-46c5-ab82-0da5b4975abe/scratchpad/export20m.parquet (default options)
+Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-herringbone/2d9676f4-e126-46c5-ab82-0da5b4975abe/scratchpad/export20m.parquet (default options)
         rows   elapsed     rows/s    RSS MB     GC runs
      1000000      9.8s     102247       283         318
      2000000     19.8s     101018       323         493

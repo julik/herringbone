@@ -4,13 +4,13 @@ require_relative "test_helper"
 require_relative "support/writer_helpers"
 require "tmpdir"
 
-# Round trips through Parakiet::Writer and Parakiet::Reader
+# Round trips through Herringbone::Writer and Herringbone::Reader
 class WriterTest < Minitest::Test
   include WriterHelpers
 
-  E = Parakiet::Format::Encoding
-  T = Parakiet::Format::Type
-  PT = Parakiet::Format::PageType
+  E = Herringbone::Format::Encoding
+  T = Herringbone::Format::Type
+  PT = Herringbone::Format::PageType
 
   ALL_ROWS = WriterHelpers.all_types_rows(40)
   NESTED_ROWS = WriterHelpers.nested_rows(40)
@@ -36,7 +36,7 @@ class WriterTest < Minitest::Test
 
   def check_chunk_metadata(bytes, codec, version, dict)
     reader = reader_for(bytes)
-    codec_id = Parakiet::Compression.codec_id(codec)
+    codec_id = Herringbone::Compression.codec_id(codec)
     any_dict = false
     reader.row_groups.each do |rg|
       rg.columns.each do |chunk|
@@ -78,7 +78,7 @@ class WriterTest < Minitest::Test
           reader = reader_for(bytes)
           reader.row_groups[0].columns.each do |chunk|
             path = chunk.meta_data.path_in_schema.join(".")
-            want = Parakiet::Writer::ENCODING_NAMES.fetch(ENCODINGS.fetch(path))
+            want = Herringbone::Writer::ENCODING_NAMES.fetch(ENCODINGS.fetch(path))
             assert_includes chunk.meta_data.encodings, want, path
             refute_includes chunk.meta_data.encodings, E::RLE_DICTIONARY, path
             each_page(bytes, chunk) do |h, _|
@@ -92,15 +92,15 @@ class WriterTest < Minitest::Test
   end
 
   def test_invalid_explicit_encoding
-    schema = Parakiet::Schema.define { string :s }
+    schema = Herringbone::Schema.define { string :s }
     assert_raises(ArgumentError) { write_to_string(schema, [{ "s" => "x" }], encodings: { "s" => :byte_stream_split }) }
     assert_raises(ArgumentError) { write_to_string(schema, [{ "s" => "x" }], encodings: { "s" => :bogus }) }
-    schema = Parakiet::Schema.define { double :d }
+    schema = Herringbone::Schema.define { double :d }
     assert_raises(ArgumentError) { write_to_string(schema, [{ "d" => 1.0 }], encodings: { "d" => :delta_binary_packed }) }
   end
 
   def test_rle_dictionary_with_single_distinct_value
-    schema = Parakiet::Schema.define { string :s }
+    schema = Herringbone::Schema.define { string :s }
     rows = Array.new(100) { { "s" => "same" } }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
@@ -108,7 +108,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_dictionary_column_list
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       string :a
       string :b
       list :c, :string
@@ -121,7 +121,7 @@ class WriterTest < Minitest::Test
   end
 
 def test_dictionary_encoded_floats_keep_negative_zero
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       double :d
       float :f
     end
@@ -132,7 +132,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
   
   def test_boolean_columns_are_never_dictionary_encoded
-    schema = Parakiet::Schema.define { boolean :b }
+    schema = Herringbone::Schema.define { boolean :b }
     rows = Array.new(20) { |i| { "b" => i.odd? ? nil : i % 4 == 0 } }
     bytes = write_to_string(schema, rows, dictionary: ["b"])
     assert_roundtrip(schema, rows, bytes)
@@ -141,17 +141,17 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
   
   def test_decimal_nan_and_infinity_raise_encode_error
-    schema = Parakiet::Schema.define { decimal :a, precision: 10, scale: 2 }
+    schema = Herringbone::Schema.define { decimal :a, precision: 10, scale: 2 }
     [Float::NAN, Float::INFINITY].each do |v|
-      assert_raises(Parakiet::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
+      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
     end
     [BigDecimal("NaN"), BigDecimal("Infinity")].each do |v|
-      assert_raises(Parakiet::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
+      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
     end
   end
 
   def test_dictionary_fallback_for_high_cardinality
-    schema = Parakiet::Schema.define { int64 :a }
+    schema = Herringbone::Schema.define { int64 :a }
     rows = Array.new(1000) { |i| { "a" => i } }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
@@ -181,7 +181,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_row_group_flush_boundary_exact
-    schema = Parakiet::Schema.define { int32 :a }
+    schema = Herringbone::Schema.define { int32 :a }
     rows = Array.new(10) { |i| { "a" => i } }
     bytes = write_to_string(schema, rows, row_group_size: 5)
     assert_equal [5, 5], reader_for(bytes).row_groups.map(&:num_rows)
@@ -218,16 +218,16 @@ def test_dictionary_encoded_floats_keep_negative_zero
   def first_repetition_level(header, body, codec, col)
     width = col.max_repetition_level.bit_length
     if (v2 = header.data_page_header_v2)
-      Parakiet::Encodings::RLE.decode_hybrid(body, 0, v2.repetition_levels_byte_length, width, 1).first
+      Herringbone::Encodings::RLE.decode_hybrid(body, 0, v2.repetition_levels_byte_length, width, 1).first
     else
-      data = Parakiet::Compression.decompress(codec, body, header.uncompressed_page_size)
+      data = Herringbone::Compression.decompress(codec, body, header.uncompressed_page_size)
       len = data.unpack1("V")
-      Parakiet::Encodings::RLE.decode_hybrid(data, 4, 4 + len, width, 1).first
+      Herringbone::Encodings::RLE.decode_hybrid(data, 4, 4 + len, width, 1).first
     end
   end
 
   def test_repeated_rows_larger_than_page_are_not_split
-    schema = Parakiet::Schema.define { list :l, :int64 }
+    schema = Herringbone::Schema.define { list :l, :int64 }
     rows = [{ "l" => (1..500).to_a }, { "l" => [] }, { "l" => (1..300).to_a }, { "l" => nil }]
     [1, 2].each do |v|
       bytes = write_to_string(schema, rows, page_size: 16, data_page_version: v)
@@ -285,7 +285,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_symbol_keys_and_missing_keys
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       int32 :a
       struct :s do
         string :b
@@ -296,13 +296,13 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_map_accepts_array_of_pairs
-    schema = Parakiet::Schema.define { map :m, :string, :int32 }
+    schema = Herringbone::Schema.define { map :m, :string, :int32 }
     bytes = write_to_string(schema, [{ "m" => [["a", 1], ["b", nil]] }])
     assert_equal [{ "m" => { "a" => 1, "b" => nil } }], reader_for(bytes).rows
   end
 
   def test_string_encoding_of_read_values
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       string :s
       binary :b
       json :j
@@ -345,35 +345,35 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_date_before_gregorian_reform_with_default_calendar
-    schema = Parakiet::Schema.define { date :d }
+    schema = Herringbone::Schema.define { date :d }
     bytes = write_to_string(schema, [{ "d" => Date.new(1, 1, 1) }, { "d" => Date.new(1500, 3, 1) }])
     assert_equal %w[0001-01-01 1500-03-01], reader_for(bytes).rows.map { |r| r["d"].iso8601 }
   end
 
   def test_float16_rounding
-    schema = Parakiet::Schema.define { float16 :h }
+    schema = Herringbone::Schema.define { float16 :h }
     # exactly representable
     vals = [0.5, 1.0, 2.0**-24, 65_504.0, -1000.5, 0.333251953125]
     bytes = write_to_string(schema, vals.map { |v| { "h" => v } })
     assert_equal vals, reader_for(bytes).rows.map { |r| r["h"] }
     # rounding: nearest-even, overflow to infinity, underflow to zero
-    assert_equal 0x3C00, Parakiet::Types.float_to_half(1.0 + 2.0**-11) # tie -> even
-    assert_equal 0x3C02, Parakiet::Types.float_to_half(1.0 + 3 * 2.0**-11) # tie -> even (up)
-    assert_equal 0x7C00, Parakiet::Types.float_to_half(65_520.0)
-    assert_equal 0x7BFF, Parakiet::Types.float_to_half(65_519.0)
-    assert_equal 0x0000, Parakiet::Types.float_to_half(2.0**-26)
-    assert_equal 0x0001, Parakiet::Types.float_to_half(2.0**-25 + 2.0**-30)
-    assert_equal 0x8000, Parakiet::Types.float_to_half(-0.0)
+    assert_equal 0x3C00, Herringbone::Types.float_to_half(1.0 + 2.0**-11) # tie -> even
+    assert_equal 0x3C02, Herringbone::Types.float_to_half(1.0 + 3 * 2.0**-11) # tie -> even (up)
+    assert_equal 0x7C00, Herringbone::Types.float_to_half(65_520.0)
+    assert_equal 0x7BFF, Herringbone::Types.float_to_half(65_519.0)
+    assert_equal 0x0000, Herringbone::Types.float_to_half(2.0**-26)
+    assert_equal 0x0001, Herringbone::Types.float_to_half(2.0**-25 + 2.0**-30)
+    assert_equal 0x8000, Herringbone::Types.float_to_half(-0.0)
   end
 
   def test_float16_double_rounding
-    assert_equal 0x3C01, Parakiet::Types.float_to_half(1.0 + 2.0**-11 + 2.0**-40)
+    assert_equal 0x3C01, Herringbone::Types.float_to_half(1.0 + 2.0**-11 + 2.0**-40)
   end
 
   # -- errors --
 
   def test_required_nil_raises
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       int32 :a, null: false
       struct :s do
         int32 :x, null: false
@@ -388,7 +388,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       { "a" => nil }, { "s" => { "x" => nil } }, { "s" => {} }, { "l" => [1, nil] }, { "lr" => nil },
       { "m" => { "k" => nil } }, { "m" => { nil => 1 } }
     ].each do |bad|
-      assert_raises(Parakiet::EncodeError, bad.inspect) { write_to_string(schema, [good.merge(bad)]) }
+      assert_raises(Herringbone::EncodeError, bad.inspect) { write_to_string(schema, [good.merge(bad)]) }
     end
   end
 
@@ -410,9 +410,9 @@ def test_dictionary_encoded_floats_keep_negative_zero
       proc { uuid :a } => ["not-a-uuid"]
     }
     cases.each do |defn, values|
-      schema = Parakiet::Schema.define(&defn)
+      schema = Herringbone::Schema.define(&defn)
       values.each do |v|
-        assert_raises(Parakiet::EncodeError, "#{schema.columns.first.dotted_path} <- #{v.inspect}") do
+        assert_raises(Herringbone::EncodeError, "#{schema.columns.first.dotted_path} <- #{v.inspect}") do
           write_to_string(schema, [{ "a" => v }])
         end
       end
@@ -420,33 +420,33 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_struct_given_non_hash_raises_encode_error
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       struct :s do
         int32 :x
       end
     end
-    assert_raises(Parakiet::EncodeError) { write_to_string(schema, [{ "s" => 5 }]) }
+    assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "s" => 5 }]) }
   end
 
   def test_out_of_range_integers_raise
     { proc { int32 :a } => [2**40, 2**31], proc { int64 :a } => [2**70, 2**63], proc { int8 :a } => [300, -129],
       proc { uint8 :a } => [256, -1], proc { decimal :a, precision: 5, scale: 2 } => [10**8], proc { int32 :a } => [1.5] }.each do |defn, values|
-      schema = Parakiet::Schema.define(&defn)
+      schema = Herringbone::Schema.define(&defn)
       values.each do |v|
-        assert_raises(Parakiet::EncodeError, v.inspect) { write_to_string(schema, [{ "a" => v }]) }
+        assert_raises(Herringbone::EncodeError, v.inspect) { write_to_string(schema, [{ "a" => v }]) }
       end
     end
   end
 
   def test_writer_state_is_consistent_after_encode_error
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       int64 :a
       int64 :b, null: false
     end
     io = StringIO.new("".b)
-    w = Parakiet::Writer.new(io, schema)
+    w = Herringbone::Writer.new(io, schema)
     w << { "a" => 1, "b" => 2 }
-    assert_raises(Parakiet::EncodeError) { w << { "a" => 3, "b" => nil } }
+    assert_raises(Herringbone::EncodeError) { w << { "a" => 3, "b" => nil } }
     w << { "a" => 5, "b" => 6 }
     w.close
     rows = reader_for(io.string).rows
@@ -455,29 +455,29 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_closed_writer_rejects_rows
     io = StringIO.new("".b)
-    w = Parakiet::Writer.new(io, Parakiet::Schema.define { int32 :a })
+    w = Herringbone::Writer.new(io, Herringbone::Schema.define { int32 :a })
     w.close
-    assert_raises(Parakiet::Error) { w << { "a" => 1 } }
+    assert_raises(Herringbone::Error) { w << { "a" => 1 } }
     size = io.string.bytesize
     w.close # idempotent
     assert_equal size, io.string.bytesize
   end
 
   def test_invalid_options
-    schema = Parakiet::Schema.define { int32 :a }
-    assert_raises(ArgumentError) { Parakiet::Writer.new(StringIO.new, schema, data_page_version: 3) }
-    assert_raises(ArgumentError) { Parakiet::Writer.new(StringIO.new, schema, compression: :lzo_nope) }
+    schema = Herringbone::Schema.define { int32 :a }
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, data_page_version: 3) }
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, compression: :lzo_nope) }
   end
 
   # -- metadata --
 
   def test_key_value_metadata
-    schema = Parakiet::Schema.define { int32 :a }
+    schema = Herringbone::Schema.define { int32 :a }
     meta = { "k" => "v", "unicode" => "漢字", "empty" => "", :sym => "s", "big" => "x" * 10_000 }
     bytes = write_to_string(schema, [{ "a" => 1 }], metadata: meta)
     reader = reader_for(bytes)
     assert_equal meta.transform_keys(&:to_s), reader.key_value_metadata
-    assert_match(/parakiet/, reader.created_by)
+    assert_match(/herringbone/, reader.created_by)
     assert_nil reader_for(write_to_string(schema, [])).metadata.key_value_metadata
   end
 
@@ -530,7 +530,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   def expected_min_max(name, col, vals)
     return nil if vals.empty?
     phys = vals.map { |v| col.encoder.call(v) }
-    kind, = Parakiet::Types.logical_of(col.node)
+    kind, = Herringbone::Types.logical_of(col.node)
     case col.type
     when T::BOOLEAN then [phys.include?(false) ? "\x00".b : "\x01".b, phys.include?(true) ? "\x01".b : "\x00".b]
     when T::INT32, T::INT64
@@ -569,7 +569,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       { i: -5, f: nil, s: "x", b: "\x00".b, t: Time.at(0).utc, d: Date.new(1970, 1, 1), bool: nil, dec: nil, sym: :x,
         h: { x: nil, y: [] }, l: [[nil]], lh: [nil, { k: nil }] }
     ]
-    schema = Parakiet::Schema.infer(rows)
+    schema = Herringbone::Schema.infer(rows)
     types = schema.columns.to_h { |c| [c.dotted_path, T::NAMES[c.type]] }
     assert_equal :INT64, types["i"]
     assert_equal :DOUBLE, types["f"]
@@ -578,8 +578,8 @@ def test_dictionary_encoded_floats_keep_negative_zero
     assert_equal :FIXED_LEN_BYTE_ARRAY, types["dec"]
     Dir.mktmpdir do |dir|
       path = File.join(dir, "infer.parquet")
-      Parakiet.write(path, rows)
-      read = Parakiet.read(path)
+      Herringbone.write(path, rows)
+      read = Herringbone.read(path)
       assert_equal 1, read[0]["i"]
       assert_equal 2.0, read[1]["f"]
       assert_equal "é", read[0]["s"]
@@ -596,27 +596,27 @@ def test_dictionary_encoded_floats_keep_negative_zero
       assert_equal [nil, { "k" => nil }], read[2]["lh"]
       assert_equal [], read[1]["lh"]
       assert_equal(-5, read[2]["i"])
-      assert_equal 3, Parakiet.open(path, &:num_rows)
-      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], Parakiet.read(path, columns: ["i"])
+      assert_equal 3, Herringbone.open(path, &:num_rows)
+      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], Herringbone.read(path, columns: ["i"])
     end
   end
 
   def test_schema_infer_errors
-    assert_raises(ArgumentError) { Parakiet::Schema.infer([]) }
-    assert_equal :string, Parakiet::Types.logical_of(Parakiet::Schema.infer([{ "a" => nil }]).columns.first.node).first
-    assert_raises(ArgumentError) { Parakiet::Schema.infer([{ "a" => 1 }, { "a" => "x" }]) }
+    assert_raises(ArgumentError) { Herringbone::Schema.infer([]) }
+    assert_equal :string, Herringbone::Types.logical_of(Herringbone::Schema.infer([{ "a" => nil }]).columns.first.node).first
+    assert_raises(ArgumentError) { Herringbone::Schema.infer([{ "a" => 1 }, { "a" => "x" }]) }
   end
 
   def test_writer_open_with_block_writes_file
     Dir.mktmpdir do |dir|
       path = File.join(dir, "a.parquet")
-      Parakiet::Writer.open(path, NESTED_SCHEMA, compression: :gzip) { |w| w.write_rows(NESTED_ROWS) }
+      Herringbone::Writer.open(path, NESTED_SCHEMA, compression: :gzip) { |w| w.write_rows(NESTED_ROWS) }
       assert_roundtrip(NESTED_SCHEMA, NESTED_ROWS, File.binread(path))
     end
   end
 
   def test_large_values_and_many_rows
-    schema = Parakiet::Schema.define do
+    schema = Herringbone::Schema.define do
       string :big
       int64 :n, null: false
     end
