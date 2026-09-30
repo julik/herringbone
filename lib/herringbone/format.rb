@@ -292,6 +292,35 @@ module Herringbone
       field 7, :ordinal, :i16
     end
 
+    module BoundaryOrder
+      UNORDERED = 0
+      ASCENDING = 1
+      DESCENDING = 2
+      NAMES = constants.to_h { |c| [const_get(c), c] }.freeze
+    end
+
+    # Page index structures (stored between the row groups and the footer)
+    class PageLocation < S
+      field 1, :offset, :i64
+      field 2, :compressed_page_size, :i32
+      field 3, :first_row_index, :i64
+    end
+
+    class OffsetIndex < S
+      field 1, :page_locations, [:list, PageLocation]
+      field 2, :unencoded_byte_array_data_bytes, [:list, :i64]
+    end
+
+    class ColumnIndex < S
+      field 1, :null_pages, [:list, :bool]
+      field 2, :min_values, [:list, :binary]
+      field 3, :max_values, [:list, :binary]
+      field 4, :boundary_order, :i32
+      field 5, :null_counts, [:list, :i64]
+      field 6, :repetition_level_histograms, [:list, :i64]
+      field 7, :definition_level_histograms, [:list, :i64]
+    end
+
     class ColumnOrder < S
       field 1, :type_order, TypeDefinedOrder
     end
