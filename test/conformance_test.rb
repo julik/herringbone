@@ -21,12 +21,7 @@ class ConformanceTest < Minitest::Test
     define_method("test_#{name.gsub(/[^a-z0-9]+/i, "_")}") do
       skip SKIPS[name] if SKIPS[name]
       skip "pyarrow cannot read this file either: #{expected["error"]}" if expected["error"] && !expected["rows"]
-      begin
-        check_file(parquet_path, expected)
-      rescue Parakiet::UnsupportedError => e
-        raise unless e.message.include?("gem")
-        skip e.message
-      end
+      check_file(parquet_path, expected)
     end
   end
 

@@ -2,10 +2,12 @@
 
 require "zlib"
 require "stringio"
+require "zstd-ruby"
+require "brotli"
 
 module Parakiet
-  # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby;
-  # ZSTD and Brotli are used if the zstd-ruby / brotli gems can be loaded.
+  # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby,
+  # GZIP uses zlib, ZSTD and Brotli use the zstd-ruby and brotli gems.
   module Compression
     module_function
 
@@ -29,8 +31,8 @@ module Parakiet
       when Format::Codec::GZIP then gunzip(data)
       when Format::Codec::LZ4_RAW then Codecs::LZ4.decompress_block(data, uncompressed_size)
       when Format::Codec::LZ4 then Codecs::LZ4.decompress_hadoop(data, uncompressed_size)
-      when Format::Codec::ZSTD then zstd.decompress(data)
-      when Format::Codec::BROTLI then brotli.inflate(data)
+      when Format::Codec::ZSTD then ::Zstd.decompress(data)
+      when Format::Codec::BROTLI then ::Brotli.inflate(data)
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
       end
@@ -48,8 +50,8 @@ module Parakiet
       when Format::Codec::GZIP then Zlib.gzip(data)
       when Format::Codec::LZ4_RAW then Codecs::LZ4.compress_block(data)
       when Format::Codec::LZ4 then Codecs::LZ4.compress_hadoop(data)
-      when Format::Codec::ZSTD then zstd.compress(data)
-      when Format::Codec::BROTLI then brotli.deflate(data)
+      when Format::Codec::ZSTD then ::Zstd.compress(data)
+      when Format::Codec::BROTLI then ::Brotli.deflate(data)
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
       end.b
@@ -68,24 +70,6 @@ module Parakiet
         io.pos -= unused.bytesize
       end
       out
-    end
-
-    def zstd
-      @zstd ||= begin
-        require "zstd-ruby"
-        ::Zstd
-      rescue LoadError
-        raise UnsupportedError, "ZSTD compression requires the zstd-ruby gem"
-      end
-    end
-
-    def brotli
-      @brotli ||= begin
-        require "brotli"
-        ::Brotli
-      rescue LoadError
-        raise UnsupportedError, "Brotli compression requires the brotli gem"
-      end
     end
   end
 end

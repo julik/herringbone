@@ -50,13 +50,9 @@ module Canonical
       else
         { "base64" => [v].pack("m0") }
       end
-    when Rational then decimal(v, a)
+    when BigDecimal then decimal(v, a)
     else
-      if defined?(BigDecimal) && v.is_a?(BigDecimal)
-        decimal(v, a)
-      else
-        v
-      end
+      v
     end
   end
 

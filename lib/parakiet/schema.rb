@@ -238,7 +238,7 @@ module Parakiet
           [:timestamp, { unit: :micros }]
         elsif classes.all? { |c| c <= Date && !(c <= DateTime) }
           [:date]
-        elsif defined?(BigDecimal) && classes.all? { |c| c <= BigDecimal || c <= Integer }
+        elsif classes.all? { |c| c <= BigDecimal || c <= Integer }
           scale = values.map { |v| v.is_a?(BigDecimal) ? v.to_s("F").split(".")[1].to_s.sub(/0+\z/, "").size : 0 }.max
           [:decimal, { precision: 38, scale: scale }]
         else

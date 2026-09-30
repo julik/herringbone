@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "date"
+require "bigdecimal"
 
 module Parakiet
   # Conversion between physical Parquet values and Ruby objects, driven by the
@@ -12,7 +13,7 @@ module Parakiet
   #   DATE                  <-> Date
   #   TIMESTAMP, INT96      <-> Time (UTC)
   #   TIME                  <-> Integer in the column's unit since midnight
-  #   DECIMAL               <-> BigDecimal (Rational if bigdecimal cannot be loaded)
+  #   DECIMAL               <-> BigDecimal
   #   UUID                  <-> String "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   #   FLOAT16               <-> Float
   module Types
@@ -28,12 +29,6 @@ module Parakiet
     UNIT_DIVISORS = { millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000 }.freeze
     UNIT_NAMES = { millis: :millisecond, micros: :microsecond, nanos: :nanosecond }.freeze
 
-    BIGDECIMAL_AVAILABLE = begin
-      require "bigdecimal"
-      true
-    rescue LoadError
-      false
-    end
 
     def lt(**kw) = Format::LogicalType.new(**kw)
 
@@ -191,12 +186,7 @@ module Parakiet
     end
 
     def decimal_reader(type, scale)
-      to_decimal = if BIGDECIMAL_AVAILABLE
-        scale.zero? ? ->(i) { BigDecimal(i) } : ->(i) { BigDecimal("#{i}e-#{scale}") }
-      else
-        denom = 10**scale
-        ->(i) { Rational(i, denom) }
-      end
+      to_decimal = scale.zero? ? ->(i) { BigDecimal(i) } : ->(i) { BigDecimal("#{i}e-#{scale}") }
       case type
       when T::INT32, T::INT64 then to_decimal
       when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY

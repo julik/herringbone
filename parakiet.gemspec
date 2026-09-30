@@ -16,4 +16,8 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
   spec.executables = ["parakiet"]
   spec.require_paths = ["lib"]
+
+  spec.add_dependency "bigdecimal"
+  spec.add_dependency "brotli"
+  spec.add_dependency "zstd-ruby"
 end

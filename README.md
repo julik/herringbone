@@ -14,9 +14,8 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 gem "parakiet"
 ```
 
-GZIP works out of the box (via `zlib`). ZSTD and Brotli are used when the
-`zstd-ruby` / `brotli` gems are installed; without them, reading such a file raises
-`Parakiet::UnsupportedError`.
+Snappy and LZ4 are implemented in Ruby, GZIP uses `zlib`, and ZSTD and Brotli come from the
+`zstd-ruby` and `brotli` gems (runtime dependencies, along with `bigdecimal`).
 
 ## Reading
 
@@ -97,7 +96,7 @@ Writer options:
 | DATE | `Date` (proleptic Gregorian) |
 | TIMESTAMP, INT96 | `Time` (UTC) |
 | TIME | `Integer` in the column's unit since midnight |
-| DECIMAL | `BigDecimal` (or `Rational` if `bigdecimal` cannot be loaded) |
+| DECIMAL | `BigDecimal` |
 | UUID | `String` like `"0f1e2d3c-..."` |
 | struct / list / map | `Hash` / `Array` / `Hash` |
 
