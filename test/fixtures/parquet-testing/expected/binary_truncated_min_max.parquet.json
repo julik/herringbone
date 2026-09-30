@@ -1,0 +1,287 @@
+{
+ "num_rows": 12,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 55.1.0",
+ "schema": [
+  {
+   "path": [
+    "utf8_full_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "binary_full_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "utf8_partial_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "binary_partial_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "utf8_no_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "binary_no_truncation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  12
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "utf8_full_truncation",
+  "binary_full_truncation",
+  "utf8_partial_truncation",
+  "binary_partial_truncation",
+  "utf8_no_truncation",
+  "binary_no_truncation"
+ ],
+ "rows": [
+  {
+   "utf8_full_truncation": "Blart Versenwald III",
+   "binary_full_truncation": {
+    "base64": "QmxhcnQgVmVyc2Vud2FsZCBJSUk="
+   },
+   "utf8_partial_truncation": "Blart Versenwald III",
+   "binary_partial_truncation": {
+    "base64": "QmxhcnQgVmVyc2Vud2FsZCBJSUk="
+   },
+   "utf8_no_truncation": "Blart Versenwald III",
+   "binary_no_truncation": {
+    "base64": "QmxhcnQgVmVyc2Vud2FsZCBJSUk="
+   }
+  },
+  {
+   "utf8_full_truncation": "Alice Johnson",
+   "binary_full_truncation": {
+    "base64": "QWxpY2UgSm9obnNvbg=="
+   },
+   "utf8_partial_truncation": "Alice Johnson",
+   "binary_partial_truncation": {
+    "base64": "QWxpY2UgSm9obnNvbg=="
+   },
+   "utf8_no_truncation": "Al",
+   "binary_no_truncation": {
+    "base64": "QWw="
+   }
+  },
+  {
+   "utf8_full_truncation": "Bob Smith",
+   "binary_full_truncation": {
+    "base64": "Qm9iIFNtaXRo"
+   },
+   "utf8_partial_truncation": "Bob Smith",
+   "binary_partial_truncation": {
+    "base64": "Qm9iIFNtaXRo"
+   },
+   "utf8_no_truncation": "Bob Smith",
+   "binary_no_truncation": {
+    "base64": "Qm9iIFNtaXRo"
+   }
+  },
+  {
+   "utf8_full_truncation": "Charlie Brown",
+   "binary_full_truncation": {
+    "base64": "Q2hhcmxpZSBCcm93bg=="
+   },
+   "utf8_partial_truncation": "Charlie Brown",
+   "binary_partial_truncation": {
+    "base64": "Q2hhcmxpZSBCcm93bg=="
+   },
+   "utf8_no_truncation": "Charlie Brown",
+   "binary_no_truncation": {
+    "base64": "Q2hhcmxpZSBCcm93bg=="
+   }
+  },
+  {
+   "utf8_full_truncation": "Diana Prince",
+   "binary_full_truncation": {
+    "base64": "RGlhbmEgUHJpbmNl"
+   },
+   "utf8_partial_truncation": "Diana Prince",
+   "binary_partial_truncation": {
+    "base64": "RGlhbmEgUHJpbmNl"
+   },
+   "utf8_no_truncation": "Diana Prince",
+   "binary_no_truncation": {
+    "base64": "RGlhbmEgUHJpbmNl"
+   }
+  },
+  {
+   "utf8_full_truncation": "Edward Norton",
+   "binary_full_truncation": {
+    "base64": "RWR3YXJkIE5vcnRvbg=="
+   },
+   "utf8_partial_truncation": "Edward Norton",
+   "binary_partial_truncation": {
+    "base64": "RWR3YXJkIE5vcnRvbg=="
+   },
+   "utf8_no_truncation": "Edward Norton",
+   "binary_no_truncation": {
+    "base64": "RWR3YXJkIE5vcnRvbg=="
+   }
+  },
+  {
+   "utf8_full_truncation": "Fiona Apple",
+   "binary_full_truncation": {
+    "base64": "RmlvbmEgQXBwbGU="
+   },
+   "utf8_partial_truncation": "Fiona Apple",
+   "binary_partial_truncation": {
+    "base64": "RmlvbmEgQXBwbGU="
+   },
+   "utf8_no_truncation": "Fiona Apple",
+   "binary_no_truncation": {
+    "base64": "RmlvbmEgQXBwbGU="
+   }
+  },
+  {
+   "utf8_full_truncation": "George Lucas",
+   "binary_full_truncation": {
+    "base64": "R2VvcmdlIEx1Y2Fz"
+   },
+   "utf8_partial_truncation": "George Lucas",
+   "binary_partial_truncation": {
+    "base64": "R2VvcmdlIEx1Y2Fz"
+   },
+   "utf8_no_truncation": "George Lucas",
+   "binary_no_truncation": {
+    "base64": "R2VvcmdlIEx1Y2Fz"
+   }
+  },
+  {
+   "utf8_full_truncation": "Helen Keller",
+   "binary_full_truncation": {
+    "base64": "SGVsZW4gS2VsbGVy"
+   },
+   "utf8_partial_truncation": "Helen Keller",
+   "binary_partial_truncation": {
+    "base64": "SGVsZW4gS2VsbGVy"
+   },
+   "utf8_no_truncation": "Helen Keller",
+   "binary_no_truncation": {
+    "base64": "SGVsZW4gS2VsbGVy"
+   }
+  },
+  {
+   "utf8_full_truncation": "Ivan Drago",
+   "binary_full_truncation": {
+    "base64": "SXZhbiBEcmFnbw=="
+   },
+   "utf8_partial_truncation": "Ivan Drago",
+   "binary_partial_truncation": {
+    "base64": "SXZhbiBEcmFnbw=="
+   },
+   "utf8_no_truncation": "Ivan Drago",
+   "binary_no_truncation": {
+    "base64": "SXZhbiBEcmFnbw=="
+   }
+  },
+  {
+   "utf8_full_truncation": "Julia Roberts",
+   "binary_full_truncation": {
+    "base64": "SnVsaWEgUm9iZXJ0cw=="
+   },
+   "utf8_partial_truncation": "Julia Roberts",
+   "binary_partial_truncation": {
+    "base64": "SnVsaWEgUm9iZXJ0cw=="
+   },
+   "utf8_no_truncation": "Julia Roberts",
+   "binary_no_truncation": {
+    "base64": "SnVsaWEgUm9iZXJ0cw=="
+   }
+  },
+  {
+   "utf8_full_truncation": "Kevin Bacon",
+   "binary_full_truncation": {
+    "base64": "S2V2aW4gQmFjb24="
+   },
+   "utf8_partial_truncation": "🚀Kevin Bacon",
+   "binary_partial_truncation": {
+    "base64": "//8BAg=="
+   },
+   "utf8_no_truncation": "Ke",
+   "binary_no_truncation": {
+    "base64": "S2U="
+   }
+  }
+ ],
+ "row_hash": "6d5a0b81f3846868ae7921f40e3682e70997ad29ba64e6e669521b808ed9c790"
+}

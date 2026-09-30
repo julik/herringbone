@@ -1,0 +1,53 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.18.0-SNAPSHOT (build 1a9e455655604acf09cdd45b4e2958661d38281c)",
+ "schema": [
+  {
+   "path": [
+    "bson_field"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "BSON",
+   "converted_type": "BSON",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "bson_field"
+ ],
+ "rows": [
+  {
+   "bson_field": {
+    "base64": "DAAAABBhAAEAAAAA"
+   }
+  },
+  {
+   "bson_field": {
+    "base64": "DwAAABBhAAEAAAAKYgAA"
+   }
+  },
+  {
+   "bson_field": null
+  }
+ ],
+ "row_hash": "c7d4b1fb810b894222f70aaecc21311fa7175148010043434ce8b6b5b8af743b"
+}

@@ -1,0 +1,176 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 53.2.0",
+ "schema": [
+  {
+   "path": [
+    "my_map",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "my_map",
+    "key_value",
+    "value"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "my_map_no_v",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "my_list",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "my_map",
+  "my_map_no_v",
+  "my_list"
+ ],
+ "rows": [
+  {
+   "my_map": [
+    [
+     1,
+     null
+    ],
+    [
+     2,
+     null
+    ],
+    [
+     3,
+     null
+    ]
+   ],
+   "my_map_no_v": [
+    1,
+    2,
+    3
+   ],
+   "my_list": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "my_map": [
+    [
+     4,
+     null
+    ],
+    [
+     5,
+     null
+    ],
+    [
+     6,
+     null
+    ]
+   ],
+   "my_map_no_v": [
+    4,
+    5,
+    6
+   ],
+   "my_list": [
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "my_map": [
+    [
+     7,
+     null
+    ],
+    [
+     8,
+     null
+    ],
+    [
+     9,
+     null
+    ]
+   ],
+   "my_map_no_v": [
+    7,
+    8,
+    9
+   ],
+   "my_list": [
+    7,
+    8,
+    9
+   ]
+  }
+ ],
+ "row_hash": "943501002a18e780d51cce00fa855335701493103df5fb74dcd6e9f2fb52c713"
+}

@@ -1,0 +1,190 @@
+{
+ "num_rows": 2000,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "s"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  2000
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "s"
+ ],
+ "rows": [
+  {
+   "s": "unique-string-value-000000"
+  },
+  {
+   "s": "unique-string-value-000001"
+  },
+  {
+   "s": "unique-string-value-000002"
+  },
+  {
+   "s": "unique-string-value-000003"
+  },
+  {
+   "s": "unique-string-value-000004"
+  },
+  {
+   "s": "unique-string-value-000005"
+  },
+  {
+   "s": "unique-string-value-000006"
+  },
+  {
+   "s": "unique-string-value-000007"
+  },
+  {
+   "s": "unique-string-value-000008"
+  },
+  {
+   "s": "unique-string-value-000009"
+  },
+  {
+   "s": "unique-string-value-000010"
+  },
+  {
+   "s": "unique-string-value-000011"
+  },
+  {
+   "s": "unique-string-value-000012"
+  },
+  {
+   "s": "unique-string-value-000013"
+  },
+  {
+   "s": "unique-string-value-000014"
+  },
+  {
+   "s": "unique-string-value-000015"
+  },
+  {
+   "s": "unique-string-value-000016"
+  },
+  {
+   "s": "unique-string-value-000017"
+  },
+  {
+   "s": "unique-string-value-000018"
+  },
+  {
+   "s": "unique-string-value-000019"
+  },
+  {
+   "s": "unique-string-value-000020"
+  },
+  {
+   "s": "unique-string-value-000021"
+  },
+  {
+   "s": "unique-string-value-000022"
+  },
+  {
+   "s": "unique-string-value-000023"
+  },
+  {
+   "s": "unique-string-value-000024"
+  },
+  {
+   "s": "unique-string-value-000025"
+  },
+  {
+   "s": "unique-string-value-000026"
+  },
+  {
+   "s": "unique-string-value-000027"
+  },
+  {
+   "s": "unique-string-value-000028"
+  },
+  {
+   "s": "unique-string-value-000029"
+  },
+  {
+   "s": "unique-string-value-000030"
+  },
+  {
+   "s": "unique-string-value-000031"
+  },
+  {
+   "s": "unique-string-value-000032"
+  },
+  {
+   "s": "unique-string-value-000033"
+  },
+  {
+   "s": "unique-string-value-000034"
+  },
+  {
+   "s": "unique-string-value-000035"
+  },
+  {
+   "s": "unique-string-value-000036"
+  },
+  {
+   "s": "unique-string-value-000037"
+  },
+  {
+   "s": "unique-string-value-000038"
+  },
+  {
+   "s": "unique-string-value-000039"
+  },
+  {
+   "s": "unique-string-value-000040"
+  },
+  {
+   "s": "unique-string-value-000041"
+  },
+  {
+   "s": "unique-string-value-000042"
+  },
+  {
+   "s": "unique-string-value-000043"
+  },
+  {
+   "s": "unique-string-value-000044"
+  },
+  {
+   "s": "unique-string-value-000045"
+  },
+  {
+   "s": "unique-string-value-000046"
+  },
+  {
+   "s": "unique-string-value-000047"
+  },
+  {
+   "s": "unique-string-value-000048"
+  },
+  {
+   "s": "unique-string-value-000049"
+  }
+ ],
+ "row_hash": "3fdd66ac035b7e18b207bdc03f485b10b0af1ea20705d2bba8bf945d7606da24"
+}

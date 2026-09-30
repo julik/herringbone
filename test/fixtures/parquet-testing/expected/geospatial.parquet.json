@@ -1,0 +1,1114 @@
+{
+ "num_rows": 196,
+ "num_row_groups": 31,
+ "created_by": "parquet-cpp-arrow version 20.0.0-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "group"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "wkt"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "geometry"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "Geometry(crs=)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  28,
+  28,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  5,
+  9,
+  4,
+  4,
+  4,
+  4,
+  4,
+  5,
+  9,
+  4,
+  4,
+  4,
+  4,
+  4,
+  5,
+  9,
+  4,
+  4,
+  4,
+  4,
+  4,
+  5,
+  9
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "group",
+  "wkt",
+  "geometry"
+ ],
+ "rows": [
+  {
+   "group": "all",
+   "wkt": "POINT (30 10)",
+   "geometry": {
+    "base64": "AQEAAAAAAAAAAAA+QAAAAAAAACRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "LINESTRING (30 10, 10 30, 40 40)",
+   "geometry": {
+    "base64": "AQIAAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAACRAAAAAAAAAPkAAAAAAAABEQAAAAAAAAERA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POLYGON ((30 10, 40 40, 20 40, 10 20, 30 10))",
+   "geometry": {
+    "base64": "AQMAAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAANEAAAAAAAABEQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAACRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOINT ((30 10))",
+   "geometry": {
+    "base64": "AQQAAAABAAAAAQEAAAAAAAAAAAA+QAAAAAAAACRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTILINESTRING ((30 10, 10 30, 40 40))",
+   "geometry": {
+    "base64": "AQUAAAABAAAAAQIAAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAACRAAAAAAAAAPkAAAAAAAABEQAAAAAAAAERA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOLYGON (((30 10, 40 40, 20 40, 10 20, 30 10)))",
+   "geometry": {
+    "base64": "AQYAAAABAAAAAQMAAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAANEAAAAAAAABEQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAACRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "GEOMETRYCOLLECTION (POINT (30 10), LINESTRING (30 10, 10 30, 40 40), POLYGON ((30 10, 40 40, 20 40, 10 20, 30 10)), MULTIPOINT ((30 10)), MULTILINESTRING ((30 10, 10 30, 40 40)), MULTIPOLYGON (((30 10, 40 40, 20 40, 10 20, 30 10))))",
+   "geometry": {
+    "base64": "AQcAAAAGAAAAAQEAAAAAAAAAAAA+QAAAAAAAACRAAQIAAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAACRAAAAAAAAAPkAAAAAAAABEQAAAAAAAAERAAQMAAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAANEAAAAAAAABEQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAACRAAQQAAAABAAAAAQEAAAAAAAAAAAA+QAAAAAAAACRAAQUAAAABAAAAAQIAAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAACRAAAAAAAAAPkAAAAAAAABEQAAAAAAAAERAAQYAAAABAAAAAQMAAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAANEAAAAAAAABEQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAACRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POINT Z (30 10 40)",
+   "geometry": {
+    "base64": "AekDAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "LINESTRING Z (30 10 40, 10 30 40, 40 40 80)",
+   "geometry": {
+    "base64": "AeoDAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAAAAJEAAAAAAAAA+QAAAAAAAAERAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POLYGON Z ((30 10 40, 40 40 80, 20 40 60, 10 20 30, 30 10 40))",
+   "geometry": {
+    "base64": "AesDAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAADRAAAAAAAAAREAAAAAAAABOQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOINT Z ((30 10 40))",
+   "geometry": {
+    "base64": "AewDAAABAAAAAekDAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTILINESTRING Z ((30 10 40, 10 30 40, 40 40 80))",
+   "geometry": {
+    "base64": "Ae0DAAABAAAAAeoDAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAAAAJEAAAAAAAAA+QAAAAAAAAERAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOLYGON Z (((30 10 40, 40 40 80, 20 40 60, 10 20 30, 30 10 40)))",
+   "geometry": {
+    "base64": "Ae4DAAABAAAAAesDAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAADRAAAAAAAAAREAAAAAAAABOQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "GEOMETRYCOLLECTION Z (POINT Z (30 10 40), LINESTRING Z (30 10 40, 10 30 40, 40 40 80), POLYGON Z ((30 10 40, 40 40 80, 20 40 60, 10 20 30, 30 10 40)), MULTIPOINT Z ((30 10 40)), MULTILINESTRING Z ((30 10 40, 10 30 40, 40 40 80)), MULTIPOLYGON Z (((30 10 40, 40 40 80, 20 40 60, 10 20 30, 30 10 40))))",
+   "geometry": {
+    "base64": "Ae8DAAAGAAAAAekDAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAB6gMAAAMAAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAAAkQAAAAAAAAD5AAAAAAAAAREAAAAAAAABEQAAAAAAAAERAAAAAAAAAVEAB6wMAAAEAAAAFAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRAAAAAAAAANEAAAAAAAABEQAAAAAAAAE5AAAAAAAAAJEAAAAAAAAA0QAAAAAAAAD5AAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAewDAAABAAAAAekDAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAB7QMAAAEAAAAB6gMAAAMAAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAAAkQAAAAAAAAD5AAAAAAAAAREAAAAAAAABEQAAAAAAAAERAAAAAAAAAVEAB7gMAAAEAAAAB6wMAAAEAAAAFAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRAAAAAAAAANEAAAAAAAABEQAAAAAAAAE5AAAAAAAAAJEAAAAAAAAA0QAAAAAAAAD5AAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POINT M (30 10 300)",
+   "geometry": {
+    "base64": "AdEHAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "LINESTRING M (30 10 300, 10 30 300, 40 40 1600)",
+   "geometry": {
+    "base64": "AdIHAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJAAAAAAAAAJEAAAAAAAAA+QAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAJlA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POLYGON M ((30 10 300, 40 40 1600, 20 40 800, 10 20 200, 30 10 300))",
+   "geometry": {
+    "base64": "AdMHAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAACZQAAAAAAAADRAAAAAAAAAREAAAAAAAACJQAAAAAAAACRAAAAAAAAANEAAAAAAAABpQAAAAAAAAD5AAAAAAAAAJEAAAAAAAMByQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOINT M ((30 10 300))",
+   "geometry": {
+    "base64": "AdQHAAABAAAAAdEHAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTILINESTRING M ((30 10 300, 10 30 300, 40 40 1600))",
+   "geometry": {
+    "base64": "AdUHAAABAAAAAdIHAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJAAAAAAAAAJEAAAAAAAAA+QAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAJlA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOLYGON M (((30 10 300, 40 40 1600, 20 40 800, 10 20 200, 30 10 300)))",
+   "geometry": {
+    "base64": "AdYHAAABAAAAAdMHAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAACZQAAAAAAAADRAAAAAAAAAREAAAAAAAACJQAAAAAAAACRAAAAAAAAANEAAAAAAAABpQAAAAAAAAD5AAAAAAAAAJEAAAAAAAMByQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "GEOMETRYCOLLECTION M (POINT M (30 10 300), LINESTRING M (30 10 300, 10 30 300, 40 40 1600), POLYGON M ((30 10 300, 40 40 1600, 20 40 800, 10 20 200, 30 10 300)), MULTIPOINT M ((30 10 300)), MULTILINESTRING M ((30 10 300, 10 30 300, 40 40 1600)), MULTIPOLYGON M (((30 10 300, 40 40 1600, 20 40 800, 10 20 200, 30 10 300))))",
+   "geometry": {
+    "base64": "AdcHAAAGAAAAAdEHAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckAB0gcAAAMAAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckAAAAAAAAAkQAAAAAAAAD5AAAAAAADAckAAAAAAAABEQAAAAAAAAERAAAAAAAAAmUAB0wcAAAEAAAAFAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAJlAAAAAAAAANEAAAAAAAABEQAAAAAAAAIlAAAAAAAAAJEAAAAAAAAA0QAAAAAAAAGlAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJAAdQHAAABAAAAAdEHAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckAB1QcAAAEAAAAB0gcAAAMAAAAAAAAAAAA+QAAAAAAAACRAAAAAAADAckAAAAAAAAAkQAAAAAAAAD5AAAAAAADAckAAAAAAAABEQAAAAAAAAERAAAAAAAAAmUAB1gcAAAEAAAAB0wcAAAEAAAAFAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAJlAAAAAAAAANEAAAAAAAABEQAAAAAAAAIlAAAAAAAAAJEAAAAAAAAA0QAAAAAAAAGlAAAAAAAAAPkAAAAAAAAAkQAAAAAAAwHJA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POINT ZM (30 10 40 300)",
+   "geometry": {
+    "base64": "AbkLAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "LINESTRING ZM (30 10 40 300, 10 30 40 300, 40 40 80 1600)",
+   "geometry": {
+    "base64": "AboLAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAADAckAAAAAAAAAkQAAAAAAAAD5AAAAAAAAAREAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAAJlA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "POLYGON ZM ((30 10 40 300, 40 40 80 1600, 20 40 60 800, 10 20 30 200, 30 10 40 300))",
+   "geometry": {
+    "base64": "AbsLAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRAAAAAAAAAmUAAAAAAAAA0QAAAAAAAAERAAAAAAAAATkAAAAAAAACJQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAAGlAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAADAckA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOINT ZM ((30 10 40 300))",
+   "geometry": {
+    "base64": "AbwLAAABAAAAAbkLAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQA=="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTILINESTRING ZM ((30 10 40 300, 10 30 40 300, 40 40 80 1600))",
+   "geometry": {
+    "base64": "Ab0LAAABAAAAAboLAAADAAAAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAADAckAAAAAAAAAkQAAAAAAAAD5AAAAAAAAAREAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAAJlA"
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "MULTIPOLYGON ZM (((30 10 40 300, 40 40 80 1600, 20 40 60 800, 10 20 30 200, 30 10 40 300)))",
+   "geometry": {
+    "base64": "Ab4LAAABAAAAAbsLAAABAAAABQAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJAAAAAAAAAREAAAAAAAABEQAAAAAAAAFRAAAAAAAAAmUAAAAAAAAA0QAAAAAAAAERAAAAAAAAATkAAAAAAAACJQAAAAAAAACRAAAAAAAAANEAAAAAAAAA+QAAAAAAAAGlAAAAAAAAAPkAAAAAAAAAkQAAAAAAAAERAAAAAAADAckA="
+   }
+  },
+  {
+   "group": "all",
+   "wkt": "GEOMETRYCOLLECTION ZM (POINT ZM (30 10 40 300), LINESTRING ZM (30 10 40 300, 10 30 40 300, 40 40 80 1600), POLYGON ZM ((30 10 40 300, 40 40 80 1600, 20 40 60 800, 10 20 30 200, 30 10 40 300)), MULTIPOINT ZM ((30 10 40 300)), MULTILINESTRING ZM ((30 10 40 300, 10 30 40 300, 40 40 80 1600)), MULTIPOLYGON ZM (((30 10 40 300, 40 40 80 1600, 20 40 60 800, 10 20 30 200, 30 10 40 300))))",
+   "geometry": {
+    "base64": "Ab8LAAAGAAAAAbkLAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQAG6CwAAAwAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJAAAAAAAAAJEAAAAAAAAA+QAAAAAAAAERAAAAAAADAckAAAAAAAABEQAAAAAAAAERAAAAAAAAAVEAAAAAAAACZQAG7CwAAAQAAAAUAAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAAJlAAAAAAAAANEAAAAAAAABEQAAAAAAAAE5AAAAAAAAAiUAAAAAAAAAkQAAAAAAAADRAAAAAAAAAPkAAAAAAAABpQAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJAAbwLAAABAAAAAbkLAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQAG9CwAAAQAAAAG6CwAAAwAAAAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJAAAAAAAAAJEAAAAAAAAA+QAAAAAAAAERAAAAAAADAckAAAAAAAABEQAAAAAAAAERAAAAAAAAAVEAAAAAAAACZQAG+CwAAAQAAAAG7CwAAAQAAAAUAAAAAAAAAAAA+QAAAAAAAACRAAAAAAAAAREAAAAAAAMByQAAAAAAAAERAAAAAAAAAREAAAAAAAABUQAAAAAAAAJlAAAAAAAAANEAAAAAAAABEQAAAAAAAAE5AAAAAAAAAiUAAAAAAAAAkQAAAAAAAADRAAAAAAAAAPkAAAAAAAABpQAAAAAAAAD5AAAAAAAAAJEAAAAAAAABEQAAAAAAAwHJA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POINT EMPTY",
+   "geometry": {
+    "base64": "AQEAAAAAAAAAAAD4fwAAAAAAAPh/"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "LINESTRING EMPTY",
+   "geometry": {
+    "base64": "AQIAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POLYGON EMPTY",
+   "geometry": {
+    "base64": "AQMAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOINT EMPTY",
+   "geometry": {
+    "base64": "AQQAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTILINESTRING EMPTY",
+   "geometry": {
+    "base64": "AQUAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOLYGON EMPTY",
+   "geometry": {
+    "base64": "AQYAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "GEOMETRYCOLLECTION EMPTY",
+   "geometry": {
+    "base64": "AQcAAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POINT Z EMPTY",
+   "geometry": {
+    "base64": "AekDAAAAAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8="
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "LINESTRING Z EMPTY",
+   "geometry": {
+    "base64": "AeoDAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POLYGON Z EMPTY",
+   "geometry": {
+    "base64": "AesDAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOINT Z EMPTY",
+   "geometry": {
+    "base64": "AewDAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTILINESTRING Z EMPTY",
+   "geometry": {
+    "base64": "Ae0DAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOLYGON Z EMPTY",
+   "geometry": {
+    "base64": "Ae4DAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "GEOMETRYCOLLECTION Z EMPTY",
+   "geometry": {
+    "base64": "Ae8DAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POINT M EMPTY",
+   "geometry": {
+    "base64": "AdEHAAAAAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8="
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "LINESTRING M EMPTY",
+   "geometry": {
+    "base64": "AdIHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POLYGON M EMPTY",
+   "geometry": {
+    "base64": "AdMHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOINT M EMPTY",
+   "geometry": {
+    "base64": "AdQHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTILINESTRING M EMPTY",
+   "geometry": {
+    "base64": "AdUHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "MULTIPOLYGON M EMPTY",
+   "geometry": {
+    "base64": "AdYHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "GEOMETRYCOLLECTION M EMPTY",
+   "geometry": {
+    "base64": "AdcHAAAAAAAA"
+   }
+  },
+  {
+   "group": "empty-geometries",
+   "wkt": "POINT ZM EMPTY",
+   "geometry": {
+    "base64": "AbkLAAAAAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fw=="
+   }
+  }
+ ],
+ "row_hash": "63f7c419e92add2bfd87408ef792bd42b3892d387185ea0b519bab18d6a863ce"
+}

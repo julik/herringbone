@@ -1,0 +1,209 @@
+{
+ "num_rows": 5,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "i8"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=8, isSigned=true)",
+   "converted_type": "INT_8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i16"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=16, isSigned=true)",
+   "converted_type": "INT_16",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i32"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i64"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "u8"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=8, isSigned=false)",
+   "converted_type": "UINT_8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "u16"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=16, isSigned=false)",
+   "converted_type": "UINT_16",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "u32"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=32, isSigned=false)",
+   "converted_type": "UINT_32",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "u64"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  5
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "i8",
+  "i16",
+  "i32",
+  "i64",
+  "u8",
+  "u16",
+  "u32",
+  "u64"
+ ],
+ "rows": [
+  {
+   "i8": 0,
+   "i16": 0,
+   "i32": 0,
+   "i64": 0,
+   "u8": 0,
+   "u16": 0,
+   "u32": 0,
+   "u64": 0
+  },
+  {
+   "i8": -128,
+   "i16": -32768,
+   "i32": -2147483648,
+   "i64": -9223372036854775808,
+   "u8": 0,
+   "u16": 0,
+   "u32": 0,
+   "u64": 0
+  },
+  {
+   "i8": 127,
+   "i16": 32767,
+   "i32": 2147483647,
+   "i64": 9223372036854775807,
+   "u8": 255,
+   "u16": 65535,
+   "u32": 4294967295,
+   "u64": 18446744073709551615
+  },
+  {
+   "i8": null,
+   "i16": null,
+   "i32": null,
+   "i64": null,
+   "u8": null,
+   "u16": null,
+   "u32": null,
+   "u64": null
+  },
+  {
+   "i8": 1,
+   "i16": 1,
+   "i32": 1,
+   "i64": 1,
+   "u8": 1,
+   "u16": 1,
+   "u32": 2147483648,
+   "u64": 9223372036854775808
+  }
+ ],
+ "row_hash": "33afa41d18f387ead260448df5527cee18dca33f79a48380073b0a219abeaa79"
+}

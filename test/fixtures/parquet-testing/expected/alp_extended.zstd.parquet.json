@@ -1,0 +1,319 @@
+{
+ "num_rows": 9032,
+ "num_row_groups": 5,
+ "created_by": "parquet-cpp-arrow version 23.0.0-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "float_plain"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_plain"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "float_alp_1024"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_alp_1024"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "float_alp_4096"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_alp_4096"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "float_alp_32"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_alp_32"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6144,
+  1024,
+  1024,
+  808,
+  32
+ ],
+ "codecs": [
+  [
+   "ZSTD",
+   "ZSTD",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "ZSTD",
+   "ZSTD",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "ZSTD",
+   "ZSTD",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "ZSTD",
+   "ZSTD",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "ZSTD",
+   "ZSTD",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ],
+   [
+    "RLE",
+    "UNKNOWN"
+   ]
+  ]
+ ],
+ "error": "OSError: Unknown encoding type."
+}

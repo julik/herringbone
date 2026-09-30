@@ -1,0 +1,273 @@
+{
+ "num_rows": 1000,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.13.0-SNAPSHOT (build d057b39d93014fe40f5067ee4a33621e65c91552)",
+ "schema": [
+  {
+   "path": [
+    "flba_field"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 4
+  }
+ ],
+ "row_group_num_rows": [
+  1000
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "flba_field"
+ ],
+ "rows": [
+  {
+   "flba_field": {
+    "base64": "AAAD6A=="
+   }
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": null
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD3g=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD3Q=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD3A=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD2w=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD2g=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD2Q=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD2A=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD1w=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD1g=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD1Q=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD1A=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD0w=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD0g=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD0Q=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAAD0A=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADzw=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADzg=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADzQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADzA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADyw=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADyg=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADyQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADyA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADxw=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADxg=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADxQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADxA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADww=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADwg=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADwQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADwA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADvw=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADvg=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADvQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADvA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADuw=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADug=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADuQ=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADuA=="
+   }
+  },
+  {
+   "flba_field": {
+    "base64": "AAADtw=="
+   }
+  }
+ ],
+ "row_hash": "ce0898796b6f210cc2f6d2e20700d5866d79150011d99b584b607a4962969037"
+}

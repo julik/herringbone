@@ -1,0 +1,387 @@
+{
+ "num_rows": 300,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "i32"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i64"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i32_required"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "i64_monotonic"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  300
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "DELTA_BINARY_PACKED",
+    "RLE"
+   ],
+   [
+    "DELTA_BINARY_PACKED",
+    "RLE"
+   ],
+   [
+    "DELTA_BINARY_PACKED",
+    "RLE"
+   ],
+   [
+    "DELTA_BINARY_PACKED",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "i32",
+  "i64",
+  "i32_required",
+  "i64_monotonic"
+ ],
+ "rows": [
+  {
+   "i32": null,
+   "i64": null,
+   "i32_required": -100,
+   "i64_monotonic": 1600000000000
+  },
+  {
+   "i32": 2147483647,
+   "i64": 9223372036854775807,
+   "i32_required": -97,
+   "i64_monotonic": 1600000001000
+  },
+  {
+   "i32": -2147483648,
+   "i64": -9223372036854775808,
+   "i32_required": -94,
+   "i64_monotonic": 1600000002000
+  },
+  {
+   "i32": 757,
+   "i64": 314187,
+   "i32_required": -91,
+   "i64_monotonic": 1600000003000
+  },
+  {
+   "i32": 676,
+   "i64": -418916,
+   "i32_required": -88,
+   "i64_monotonic": 1600000004000
+  },
+  {
+   "i32": 595,
+   "i64": 523645,
+   "i32_required": -85,
+   "i64_monotonic": 1600000005000
+  },
+  {
+   "i32": 514,
+   "i64": -628374,
+   "i32_required": -82,
+   "i64_monotonic": 1600000006000
+  },
+  {
+   "i32": 433,
+   "i64": 733103,
+   "i32_required": -79,
+   "i64_monotonic": 1600000007000
+  },
+  {
+   "i32": 352,
+   "i64": -837832,
+   "i32_required": -76,
+   "i64_monotonic": 1600000008000
+  },
+  {
+   "i32": 271,
+   "i64": 942561,
+   "i32_required": -73,
+   "i64_monotonic": 1600000009000
+  },
+  {
+   "i32": 190,
+   "i64": -1047290,
+   "i32_required": -70,
+   "i64_monotonic": 1600000010000
+  },
+  {
+   "i32": 109,
+   "i64": 1152019,
+   "i32_required": -67,
+   "i64_monotonic": 1600000011000
+  },
+  {
+   "i32": 28,
+   "i64": -1256748,
+   "i32_required": -64,
+   "i64_monotonic": 1600000012000
+  },
+  {
+   "i32": -53,
+   "i64": 1361477,
+   "i32_required": -61,
+   "i64_monotonic": 1600000013000
+  },
+  {
+   "i32": -134,
+   "i64": -1466206,
+   "i32_required": -58,
+   "i64_monotonic": 1600000014000
+  },
+  {
+   "i32": -215,
+   "i64": 1570935,
+   "i32_required": -55,
+   "i64_monotonic": 1600000015000
+  },
+  {
+   "i32": -296,
+   "i64": -1675664,
+   "i32_required": -52,
+   "i64_monotonic": 1600000016000
+  },
+  {
+   "i32": null,
+   "i64": 1780393,
+   "i32_required": -49,
+   "i64_monotonic": 1600000017000
+  },
+  {
+   "i32": -458,
+   "i64": -1885122,
+   "i32_required": -46,
+   "i64_monotonic": 1600000018000
+  },
+  {
+   "i32": -539,
+   "i64": null,
+   "i32_required": -43,
+   "i64_monotonic": 1600000019000
+  },
+  {
+   "i32": -620,
+   "i64": -2094580,
+   "i32_required": -40,
+   "i64_monotonic": 1600000020000
+  },
+  {
+   "i32": -701,
+   "i64": 2199309,
+   "i32_required": -37,
+   "i64_monotonic": 1600000021000
+  },
+  {
+   "i32": -782,
+   "i64": -2304038,
+   "i32_required": -34,
+   "i64_monotonic": 1600000022000
+  },
+  {
+   "i32": -863,
+   "i64": 2408767,
+   "i32_required": -31,
+   "i64_monotonic": 1600000023000
+  },
+  {
+   "i32": -944,
+   "i64": -2513496,
+   "i32_required": -28,
+   "i64_monotonic": 1600000024000
+  },
+  {
+   "i32": 975,
+   "i64": 2618225,
+   "i32_required": -25,
+   "i64_monotonic": 1600000025000
+  },
+  {
+   "i32": 894,
+   "i64": -2722954,
+   "i32_required": -22,
+   "i64_monotonic": 1600000026000
+  },
+  {
+   "i32": 813,
+   "i64": 2827683,
+   "i32_required": -19,
+   "i64_monotonic": 1600000027000
+  },
+  {
+   "i32": 732,
+   "i64": -2932412,
+   "i32_required": -16,
+   "i64_monotonic": 1600000028000
+  },
+  {
+   "i32": 651,
+   "i64": 3037141,
+   "i32_required": -13,
+   "i64_monotonic": 1600000029000
+  },
+  {
+   "i32": 570,
+   "i64": -3141870,
+   "i32_required": -10,
+   "i64_monotonic": 1600000030000
+  },
+  {
+   "i32": 489,
+   "i64": 3246599,
+   "i32_required": -7,
+   "i64_monotonic": 1600000031000
+  },
+  {
+   "i32": 408,
+   "i64": -3351328,
+   "i32_required": -4,
+   "i64_monotonic": 1600000032000
+  },
+  {
+   "i32": 327,
+   "i64": 3456057,
+   "i32_required": -1,
+   "i64_monotonic": 1600000033000
+  },
+  {
+   "i32": null,
+   "i64": -3560786,
+   "i32_required": 2,
+   "i64_monotonic": 1600000034000
+  },
+  {
+   "i32": 165,
+   "i64": 3665515,
+   "i32_required": 5,
+   "i64_monotonic": 1600000035000
+  },
+  {
+   "i32": 84,
+   "i64": -3770244,
+   "i32_required": 8,
+   "i64_monotonic": 1600000036000
+  },
+  {
+   "i32": 3,
+   "i64": 3874973,
+   "i32_required": 11,
+   "i64_monotonic": 1600000037000
+  },
+  {
+   "i32": -78,
+   "i64": null,
+   "i32_required": 14,
+   "i64_monotonic": 1600000038000
+  },
+  {
+   "i32": -159,
+   "i64": 4084431,
+   "i32_required": 17,
+   "i64_monotonic": 1600000039000
+  },
+  {
+   "i32": -240,
+   "i64": -4189160,
+   "i32_required": 20,
+   "i64_monotonic": 1600000040000
+  },
+  {
+   "i32": -321,
+   "i64": 4293889,
+   "i32_required": 23,
+   "i64_monotonic": 1600000041000
+  },
+  {
+   "i32": -402,
+   "i64": -4398618,
+   "i32_required": 26,
+   "i64_monotonic": 1600000042000
+  },
+  {
+   "i32": -483,
+   "i64": 4503347,
+   "i32_required": 29,
+   "i64_monotonic": 1600000043000
+  },
+  {
+   "i32": -564,
+   "i64": -4608076,
+   "i32_required": 32,
+   "i64_monotonic": 1600000044000
+  },
+  {
+   "i32": -645,
+   "i64": 4712805,
+   "i32_required": 35,
+   "i64_monotonic": 1600000045000
+  },
+  {
+   "i32": -726,
+   "i64": -4817534,
+   "i32_required": 38,
+   "i64_monotonic": 1600000046000
+  },
+  {
+   "i32": -807,
+   "i64": 4922263,
+   "i32_required": 41,
+   "i64_monotonic": 1600000047000
+  },
+  {
+   "i32": -888,
+   "i64": -5026992,
+   "i32_required": 44,
+   "i64_monotonic": 1600000048000
+  },
+  {
+   "i32": -969,
+   "i64": 5131721,
+   "i32_required": 47,
+   "i64_monotonic": 1600000049000
+  }
+ ],
+ "row_hash": "4848b3f82dc525fb3db270ba52c1eba40a07b449243c3b0299397733a2a68309"
+}

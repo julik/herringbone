@@ -1,0 +1,124 @@
+{
+ "num_rows": 0,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "i"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "s"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "l",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "st",
+    "a"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "m",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 2,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "m",
+    "key_value",
+    "value"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  0
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "i",
+  "s",
+  "l",
+  "st",
+  "m"
+ ],
+ "rows": [],
+ "row_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

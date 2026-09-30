@@ -1,0 +1,110 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "d_5_2"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Decimal(precision=5, scale=2)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "precision": 5,
+   "scale": 2
+  },
+  {
+   "path": [
+    "d_9_0"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Decimal(precision=9, scale=0)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "precision": 9,
+   "scale": 0
+  },
+  {
+   "path": [
+    "d_18_6"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Decimal(precision=18, scale=6)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "precision": 18,
+   "scale": 6
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "d_5_2",
+  "d_9_0",
+  "d_18_6"
+ ],
+ "rows": [
+  {
+   "d_5_2": "0.00",
+   "d_9_0": "0",
+   "d_18_6": "0.000000"
+  },
+  {
+   "d_5_2": "1.23",
+   "d_9_0": "1",
+   "d_18_6": "123456789012.345678"
+  },
+  {
+   "d_5_2": "-1.23",
+   "d_9_0": "-1",
+   "d_18_6": "-0.000001"
+  },
+  {
+   "d_5_2": "999.99",
+   "d_9_0": "999999999",
+   "d_18_6": "999999999999.999999"
+  },
+  {
+   "d_5_2": null,
+   "d_9_0": null,
+   "d_18_6": null
+  },
+  {
+   "d_5_2": "-999.99",
+   "d_9_0": "-999999999",
+   "d_18_6": "-1.500000"
+  }
+ ],
+ "row_hash": "ef4369da29e5256f8ca5da1f921ceab8c19cf56052b96ad240d4cbb780fb1bdd"
+}

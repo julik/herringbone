@@ -1,0 +1,43 @@
+{
+ "num_rows": 1,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp version 1.5.1-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "mycol"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "mycol"
+ ],
+ "rows": [
+  {
+   "mycol": null
+  }
+ ],
+ "row_hash": "a4a899dc9a948eb595739214c36f17f910e09b779a5067548a145067e15cf038"
+}

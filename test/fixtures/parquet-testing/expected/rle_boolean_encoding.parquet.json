@@ -1,0 +1,188 @@
+{
+ "num_rows": 68,
+ "num_row_groups": 1,
+ "created_by": "",
+ "schema": [
+  {
+   "path": [
+    "datatype_boolean"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  68
+ ],
+ "codecs": [
+  [
+   "GZIP"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "datatype_boolean"
+ ],
+ "rows": [
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": null
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": null
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": null
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": null
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": true
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": false
+  },
+  {
+   "datatype_boolean": null
+  },
+  {
+   "datatype_boolean": true
+  }
+ ],
+ "row_hash": "c4c8561ee77cda45d2c2ba078d4d3550785d712c81cc0bc2e0119532a2ad9514"
+}

@@ -1,0 +1,99 @@
+{
+ "num_rows": 4,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp version 1.5.1-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "c0"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c1"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "v11"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  4
+ ],
+ "codecs": [
+  [
+   "LZ4",
+   "LZ4",
+   "LZ4"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "c0",
+  "c1",
+  "v11"
+ ],
+ "rows": [
+  {
+   "c0": 1593604800,
+   "c1": {
+    "base64": "YWJj"
+   },
+   "v11": 42.0
+  },
+  {
+   "c0": 1593604800,
+   "c1": {
+    "base64": "ZGVm"
+   },
+   "v11": 7.7
+  },
+  {
+   "c0": 1593604801,
+   "c1": {
+    "base64": "YWJj"
+   },
+   "v11": 42.125
+  },
+  {
+   "c0": 1593604801,
+   "c1": {
+    "base64": "ZGVm"
+   },
+   "v11": 7.7
+  }
+ ],
+ "row_hash": "5bc1d4de31d36a5e4f35130a20283b95cc2550682f0ba1ad7d1fe80bb64a83ab"
+}

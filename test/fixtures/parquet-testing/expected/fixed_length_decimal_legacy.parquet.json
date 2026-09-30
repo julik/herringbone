@@ -1,0 +1,115 @@
+{
+ "num_rows": 24,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.2 (build c6522788629e590a53eb79874b95f6c3ff11f16c)",
+ "schema": [
+  {
+   "path": [
+    "value"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=13, scale=2)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 6,
+   "precision": 13,
+   "scale": 2
+  }
+ ],
+ "row_group_num_rows": [
+  24
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "value"
+ ],
+ "rows": [
+  {
+   "value": "1.00"
+  },
+  {
+   "value": "2.00"
+  },
+  {
+   "value": "3.00"
+  },
+  {
+   "value": "4.00"
+  },
+  {
+   "value": "5.00"
+  },
+  {
+   "value": "6.00"
+  },
+  {
+   "value": "7.00"
+  },
+  {
+   "value": "8.00"
+  },
+  {
+   "value": "9.00"
+  },
+  {
+   "value": "10.00"
+  },
+  {
+   "value": "11.00"
+  },
+  {
+   "value": "12.00"
+  },
+  {
+   "value": "13.00"
+  },
+  {
+   "value": "14.00"
+  },
+  {
+   "value": "15.00"
+  },
+  {
+   "value": "16.00"
+  },
+  {
+   "value": "17.00"
+  },
+  {
+   "value": "18.00"
+  },
+  {
+   "value": "19.00"
+  },
+  {
+   "value": "20.00"
+  },
+  {
+   "value": "21.00"
+  },
+  {
+   "value": "22.00"
+  },
+  {
+   "value": "23.00"
+  },
+  {
+   "value": "24.00"
+  }
+ ],
+ "row_hash": "46836648c5be5c43f49edbf5697b564549f1329343b620c4efdebcc33d4a77fc"
+}

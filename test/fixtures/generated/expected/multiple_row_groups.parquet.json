@@ -1,0 +1,508 @@
+{
+ "num_rows": 55,
+ "num_row_groups": 6,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "id"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "s"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "l",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  10,
+  10,
+  10,
+  10,
+  10,
+  5
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ],
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ],
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ],
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ],
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ],
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ],
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "id",
+  "s",
+  "l"
+ ],
+ "rows": [
+  {
+   "id": 0,
+   "s": null,
+   "l": null
+  },
+  {
+   "id": 1,
+   "s": "row-1",
+   "l": [
+    1
+   ]
+  },
+  {
+   "id": 2,
+   "s": "row-2",
+   "l": [
+    2,
+    2
+   ]
+  },
+  {
+   "id": 3,
+   "s": "row-3",
+   "l": []
+  },
+  {
+   "id": 4,
+   "s": null,
+   "l": [
+    4
+   ]
+  },
+  {
+   "id": 5,
+   "s": "row-5",
+   "l": null
+  },
+  {
+   "id": 6,
+   "s": "row-6",
+   "l": []
+  },
+  {
+   "id": 7,
+   "s": "row-7",
+   "l": [
+    7
+   ]
+  },
+  {
+   "id": 8,
+   "s": null,
+   "l": [
+    8,
+    8
+   ]
+  },
+  {
+   "id": 9,
+   "s": "row-9",
+   "l": []
+  },
+  {
+   "id": 10,
+   "s": "row-10",
+   "l": null
+  },
+  {
+   "id": 11,
+   "s": "row-11",
+   "l": [
+    11,
+    11
+   ]
+  },
+  {
+   "id": 12,
+   "s": null,
+   "l": []
+  },
+  {
+   "id": 13,
+   "s": "row-13",
+   "l": [
+    13
+   ]
+  },
+  {
+   "id": 14,
+   "s": "row-14",
+   "l": [
+    14,
+    14
+   ]
+  },
+  {
+   "id": 15,
+   "s": "row-15",
+   "l": null
+  },
+  {
+   "id": 16,
+   "s": null,
+   "l": [
+    16
+   ]
+  },
+  {
+   "id": 17,
+   "s": "row-17",
+   "l": [
+    17,
+    17
+   ]
+  },
+  {
+   "id": 18,
+   "s": "row-18",
+   "l": []
+  },
+  {
+   "id": 19,
+   "s": "row-19",
+   "l": [
+    19
+   ]
+  },
+  {
+   "id": 20,
+   "s": null,
+   "l": null
+  },
+  {
+   "id": 21,
+   "s": "row-21",
+   "l": []
+  },
+  {
+   "id": 22,
+   "s": "row-22",
+   "l": [
+    22
+   ]
+  },
+  {
+   "id": 23,
+   "s": "row-23",
+   "l": [
+    23,
+    23
+   ]
+  },
+  {
+   "id": 24,
+   "s": null,
+   "l": []
+  },
+  {
+   "id": 25,
+   "s": "row-25",
+   "l": null
+  },
+  {
+   "id": 26,
+   "s": "row-26",
+   "l": [
+    26,
+    26
+   ]
+  },
+  {
+   "id": 27,
+   "s": "row-27",
+   "l": []
+  },
+  {
+   "id": 28,
+   "s": null,
+   "l": [
+    28
+   ]
+  },
+  {
+   "id": 29,
+   "s": "row-29",
+   "l": [
+    29,
+    29
+   ]
+  },
+  {
+   "id": 30,
+   "s": "row-30",
+   "l": null
+  },
+  {
+   "id": 31,
+   "s": "row-31",
+   "l": [
+    31
+   ]
+  },
+  {
+   "id": 32,
+   "s": null,
+   "l": [
+    32,
+    32
+   ]
+  },
+  {
+   "id": 33,
+   "s": "row-33",
+   "l": []
+  },
+  {
+   "id": 34,
+   "s": "row-34",
+   "l": [
+    34
+   ]
+  },
+  {
+   "id": 35,
+   "s": "row-35",
+   "l": null
+  },
+  {
+   "id": 36,
+   "s": null,
+   "l": []
+  },
+  {
+   "id": 37,
+   "s": "row-37",
+   "l": [
+    37
+   ]
+  },
+  {
+   "id": 38,
+   "s": "row-38",
+   "l": [
+    38,
+    38
+   ]
+  },
+  {
+   "id": 39,
+   "s": "row-39",
+   "l": []
+  },
+  {
+   "id": 40,
+   "s": null,
+   "l": null
+  },
+  {
+   "id": 41,
+   "s": "row-41",
+   "l": [
+    41,
+    41
+   ]
+  },
+  {
+   "id": 42,
+   "s": "row-42",
+   "l": []
+  },
+  {
+   "id": 43,
+   "s": "row-43",
+   "l": [
+    43
+   ]
+  },
+  {
+   "id": 44,
+   "s": null,
+   "l": [
+    44,
+    44
+   ]
+  },
+  {
+   "id": 45,
+   "s": "row-45",
+   "l": null
+  },
+  {
+   "id": 46,
+   "s": "row-46",
+   "l": [
+    46
+   ]
+  },
+  {
+   "id": 47,
+   "s": "row-47",
+   "l": [
+    47,
+    47
+   ]
+  },
+  {
+   "id": 48,
+   "s": null,
+   "l": []
+  },
+  {
+   "id": 49,
+   "s": "row-49",
+   "l": [
+    49
+   ]
+  }
+ ],
+ "row_hash": "da732e8bd1c51b410f08c41910b93b8b417694a13523c5c14450a57e19cdf1db"
+}

@@ -1,0 +1,95 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 20.0.0-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "group"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "wkt"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "geometry"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "Geometry(crs=)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "group",
+  "wkt",
+  "geometry"
+ ],
+ "rows": [
+  {
+   "group": "with-nan",
+   "wkt": "POINT ZM (10 20 30 40)",
+   "geometry": {
+    "base64": "AbkLAAAAAAAAAAAkQAAAAAAAADRAAAAAAAAAPkAAAAAAAABEQA=="
+   }
+  },
+  {
+   "group": "with-nan",
+   "wkt": "POINT ZM (50 60 70 80)",
+   "geometry": {
+    "base64": "AbkLAAAAAAAAAABJQAAAAAAAAE5AAAAAAACAUUAAAAAAAABUQA=="
+   }
+  },
+  {
+   "group": "with-nan",
+   "wkt": "LINESTRING ZM (90 100 110 120, nan nan nan nan, 130 140 150 160)",
+   "geometry": {
+    "base64": "AboLAAADAAAAAAAAAACAVkAAAAAAAABZQAAAAAAAgFtAAAAAAAAAXkAAAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAQGBAAAAAAACAYUAAAAAAAMBiQAAAAAAAAGRA"
+   }
+  }
+ ],
+ "row_hash": "45432acd7c629f0f05306df590c45f858c316fa7d73c657b244305fa2ba616df"
+}

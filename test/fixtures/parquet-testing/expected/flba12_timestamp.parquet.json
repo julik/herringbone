@@ -1,0 +1,3 @@
+{
+ "error": "OSError: Timestamp(isAdjustedToUTC=true, timeUnit=milliseconds, is_from_converted_type=false, force_set_converted_type=false) cannot be applied to primitive type FIXED_LEN_BYTE_ARRAY"
+}

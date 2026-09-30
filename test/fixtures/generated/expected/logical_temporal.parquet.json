@@ -1,0 +1,288 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "date"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Date",
+   "converted_type": "DATE",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "time_ms"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Time(isAdjustedToUTC=false, timeUnit=milliseconds)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "time_us"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Time(isAdjustedToUTC=false, timeUnit=microseconds)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "time_ns"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Time(isAdjustedToUTC=false, timeUnit=nanoseconds)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_ms"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=false, timeUnit=milliseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_us"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=false, timeUnit=microseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_ns"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=false, timeUnit=nanoseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_ms_utc"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=milliseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MILLIS",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_us_utc"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_ns_utc"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=nanoseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ts_us_tz_ny"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=false, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "date",
+  "time_ms",
+  "time_us",
+  "time_ns",
+  "ts_ms",
+  "ts_us",
+  "ts_ns",
+  "ts_ms_utc",
+  "ts_us_utc",
+  "ts_ns_utc",
+  "ts_us_tz_ny"
+ ],
+ "rows": [
+  {
+   "date": "1970-01-01",
+   "time_ms": "00:00:00.000",
+   "time_us": "00:00:00.000000",
+   "time_ns": "00:00:00.000000000",
+   "ts_ms": "1970-01-01T00:00:00.000",
+   "ts_us": "1970-01-01T00:00:00.000000",
+   "ts_ns": "1970-01-01T00:00:00.000000000",
+   "ts_ms_utc": "1970-01-01T00:00:00.000Z",
+   "ts_us_utc": "1970-01-01T00:00:00.000000Z",
+   "ts_ns_utc": "1970-01-01T00:00:00.000000000Z",
+   "ts_us_tz_ny": "1970-01-01T00:00:00.000000Z"
+  },
+  {
+   "date": "2024-02-29",
+   "time_ms": "00:00:00.001",
+   "time_us": "00:00:00.000001",
+   "time_ns": "00:00:00.000000001",
+   "ts_ms": "2024-02-29T23:59:59.999",
+   "ts_us": "2024-02-29T23:59:59.999999",
+   "ts_ns": "2024-02-29T23:59:59.123456789",
+   "ts_ms_utc": "2024-02-29T23:59:59.999Z",
+   "ts_us_utc": "2024-02-29T23:59:59.999999Z",
+   "ts_ns_utc": "2024-02-29T23:59:59.123456789Z",
+   "ts_us_tz_ny": "2024-02-29T23:59:59.999999Z"
+  },
+  {
+   "date": "1969-12-31",
+   "time_ms": "23:59:59.999",
+   "time_us": "23:59:59.999999",
+   "time_ns": "23:59:59.999999999",
+   "ts_ms": "1969-12-31T23:59:59.500",
+   "ts_us": "1969-12-31T23:59:59.500000",
+   "ts_ns": "1969-12-31T23:59:59.999999999",
+   "ts_ms_utc": "1969-12-31T23:59:59.500Z",
+   "ts_us_utc": "1969-12-31T23:59:59.500000Z",
+   "ts_ns_utc": "1969-12-31T23:59:59.999999999Z",
+   "ts_us_tz_ny": "1969-12-31T23:59:59.500000Z"
+  },
+  {
+   "date": "0001-01-01",
+   "time_ms": "12:00:00.000",
+   "time_us": "12:00:00.000000",
+   "time_ns": "12:00:00.000000000",
+   "ts_ms": "1900-01-01T12:00:00.000",
+   "ts_us": "1900-01-01T12:00:00.000000",
+   "ts_ns": "1900-01-01T12:00:00.000000000",
+   "ts_ms_utc": "1900-01-01T12:00:00.000Z",
+   "ts_us_utc": "1900-01-01T12:00:00.000000Z",
+   "ts_ns_utc": "1900-01-01T12:00:00.000000000Z",
+   "ts_us_tz_ny": "1900-01-01T12:00:00.000000Z"
+  },
+  {
+   "date": null,
+   "time_ms": null,
+   "time_us": null,
+   "time_ns": null,
+   "ts_ms": null,
+   "ts_us": null,
+   "ts_ns": null,
+   "ts_ms_utc": null,
+   "ts_us_utc": null,
+   "ts_ns_utc": null,
+   "ts_us_tz_ny": null
+  },
+  {
+   "date": "9999-12-31",
+   "time_ms": "01:02:03.004",
+   "time_us": "01:02:03.004005",
+   "time_ns": "01:02:03.004005006",
+   "ts_ms": "2262-04-11T00:00:00.000",
+   "ts_us": "2262-04-11T00:00:00.000000",
+   "ts_ns": "2262-04-11T00:00:00.000000000",
+   "ts_ms_utc": "2262-04-11T00:00:00.000Z",
+   "ts_us_utc": "2262-04-11T00:00:00.000000Z",
+   "ts_ns_utc": "2262-04-11T00:00:00.000000000Z",
+   "ts_us_tz_ny": "2262-04-11T00:00:00.000000Z"
+  }
+ ],
+ "row_hash": "85095fa630d43bd8922e681f6260e7ed8c0b50fa6969e0925730ebb08b9fbaa7"
+}

@@ -1,0 +1,190 @@
+{
+ "num_rows": 1000,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.13.0-SNAPSHOT (build 433de8df33fcf31927f7b51456be9f53e64d48b9)",
+ "schema": [
+  {
+   "path": [
+    "int32_field"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1000
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "int32_field"
+ ],
+ "rows": [
+  {
+   "int32_field": -654807448
+  },
+  {
+   "int32_field": -465559769
+  },
+  {
+   "int32_field": -34563097
+  },
+  {
+   "int32_field": 398454479
+  },
+  {
+   "int32_field": null
+  },
+  {
+   "int32_field": 2018642597
+  },
+  {
+   "int32_field": 486675473
+  },
+  {
+   "int32_field": 546345848
+  },
+  {
+   "int32_field": -117215667
+  },
+  {
+   "int32_field": -352034204
+  },
+  {
+   "int32_field": -1172816214
+  },
+  {
+   "int32_field": -2023202216
+  },
+  {
+   "int32_field": 824947735
+  },
+  {
+   "int32_field": null
+  },
+  {
+   "int32_field": 693139096
+  },
+  {
+   "int32_field": -890578380
+  },
+  {
+   "int32_field": -1614440520
+  },
+  {
+   "int32_field": -1375171157
+  },
+  {
+   "int32_field": 26721177
+  },
+  {
+   "int32_field": 370689415
+  },
+  {
+   "int32_field": 194882439
+  },
+  {
+   "int32_field": 113051189
+  },
+  {
+   "int32_field": 1258948451
+  },
+  {
+   "int32_field": -1392593340
+  },
+  {
+   "int32_field": -1319276341
+  },
+  {
+   "int32_field": 13449254
+  },
+  {
+   "int32_field": 1806550135
+  },
+  {
+   "int32_field": -1359684554
+  },
+  {
+   "int32_field": -170064411
+  },
+  {
+   "int32_field": -849776899
+  },
+  {
+   "int32_field": 2128666936
+  },
+  {
+   "int32_field": -857905232
+  },
+  {
+   "int32_field": 1776674653
+  },
+  {
+   "int32_field": null
+  },
+  {
+   "int32_field": -1548794234
+  },
+  {
+   "int32_field": 1145568871
+  },
+  {
+   "int32_field": 1899419128
+  },
+  {
+   "int32_field": 341828167
+  },
+  {
+   "int32_field": -637236762
+  },
+  {
+   "int32_field": 496976447
+  },
+  {
+   "int32_field": 2144701119
+  },
+  {
+   "int32_field": -1462528420
+  },
+  {
+   "int32_field": 699407170
+  },
+  {
+   "int32_field": -1148896852
+  },
+  {
+   "int32_field": 1436001843
+  },
+  {
+   "int32_field": -1764093675
+  },
+  {
+   "int32_field": null
+  },
+  {
+   "int32_field": 102356227
+  },
+  {
+   "int32_field": 528605505
+  },
+  {
+   "int32_field": -1755390394
+  }
+ ],
+ "row_hash": "ef428833194495725ddb966746b79a7438700a6618b50c8955fc13795e4bf8c9"
+}

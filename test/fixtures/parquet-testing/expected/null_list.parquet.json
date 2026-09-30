@@ -1,0 +1,44 @@
+{
+ "num_rows": 1,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 9.0.0",
+ "schema": [
+  {
+   "path": [
+    "emptylist",
+    "list",
+    "item"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Null",
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  1
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "emptylist"
+ ],
+ "rows": [
+  {
+   "emptylist": []
+  }
+ ],
+ "row_hash": "7fcbd50429206ae6338637ee0fce73e0fa8cd9a1d160c5b69d8ffd1a58e054a0"
+}

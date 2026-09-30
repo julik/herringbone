@@ -1,0 +1,317 @@
+{
+ "num_rows": 1,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.0 (build 0fda28af84b9746396014ad6a415b90592a98b3b)",
+ "schema": [
+  {
+   "path": [
+    "ID"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "Int_Array",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "int_array_array",
+    "list",
+    "element",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "Int_Map",
+    "map",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "Int_Map",
+    "map",
+    "value"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "int_map_array",
+    "list",
+    "element",
+    "map",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "int_map_array",
+    "list",
+    "element",
+    "map",
+    "value"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "a"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "B",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "c",
+    "D",
+    "list",
+    "element",
+    "list",
+    "element",
+    "e"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "c",
+    "D",
+    "list",
+    "element",
+    "list",
+    "element",
+    "f"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "G",
+    "map",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "nested_Struct",
+    "G",
+    "map",
+    "value",
+    "h",
+    "i",
+    "list",
+    "element"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 2
+  }
+ ],
+ "row_group_num_rows": [
+  1
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "ID",
+  "Int_Array",
+  "int_array_array",
+  "Int_Map",
+  "int_map_array",
+  "nested_Struct"
+ ],
+ "rows": [
+  {
+   "ID": 8,
+   "Int_Array": [
+    -1
+   ],
+   "int_array_array": [
+    [
+     -1,
+     -2
+    ],
+    []
+   ],
+   "Int_Map": [
+    [
+     "k1",
+     -1
+    ]
+   ],
+   "int_map_array": [
+    [],
+    [
+     [
+      "k1",
+      1
+     ]
+    ],
+    [],
+    []
+   ],
+   "nested_Struct": {
+    "a": -1,
+    "B": [
+     -1
+    ],
+    "c": {
+     "D": [
+      [
+       {
+        "e": -1,
+        "f": "nonnullable"
+       }
+      ]
+     ]
+    },
+    "G": []
+   }
+  }
+ ],
+ "row_hash": "374b4e5a7845a618d9d03054d86248bce07e7c707b4cac1b8eaf683195a90d89"
+}

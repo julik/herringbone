@@ -1,0 +1,708 @@
+{
+ "num_rows": 1000,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.10.0 (build 031a6654009e3b82020012a18434c582bd74c73a)",
+ "schema": [
+  {
+   "path": [
+    "c_customer_id"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_salutation"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_first_name"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_last_name"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_preferred_cust_flag"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_birth_country"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_login"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_email_address"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c_last_review_date"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1000
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ],
+   [
+    "DELTA_BYTE_ARRAY"
+   ]
+  ]
+ ],
+ "columns": [
+  "c_customer_id",
+  "c_salutation",
+  "c_first_name",
+  "c_last_name",
+  "c_preferred_cust_flag",
+  "c_birth_country",
+  "c_login",
+  "c_email_address",
+  "c_last_review_date"
+ ],
+ "rows": [
+  {
+   "c_customer_id": "AAAAAAAAIODAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Mark",
+   "c_last_name": "Bailey",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "MOROCCO",
+   "c_login": null,
+   "c_email_address": "Mark.Bailey@rg9qCNVJ0s7qeY.com",
+   "c_last_review_date": "2452443"
+  },
+  {
+   "c_customer_id": "AAAAAAAAHODAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Lisa",
+   "c_last_name": "Clark",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "ITALY",
+   "c_login": null,
+   "c_email_address": "Lisa.Clark@goPYS4tMB0.org",
+   "c_last_review_date": "2452646"
+  },
+  {
+   "c_customer_id": "AAAAAAAAGODAAAAA",
+   "c_salutation": "Ms.",
+   "c_first_name": "Evelyn",
+   "c_last_name": "Joyner",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "TUVALU",
+   "c_login": null,
+   "c_email_address": "Evelyn.Joyner@ialYx1zLN.edu",
+   "c_last_review_date": "2452439"
+  },
+  {
+   "c_customer_id": "AAAAAAAAFODAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Harvey",
+   "c_last_name": null,
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": null,
+   "c_login": null,
+   "c_email_address": "Harvey.Stanford@sl59JiHqrp8X.org",
+   "c_last_review_date": "2452632"
+  },
+  {
+   "c_customer_id": "AAAAAAAAEODAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Chris",
+   "c_last_name": "Davis",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "ALBANIA",
+   "c_login": null,
+   "c_email_address": "Chris.Davis@k6S3Q.com",
+   "c_last_review_date": "2452570"
+  },
+  {
+   "c_customer_id": "AAAAAAAADODAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Richie",
+   "c_last_name": "Smith",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "BERMUDA",
+   "c_login": null,
+   "c_email_address": "Richie.Smith@Z9FqyaNxVVr.com",
+   "c_last_review_date": "2452612"
+  },
+  {
+   "c_customer_id": "AAAAAAAACODAAAAA",
+   "c_salutation": null,
+   "c_first_name": "Geneva",
+   "c_last_name": "Archie",
+   "c_preferred_cust_flag": null,
+   "c_birth_country": null,
+   "c_login": null,
+   "c_email_address": "Geneva.Archie@eXycmPJO0e.edu",
+   "c_last_review_date": "2452637"
+  },
+  {
+   "c_customer_id": "AAAAAAAABODAAAAA",
+   "c_salutation": "Mr.",
+   "c_first_name": "Joseph",
+   "c_last_name": "Fountain",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "PERU",
+   "c_login": null,
+   "c_email_address": "Joseph.Fountain@9iBf4kl8dSfsfr.com",
+   "c_last_review_date": "2452511"
+  },
+  {
+   "c_customer_id": "AAAAAAAAAODAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Elnora",
+   "c_last_name": "Dabney",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "ITALY",
+   "c_login": null,
+   "c_email_address": "Elnora.Dabney@NUVhk1lGbprY4s.com",
+   "c_last_review_date": "2452344"
+  },
+  {
+   "c_customer_id": "AAAAAAAAPNDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "William",
+   "c_last_name": "Aleman",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "LUXEMBOURG",
+   "c_login": null,
+   "c_email_address": "William.Aleman@cGd246jZI7Dt2.com",
+   "c_last_review_date": "2452366"
+  },
+  {
+   "c_customer_id": "AAAAAAAAONDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "John",
+   "c_last_name": "Thames",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "MONTSERRAT",
+   "c_login": null,
+   "c_email_address": "John.Thames@fpgzn.org",
+   "c_last_review_date": "2452609"
+  },
+  {
+   "c_customer_id": "AAAAAAAANNDAAAAA",
+   "c_salutation": "Mr.",
+   "c_first_name": "Jack",
+   "c_last_name": "Hoyt",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "FIJI",
+   "c_login": null,
+   "c_email_address": "Jack.Hoyt@v3Sa8geGZ.com",
+   "c_last_review_date": "2452367"
+  },
+  {
+   "c_customer_id": "AAAAAAAAMNDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Lori",
+   "c_last_name": "Wall",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "OMAN",
+   "c_login": null,
+   "c_email_address": "Lori.Wall@bfdzzQhN6as.edu",
+   "c_last_review_date": "2452321"
+  },
+  {
+   "c_customer_id": "AAAAAAAALNDAAAAA",
+   "c_salutation": "Mr.",
+   "c_first_name": "Todd",
+   "c_last_name": "Norris",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "TAJIKISTAN",
+   "c_login": null,
+   "c_email_address": "Todd.Norris@N.org",
+   "c_last_review_date": "2452617"
+  },
+  {
+   "c_customer_id": "AAAAAAAAKNDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Jennifer",
+   "c_last_name": "Larson",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "HONG KONG",
+   "c_login": null,
+   "c_email_address": "Jennifer.Larson@8hTpXTCTCKdOUkZq.org",
+   "c_last_review_date": "2452562"
+  },
+  {
+   "c_customer_id": "AAAAAAAAJNDAAAAA",
+   "c_salutation": "Mr.",
+   "c_first_name": "Francis",
+   "c_last_name": "Crowley",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "MONACO",
+   "c_login": null,
+   "c_email_address": "Francis.Crowley@6sMzNQXIcRLF.edu",
+   "c_last_review_date": "2452345"
+  },
+  {
+   "c_customer_id": "AAAAAAAAINDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Sara",
+   "c_last_name": "Loomis",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "MAURITIUS",
+   "c_login": null,
+   "c_email_address": "Sara.Loomis@d4.org",
+   "c_last_review_date": "2452432"
+  },
+  {
+   "c_customer_id": "AAAAAAAAHNDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Kevin",
+   "c_last_name": "Palmer",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "MOLDOVA, REPUBLIC OF",
+   "c_login": null,
+   "c_email_address": "Kevin.Palmer@Dm9gEh.edu",
+   "c_last_review_date": "2452416"
+  },
+  {
+   "c_customer_id": "AAAAAAAAGNDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Terry",
+   "c_last_name": "Mcdowell",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "TONGA",
+   "c_login": null,
+   "c_email_address": "Terry.Mcdowell@q0MspRrmB74klnp2zlo.com",
+   "c_last_review_date": "2452375"
+  },
+  {
+   "c_customer_id": "AAAAAAAAFNDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Hazel",
+   "c_last_name": "Benson",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "SYRIAN ARAB REPUBLIC",
+   "c_login": null,
+   "c_email_address": "Hazel.Benson@P5OvqmiMPsU24vD.com",
+   "c_last_review_date": "2452516"
+  },
+  {
+   "c_customer_id": "AAAAAAAAENDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Richard",
+   "c_last_name": "Bell",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "PORTUGAL",
+   "c_login": null,
+   "c_email_address": "Richard.Bell@n6jT0yOrk5.com",
+   "c_last_review_date": "2452563"
+  },
+  {
+   "c_customer_id": "AAAAAAAADNDAAAAA",
+   "c_salutation": "Ms.",
+   "c_first_name": "Arlene",
+   "c_last_name": "Moore",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "HUNGARY",
+   "c_login": null,
+   "c_email_address": "Arlene.Moore@QFY.com",
+   "c_last_review_date": "2452478"
+  },
+  {
+   "c_customer_id": "AAAAAAAACNDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Norma",
+   "c_last_name": "Roden",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "SPAIN",
+   "c_login": null,
+   "c_email_address": "Norma.Roden@dNzAM.com",
+   "c_last_review_date": "2452437"
+  },
+  {
+   "c_customer_id": "AAAAAAAABNDAAAAA",
+   "c_salutation": "Ms.",
+   "c_first_name": "Camille",
+   "c_last_name": "Slocum",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "FINLAND",
+   "c_login": null,
+   "c_email_address": "Camille.Slocum@1KQq4OgX7rGUROr.com",
+   "c_last_review_date": "2452392"
+  },
+  {
+   "c_customer_id": "AAAAAAAAANDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Marjorie",
+   "c_last_name": "Beatty",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "GUERNSEY",
+   "c_login": null,
+   "c_email_address": "Marjorie.Beatty@yeTdy0G9bQZz.com",
+   "c_last_review_date": "2452458"
+  },
+  {
+   "c_customer_id": "AAAAAAAAPMDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Ingrid",
+   "c_last_name": "Cook",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "SOLOMON ISLANDS",
+   "c_login": null,
+   "c_email_address": "Ingrid.Cook@D9Qp.com",
+   "c_last_review_date": "2452535"
+  },
+  {
+   "c_customer_id": "AAAAAAAAOMDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Natalia",
+   "c_last_name": "Rickard",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "PALAU",
+   "c_login": null,
+   "c_email_address": "Natalia.Rickard@3HshANcuvPs7iV.edu",
+   "c_last_review_date": "2452372"
+  },
+  {
+   "c_customer_id": "AAAAAAAANMDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Brant",
+   "c_last_name": "Johnson",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "THAILAND",
+   "c_login": null,
+   "c_email_address": "Brant.Johnson@gIdIlcbeMhkL.org",
+   "c_last_review_date": "2452621"
+  },
+  {
+   "c_customer_id": "AAAAAAAAMMDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Felicia",
+   "c_last_name": "Duke",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "MARSHALL ISLANDS",
+   "c_login": null,
+   "c_email_address": "Felicia.Duke@foxX7cvz.org",
+   "c_last_review_date": "2452547"
+  },
+  {
+   "c_customer_id": "AAAAAAAALMDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Lemuel",
+   "c_last_name": "Waggoner",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "VIRGIN ISLANDS, U.S.",
+   "c_login": null,
+   "c_email_address": "Lemuel.Waggoner@Jp7.com",
+   "c_last_review_date": "2452510"
+  },
+  {
+   "c_customer_id": "AAAAAAAAKMDAAAAA",
+   "c_salutation": "Ms.",
+   "c_first_name": "Alexander",
+   "c_last_name": "White",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "FRANCE",
+   "c_login": null,
+   "c_email_address": "Alexander.White@7v2XsptkFrc50K.org",
+   "c_last_review_date": "2452412"
+  },
+  {
+   "c_customer_id": "AAAAAAAAJMDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Laurie",
+   "c_last_name": "Burrows",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "MARSHALL ISLANDS",
+   "c_login": null,
+   "c_email_address": "Laurie.Burrows@F.edu",
+   "c_last_review_date": "2452648"
+  },
+  {
+   "c_customer_id": "AAAAAAAAIMDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Andrea",
+   "c_last_name": "Hill",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "SWEDEN",
+   "c_login": null,
+   "c_email_address": "Andrea.Hill@1.com",
+   "c_last_review_date": "2452522"
+  },
+  {
+   "c_customer_id": "AAAAAAAAHMDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Earl",
+   "c_last_name": "Sheehan",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "GUINEA",
+   "c_login": null,
+   "c_email_address": "Earl.Sheehan@8BElet.org",
+   "c_last_review_date": "2452366"
+  },
+  {
+   "c_customer_id": "AAAAAAAAGMDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Sherry",
+   "c_last_name": "Bowles",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "GIBRALTAR",
+   "c_login": null,
+   "c_email_address": "Sherry.Bowles@1v8CGxTQQcOj1Bd.com",
+   "c_last_review_date": "2452475"
+  },
+  {
+   "c_customer_id": "AAAAAAAAFMDAAAAA",
+   "c_salutation": "Mr.",
+   "c_first_name": "Joseph",
+   "c_last_name": "Aponte",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "COSTA RICA",
+   "c_login": null,
+   "c_email_address": "Joseph.Aponte@sJnBiFHsBOd.org",
+   "c_last_review_date": "2452481"
+  },
+  {
+   "c_customer_id": "AAAAAAAAEMDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Aline",
+   "c_last_name": "Ramos",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "EQUATORIAL GUINEA",
+   "c_login": null,
+   "c_email_address": "Aline.Ramos@Gr5.edu",
+   "c_last_review_date": "2452413"
+  },
+  {
+   "c_customer_id": "AAAAAAAADMDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Cameron",
+   "c_last_name": "Godfrey",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "BURKINA FASO",
+   "c_login": null,
+   "c_email_address": "Cameron.Godfrey@qpL7LNcq0v0toOD.org",
+   "c_last_review_date": "2452454"
+  },
+  {
+   "c_customer_id": "AAAAAAAACMDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Amy",
+   "c_last_name": "Warren",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "MOZAMBIQUE",
+   "c_login": null,
+   "c_email_address": "Amy.Warren@EQ9.org",
+   "c_last_review_date": "2452629"
+  },
+  {
+   "c_customer_id": "AAAAAAAABMDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "Jose",
+   "c_last_name": "Guzman",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "MARSHALL ISLANDS",
+   "c_login": null,
+   "c_email_address": "Jose.Guzman@stJp.edu",
+   "c_last_review_date": "2452642"
+  },
+  {
+   "c_customer_id": "AAAAAAAAAMDAAAAA",
+   "c_salutation": "Mrs.",
+   "c_first_name": "Manuela",
+   "c_last_name": "Thayer",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "PHILIPPINES",
+   "c_login": null,
+   "c_email_address": "Manuela.Thayer@GeEKIU.com",
+   "c_last_review_date": "2452374"
+  },
+  {
+   "c_customer_id": "AAAAAAAAPLDAAAAA",
+   "c_salutation": "Ms.",
+   "c_first_name": "Rose",
+   "c_last_name": "King",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "SOUTH AFRICA",
+   "c_login": null,
+   "c_email_address": "Rose.King@uaqhf6V.com",
+   "c_last_review_date": "2452428"
+  },
+  {
+   "c_customer_id": "AAAAAAAAOLDAAAAA",
+   "c_salutation": "Sir",
+   "c_first_name": "David",
+   "c_last_name": "Banks",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "GUINEA",
+   "c_login": null,
+   "c_email_address": "David.Banks@7AYfQLf.edu",
+   "c_last_review_date": "2452533"
+  },
+  {
+   "c_customer_id": "AAAAAAAANLDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Kimberly",
+   "c_last_name": "Simpson",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "CAPE VERDE",
+   "c_login": null,
+   "c_email_address": "Kimberly.Simpson@R9ApuIYFK.com",
+   "c_last_review_date": "2452437"
+  },
+  {
+   "c_customer_id": "AAAAAAAAMLDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Lydia",
+   "c_last_name": "Flores",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "FRANCE",
+   "c_login": null,
+   "c_email_address": "Lydia.Flores@Zomck7zbynQV.edu",
+   "c_last_review_date": "2452484"
+  },
+  {
+   "c_customer_id": "AAAAAAAALLDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Rosemary",
+   "c_last_name": "Bryant",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "PALAU",
+   "c_login": null,
+   "c_email_address": "Rosemary.Bryant@KX8AurRb4I.edu",
+   "c_last_review_date": "2452463"
+  },
+  {
+   "c_customer_id": "AAAAAAAAKLDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Ruth",
+   "c_last_name": "White",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "GUINEA",
+   "c_login": null,
+   "c_email_address": "Ruth.White@PfcakoB.edu",
+   "c_last_review_date": "2452460"
+  },
+  {
+   "c_customer_id": "AAAAAAAAJLDAAAAA",
+   "c_salutation": "Dr.",
+   "c_first_name": "Nadia",
+   "c_last_name": "Albert",
+   "c_preferred_cust_flag": "N",
+   "c_birth_country": "SWAZILAND",
+   "c_login": null,
+   "c_email_address": "Nadia.Albert@liFoQZkQu.edu",
+   "c_last_review_date": "2452331"
+  },
+  {
+   "c_customer_id": "AAAAAAAAILDAAAAA",
+   "c_salutation": null,
+   "c_first_name": "Raymond",
+   "c_last_name": null,
+   "c_preferred_cust_flag": null,
+   "c_birth_country": null,
+   "c_login": null,
+   "c_email_address": null,
+   "c_last_review_date": "2452421"
+  },
+  {
+   "c_customer_id": "AAAAAAAAHLDAAAAA",
+   "c_salutation": "Miss",
+   "c_first_name": "Margie",
+   "c_last_name": "Bailey",
+   "c_preferred_cust_flag": "Y",
+   "c_birth_country": "SYRIAN ARAB REPUBLIC",
+   "c_login": null,
+   "c_email_address": "Margie.Bailey@3TMyCZpne.org",
+   "c_last_review_date": "2452369"
+  }
+ ],
+ "row_hash": "05262d40ea08c33c27921701fd47fe663a9436377491827de63758ecae14e081"
+}

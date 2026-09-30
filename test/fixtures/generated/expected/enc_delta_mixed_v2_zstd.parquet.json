@@ -1,0 +1,387 @@
+{
+ "num_rows": 300,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "i64"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "s_dlba"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "s_dba"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "f64"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  300
+ ],
+ "codecs": [
+  [
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "DELTA_BINARY_PACKED",
+    "RLE"
+   ],
+   [
+    "DELTA_LENGTH_BYTE_ARRAY",
+    "RLE"
+   ],
+   [
+    "DELTA_BYTE_ARRAY",
+    "RLE"
+   ],
+   [
+    "BYTE_STREAM_SPLIT",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "i64",
+  "s_dlba",
+  "s_dba",
+  "f64"
+ ],
+ "rows": [
+  {
+   "i64": null,
+   "s_dlba": null,
+   "s_dba": null,
+   "f64": null
+  },
+  {
+   "i64": 9223372036854775807,
+   "s_dlba": "prefix/common/0000/x",
+   "s_dba": "prefix/common/0000/x",
+   "f64": "NaN"
+  },
+  {
+   "i64": -9223372036854775808,
+   "s_dlba": "prefix/common/0000/xx",
+   "s_dba": "prefix/common/0000/xx",
+   "f64": "Infinity"
+  },
+  {
+   "i64": 314187,
+   "s_dlba": "",
+   "s_dba": "",
+   "f64": "-Infinity"
+  },
+  {
+   "i64": -418916,
+   "s_dlba": "unicode éè ☃ 😀",
+   "s_dba": "unicode éè ☃ 😀",
+   "f64": -0.0
+  },
+  {
+   "i64": 523645,
+   "s_dlba": "prefix/common/0001/",
+   "s_dba": "prefix/common/0001/",
+   "f64": -20.714285714285715
+  },
+  {
+   "i64": -628374,
+   "s_dlba": "prefix/common/0002/x",
+   "s_dba": "prefix/common/0002/x",
+   "f64": -20.571428571428573
+  },
+  {
+   "i64": 733103,
+   "s_dlba": "prefix/common/0002/xx",
+   "s_dba": "prefix/common/0002/xx",
+   "f64": -20.428571428571427
+  },
+  {
+   "i64": -837832,
+   "s_dlba": "prefix/common/0002/xxx",
+   "s_dba": "prefix/common/0002/xxx",
+   "f64": -20.285714285714285
+  },
+  {
+   "i64": 942561,
+   "s_dlba": "prefix/common/0003/xxxx",
+   "s_dba": "prefix/common/0003/xxxx",
+   "f64": -20.142857142857142
+  },
+  {
+   "i64": -1047290,
+   "s_dlba": "prefix/common/0003/",
+   "s_dba": "prefix/common/0003/",
+   "f64": -20.0
+  },
+  {
+   "i64": 1152019,
+   "s_dlba": "prefix/common/0003/x",
+   "s_dba": "prefix/common/0003/x",
+   "f64": -19.857142857142858
+  },
+  {
+   "i64": -1256748,
+   "s_dlba": "prefix/common/0004/xx",
+   "s_dba": "prefix/common/0004/xx",
+   "f64": -19.714285714285715
+  },
+  {
+   "i64": 1361477,
+   "s_dlba": null,
+   "s_dba": null,
+   "f64": -19.571428571428573
+  },
+  {
+   "i64": -1466206,
+   "s_dlba": "prefix/common/0004/xxxx",
+   "s_dba": "prefix/common/0004/xxxx",
+   "f64": -19.428571428571427
+  },
+  {
+   "i64": 1570935,
+   "s_dlba": "prefix/common/0005/",
+   "s_dba": "prefix/common/0005/",
+   "f64": -19.285714285714285
+  },
+  {
+   "i64": -1675664,
+   "s_dlba": "prefix/common/0005/x",
+   "s_dba": "prefix/common/0005/x",
+   "f64": -19.142857142857142
+  },
+  {
+   "i64": 1780393,
+   "s_dlba": "prefix/common/0005/xx",
+   "s_dba": "prefix/common/0005/xx",
+   "f64": -19.0
+  },
+  {
+   "i64": -1885122,
+   "s_dlba": "prefix/common/0006/xxx",
+   "s_dba": "prefix/common/0006/xxx",
+   "f64": -18.857142857142858
+  },
+  {
+   "i64": null,
+   "s_dlba": "prefix/common/0006/xxxx",
+   "s_dba": "prefix/common/0006/xxxx",
+   "f64": -18.714285714285715
+  },
+  {
+   "i64": -2094580,
+   "s_dlba": "prefix/common/0006/",
+   "s_dba": "prefix/common/0006/",
+   "f64": -18.571428571428573
+  },
+  {
+   "i64": 2199309,
+   "s_dlba": "prefix/common/0007/x",
+   "s_dba": "prefix/common/0007/x",
+   "f64": -18.428571428571427
+  },
+  {
+   "i64": -2304038,
+   "s_dlba": "prefix/common/0007/xx",
+   "s_dba": "prefix/common/0007/xx",
+   "f64": -18.285714285714285
+  },
+  {
+   "i64": 2408767,
+   "s_dlba": "prefix/common/0007/xxx",
+   "s_dba": "prefix/common/0007/xxx",
+   "f64": null
+  },
+  {
+   "i64": -2513496,
+   "s_dlba": "prefix/common/0008/xxxx",
+   "s_dba": "prefix/common/0008/xxxx",
+   "f64": -18.0
+  },
+  {
+   "i64": 2618225,
+   "s_dlba": "prefix/common/0008/",
+   "s_dba": "prefix/common/0008/",
+   "f64": -17.857142857142858
+  },
+  {
+   "i64": -2722954,
+   "s_dlba": null,
+   "s_dba": null,
+   "f64": -17.714285714285715
+  },
+  {
+   "i64": 2827683,
+   "s_dlba": "prefix/common/0009/xx",
+   "s_dba": "prefix/common/0009/xx",
+   "f64": -17.571428571428573
+  },
+  {
+   "i64": -2932412,
+   "s_dlba": "prefix/common/0009/xxx",
+   "s_dba": "prefix/common/0009/xxx",
+   "f64": -17.428571428571427
+  },
+  {
+   "i64": 3037141,
+   "s_dlba": "prefix/common/0009/xxxx",
+   "s_dba": "prefix/common/0009/xxxx",
+   "f64": -17.285714285714285
+  },
+  {
+   "i64": -3141870,
+   "s_dlba": "prefix/common/0010/",
+   "s_dba": "prefix/common/0010/",
+   "f64": -17.142857142857142
+  },
+  {
+   "i64": 3246599,
+   "s_dlba": "prefix/common/0010/x",
+   "s_dba": "prefix/common/0010/x",
+   "f64": -17.0
+  },
+  {
+   "i64": -3351328,
+   "s_dlba": "prefix/common/0010/xx",
+   "s_dba": "prefix/common/0010/xx",
+   "f64": -16.857142857142858
+  },
+  {
+   "i64": 3456057,
+   "s_dlba": "prefix/common/0011/xxx",
+   "s_dba": "prefix/common/0011/xxx",
+   "f64": -16.714285714285715
+  },
+  {
+   "i64": -3560786,
+   "s_dlba": "prefix/common/0011/xxxx",
+   "s_dba": "prefix/common/0011/xxxx",
+   "f64": -16.571428571428573
+  },
+  {
+   "i64": 3665515,
+   "s_dlba": "prefix/common/0011/",
+   "s_dba": "prefix/common/0011/",
+   "f64": -16.428571428571427
+  },
+  {
+   "i64": -3770244,
+   "s_dlba": "prefix/common/0012/x",
+   "s_dba": "prefix/common/0012/x",
+   "f64": -16.285714285714285
+  },
+  {
+   "i64": 3874973,
+   "s_dlba": "prefix/common/0012/xx",
+   "s_dba": "prefix/common/0012/xx",
+   "f64": -16.142857142857142
+  },
+  {
+   "i64": null,
+   "s_dlba": "prefix/common/0012/xxx",
+   "s_dba": "prefix/common/0012/xxx",
+   "f64": -16.0
+  },
+  {
+   "i64": 4084431,
+   "s_dlba": null,
+   "s_dba": null,
+   "f64": -15.857142857142858
+  },
+  {
+   "i64": -4189160,
+   "s_dlba": "prefix/common/0013/",
+   "s_dba": "prefix/common/0013/",
+   "f64": -15.714285714285714
+  },
+  {
+   "i64": 4293889,
+   "s_dlba": "prefix/common/0013/x",
+   "s_dba": "prefix/common/0013/x",
+   "f64": -15.571428571428571
+  },
+  {
+   "i64": -4398618,
+   "s_dlba": "prefix/common/0014/xx",
+   "s_dba": "prefix/common/0014/xx",
+   "f64": -15.428571428571429
+  },
+  {
+   "i64": 4503347,
+   "s_dlba": "prefix/common/0014/xxx",
+   "s_dba": "prefix/common/0014/xxx",
+   "f64": -15.285714285714286
+  },
+  {
+   "i64": -4608076,
+   "s_dlba": "prefix/common/0014/xxxx",
+   "s_dba": "prefix/common/0014/xxxx",
+   "f64": -15.142857142857142
+  },
+  {
+   "i64": 4712805,
+   "s_dlba": "prefix/common/0015/",
+   "s_dba": "prefix/common/0015/",
+   "f64": -15.0
+  },
+  {
+   "i64": -4817534,
+   "s_dlba": "prefix/common/0015/x",
+   "s_dba": "prefix/common/0015/x",
+   "f64": null
+  },
+  {
+   "i64": 4922263,
+   "s_dlba": "prefix/common/0015/xx",
+   "s_dba": "prefix/common/0015/xx",
+   "f64": -14.714285714285714
+  },
+  {
+   "i64": -5026992,
+   "s_dlba": "prefix/common/0016/xxx",
+   "s_dba": "prefix/common/0016/xxx",
+   "f64": -14.571428571428571
+  },
+  {
+   "i64": 5131721,
+   "s_dlba": "prefix/common/0016/xxxx",
+   "s_dba": "prefix/common/0016/xxxx",
+   "f64": -14.428571428571429
+  }
+ ],
+ "row_hash": "76f6c208029817e45cbf85770fa4b7c7ca90325b961900de33f576b7514ad132"
+}

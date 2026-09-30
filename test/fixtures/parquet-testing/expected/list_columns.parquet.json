@@ -1,0 +1,91 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp version 1.5.1-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "int64_list",
+    "list",
+    "item"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "utf8_list",
+    "list",
+    "item"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "int64_list",
+  "utf8_list"
+ ],
+ "rows": [
+  {
+   "int64_list": [
+    1,
+    2,
+    3
+   ],
+   "utf8_list": [
+    "abc",
+    "efg",
+    "hij"
+   ]
+  },
+  {
+   "int64_list": [
+    null,
+    1
+   ],
+   "utf8_list": null
+  },
+  {
+   "int64_list": [
+    4
+   ],
+   "utf8_list": [
+    "efg",
+    null,
+    "hij",
+    "xyz"
+   ]
+  }
+ ],
+ "row_hash": "6c3e06bb25b18ab634d0f6727255e2b11d1d45e2ae04fa888515959544a19194"
+}

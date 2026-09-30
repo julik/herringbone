@@ -1,0 +1,148 @@
+{
+ "num_rows": 4,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "d",
+    "m",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "d",
+    "m",
+    "key_value",
+    "value",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Int(bitWidth=16, isSigned=true)",
+   "converted_type": "INT_16",
+   "max_definition_level": 6,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "d",
+    "s",
+    "x"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "d",
+    "s",
+    "y",
+    "list",
+    "element"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 5,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  4
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "d"
+ ],
+ "rows": [
+  {
+   "d": null
+  },
+  {
+   "d": {
+    "m": null,
+    "s": null
+   }
+  },
+  {
+   "d": {
+    "m": [
+     [
+      "k",
+      null
+     ],
+     [
+      "j",
+      []
+     ],
+     [
+      "i",
+      [
+       1,
+       null,
+       3
+      ]
+     ]
+    ],
+    "s": {
+     "x": null,
+     "y": null
+    }
+   }
+  },
+  {
+   "d": {
+    "m": [],
+    "s": {
+     "x": 1.5,
+     "y": [
+      true,
+      null,
+      false
+     ]
+    }
+   }
+  }
+ ],
+ "row_hash": "bbd8f7d025e3cc04ab33e31e4d8d714b3e6f96576075a8eaa8648c2570bffd0a"
+}

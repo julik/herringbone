@@ -1,0 +1,41 @@
+{
+ "num_rows": 1,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.13.1 (build db4183109d5b734ec5930d870cdae161e408ddba)",
+ "schema": [
+  {
+   "path": [
+    "value"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN"
+   ]
+  ]
+ ],
+ "columns": [
+  "value"
+ ],
+ "rows": [
+  {
+   "value": null
+  }
+ ],
+ "row_hash": "1c197daef20de3f47eec5e2f735ec6669869d3180cc29f35be4788511e0af0f8"
+}

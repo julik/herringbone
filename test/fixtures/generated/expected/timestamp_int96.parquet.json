@@ -1,0 +1,58 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "ts"
+   ],
+   "physical_type": "INT96",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "ts"
+ ],
+ "rows": [
+  {
+   "ts": "1970-01-01T00:00:00.000000000"
+  },
+  {
+   "ts": "2024-02-29T23:59:59.999999000"
+  },
+  {
+   "ts": "1969-12-31T23:59:59.500000000"
+  },
+  {
+   "ts": "1900-01-01T12:00:00.000000000"
+  },
+  {
+   "ts": null
+  },
+  {
+   "ts": "2262-04-11T00:00:00.000000000"
+  }
+ ],
+ "row_hash": "c74ed421922d04500d7902e2bc05dd0253c9ad4ab5a7256ca2ff4a459dba6ffc"
+}

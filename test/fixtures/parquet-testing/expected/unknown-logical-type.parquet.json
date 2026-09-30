@@ -1,0 +1,75 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 20.0.0-SNAPSHOT",
+ "schema": [
+  {
+   "path": [
+    "column with known type"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "column with unknown type"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "Undefined",
+   "converted_type": "UNKNOWN",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "column with known type",
+  "column with unknown type"
+ ],
+ "rows": [
+  {
+   "column with known type": "known string 1",
+   "column with unknown type": {
+    "base64": "dW5rbm93biBzdHJpbmcgMQ=="
+   }
+  },
+  {
+   "column with known type": "known string 2",
+   "column with unknown type": {
+    "base64": "dW5rbm93biBzdHJpbmcgMg=="
+   }
+  },
+  {
+   "column with known type": "known string 3",
+   "column with unknown type": {
+    "base64": "dW5rbm93biBzdHJpbmcgMw=="
+   }
+  }
+ ],
+ "row_hash": "0585af4f7e677df1c0cb717eaaa9b5c04d588380f493288ff1f774bb0edb37ad"
+}

@@ -1,0 +1,157 @@
+{
+ "num_rows": 39,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.12.0-201812210311360288-a86293f (build cec1a483e9dcd545e09170ae787d3dcb13744433)",
+ "schema": [
+  {
+   "path": [
+    "l_partkey"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  39
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "l_partkey"
+ ],
+ "rows": [
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  },
+  {
+   "l_partkey": 1552
+  }
+ ],
+ "row_hash": "4038f5f072f6080475ab6bb60e6628d61cdc5a0fbecd7fc1b7e4ee20dad9657f"
+}

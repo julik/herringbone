@@ -1,0 +1,131 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "s",
+    "a"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "s",
+    "b",
+    "list",
+    "element",
+    "c"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 5,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "id"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "s",
+  "id"
+ ],
+ "rows": [
+  {
+   "s": null,
+   "id": 0
+  },
+  {
+   "s": {
+    "a": null,
+    "b": null
+   },
+   "id": 1
+  },
+  {
+   "s": {
+    "a": 1,
+    "b": []
+   },
+   "id": 2
+  },
+  {
+   "s": {
+    "a": 2,
+    "b": [
+     null
+    ]
+   },
+   "id": 3
+  },
+  {
+   "s": {
+    "a": 3,
+    "b": [
+     {
+      "c": null
+     }
+    ]
+   },
+   "id": 4
+  },
+  {
+   "s": {
+    "a": 4,
+    "b": [
+     {
+      "c": "x"
+     },
+     null,
+     {
+      "c": "y"
+     }
+    ]
+   },
+   "id": 5
+  }
+ ],
+ "row_hash": "3afab1519d16122917f48973aa20dda61a303daebbc98835a895359c63a233e1"
+}

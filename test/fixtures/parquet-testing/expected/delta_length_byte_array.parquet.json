@@ -1,0 +1,189 @@
+{
+ "num_rows": 1000,
+ "num_row_groups": 1,
+ "created_by": "",
+ "schema": [
+  {
+   "path": [
+    "FRUIT"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1000
+ ],
+ "codecs": [
+  [
+   "ZSTD"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "DELTA_LENGTH_BYTE_ARRAY",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "FRUIT"
+ ],
+ "rows": [
+  {
+   "FRUIT": "apple_banana_mango0"
+  },
+  {
+   "FRUIT": "apple_banana_mango1"
+  },
+  {
+   "FRUIT": "apple_banana_mango4"
+  },
+  {
+   "FRUIT": "apple_banana_mango9"
+  },
+  {
+   "FRUIT": "apple_banana_mango16"
+  },
+  {
+   "FRUIT": "apple_banana_mango25"
+  },
+  {
+   "FRUIT": "apple_banana_mango36"
+  },
+  {
+   "FRUIT": "apple_banana_mango49"
+  },
+  {
+   "FRUIT": "apple_banana_mango64"
+  },
+  {
+   "FRUIT": "apple_banana_mango81"
+  },
+  {
+   "FRUIT": "apple_banana_mango100"
+  },
+  {
+   "FRUIT": "apple_banana_mango121"
+  },
+  {
+   "FRUIT": "apple_banana_mango144"
+  },
+  {
+   "FRUIT": "apple_banana_mango169"
+  },
+  {
+   "FRUIT": "apple_banana_mango196"
+  },
+  {
+   "FRUIT": "apple_banana_mango225"
+  },
+  {
+   "FRUIT": "apple_banana_mango256"
+  },
+  {
+   "FRUIT": "apple_banana_mango289"
+  },
+  {
+   "FRUIT": "apple_banana_mango324"
+  },
+  {
+   "FRUIT": "apple_banana_mango361"
+  },
+  {
+   "FRUIT": "apple_banana_mango400"
+  },
+  {
+   "FRUIT": "apple_banana_mango441"
+  },
+  {
+   "FRUIT": "apple_banana_mango484"
+  },
+  {
+   "FRUIT": "apple_banana_mango529"
+  },
+  {
+   "FRUIT": "apple_banana_mango576"
+  },
+  {
+   "FRUIT": "apple_banana_mango625"
+  },
+  {
+   "FRUIT": "apple_banana_mango676"
+  },
+  {
+   "FRUIT": "apple_banana_mango729"
+  },
+  {
+   "FRUIT": "apple_banana_mango784"
+  },
+  {
+   "FRUIT": "apple_banana_mango841"
+  },
+  {
+   "FRUIT": "apple_banana_mango900"
+  },
+  {
+   "FRUIT": "apple_banana_mango961"
+  },
+  {
+   "FRUIT": "apple_banana_mango1024"
+  },
+  {
+   "FRUIT": "apple_banana_mango1089"
+  },
+  {
+   "FRUIT": "apple_banana_mango1156"
+  },
+  {
+   "FRUIT": "apple_banana_mango1225"
+  },
+  {
+   "FRUIT": "apple_banana_mango1296"
+  },
+  {
+   "FRUIT": "apple_banana_mango1369"
+  },
+  {
+   "FRUIT": "apple_banana_mango1444"
+  },
+  {
+   "FRUIT": "apple_banana_mango1521"
+  },
+  {
+   "FRUIT": "apple_banana_mango1600"
+  },
+  {
+   "FRUIT": "apple_banana_mango1681"
+  },
+  {
+   "FRUIT": "apple_banana_mango1764"
+  },
+  {
+   "FRUIT": "apple_banana_mango1849"
+  },
+  {
+   "FRUIT": "apple_banana_mango1936"
+  },
+  {
+   "FRUIT": "apple_banana_mango2025"
+  },
+  {
+   "FRUIT": "apple_banana_mango2116"
+  },
+  {
+   "FRUIT": "apple_banana_mango2209"
+  },
+  {
+   "FRUIT": "apple_banana_mango2304"
+  },
+  {
+   "FRUIT": "apple_banana_mango2401"
+  }
+ ],
+ "row_hash": "ab481e110314a198ba2d72ae53002d853578af66baf97be2c5f738a540d8ee70"
+}

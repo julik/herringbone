@@ -1,0 +1,100 @@
+{
+ "num_rows": 12,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.10.0 (build 031a6654009e3b82020012a18434c582bd74c73a)",
+ "schema": [
+  {
+   "path": [
+    "foo"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  12
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "foo"
+ ],
+ "rows": [
+  {
+   "foo": {
+    "base64": "AA=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "AQ=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Ag=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Aw=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "BA=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "BQ=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Bg=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Bw=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "CA=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "CQ=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Cg=="
+   }
+  },
+  {
+   "foo": {
+    "base64": "Cw=="
+   }
+  }
+ ],
+ "row_hash": "90b0aa49dce6c2af780971323fbb7483a02717ec0d23de8379c702ea8569834d"
+}

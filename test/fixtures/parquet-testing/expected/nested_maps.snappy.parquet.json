@@ -1,0 +1,203 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.2 (build c6522788629e590a53eb79874b95f6c3ff11f16c)",
+ "schema": [
+  {
+   "path": [
+    "a",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 2,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "a",
+    "key_value",
+    "value",
+    "key_value",
+    "key"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 4,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "a",
+    "key_value",
+    "value",
+    "key_value",
+    "value"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 4,
+   "max_repetition_level": 2
+  },
+  {
+   "path": [
+    "b"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN_DICTIONARY"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "a",
+  "b",
+  "c"
+ ],
+ "rows": [
+  {
+   "a": [
+    [
+     "a",
+     [
+      [
+       1,
+       true
+      ],
+      [
+       2,
+       false
+      ]
+     ]
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  },
+  {
+   "a": [
+    [
+     "b",
+     [
+      [
+       1,
+       true
+      ]
+     ]
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  },
+  {
+   "a": [
+    [
+     "c",
+     null
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  },
+  {
+   "a": [
+    [
+     "d",
+     []
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  },
+  {
+   "a": [
+    [
+     "e",
+     [
+      [
+       1,
+       true
+      ]
+     ]
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  },
+  {
+   "a": [
+    [
+     "f",
+     [
+      [
+       3,
+       true
+      ],
+      [
+       4,
+       false
+      ],
+      [
+       5,
+       true
+      ]
+     ]
+    ]
+   ],
+   "b": 1,
+   "c": 1.0
+  }
+ ],
+ "row_hash": "48daa61f610d479ac689c2dcd3c8aea7ffde14c25f2889638716c389d2df1f77"
+}

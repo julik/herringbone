@@ -1,0 +1,82 @@
+{
+ "num_rows": 14,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 49.0.0",
+ "schema": [
+  {
+   "path": [
+    "String"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  14
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "String"
+ ],
+ "rows": [
+  {
+   "String": "Hello"
+  },
+  {
+   "String": "This is"
+  },
+  {
+   "String": "a"
+  },
+  {
+   "String": "test"
+  },
+  {
+   "String": "How"
+  },
+  {
+   "String": "are you"
+  },
+  {
+   "String": "doing "
+  },
+  {
+   "String": "today"
+  },
+  {
+   "String": "the quick"
+  },
+  {
+   "String": "brown fox"
+  },
+  {
+   "String": "jumps"
+  },
+  {
+   "String": "over"
+  },
+  {
+   "String": "the lazy"
+  },
+  {
+   "String": "dog"
+  }
+ ],
+ "row_hash": "5745886b575daf3f1a2094bfdd546fef7f5bff2467f4bc4f3f429b9aba79ab69"
+}

@@ -1,0 +1,189 @@
+{
+ "num_rows": 40000,
+ "num_row_groups": 1,
+ "created_by": "cpp version BuildInfo:GitBranch:master,GitVersion:7def947,BuildTime:1672903249",
+ "schema": [
+  {
+   "path": [
+    "inc"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  40000
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "inc"
+ ],
+ "rows": [
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  },
+  {
+   "inc": false
+  }
+ ],
+ "row_hash": "66dbc72e72a9a64ca23116d6c244aae5c9652de9d09a2c42d6ddf1fc3377bc69"
+}

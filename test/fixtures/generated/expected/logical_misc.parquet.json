@@ -1,0 +1,319 @@
+{
+ "num_rows": 8,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "uuid"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "UUID",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 16
+  },
+  {
+   "path": [
+    "fsb3"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 3
+  },
+  {
+   "path": [
+    "f16"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Float16",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 2
+  },
+  {
+   "path": [
+    "json"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "JSON",
+   "converted_type": "JSON",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "large_string"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "binary"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "large_binary"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "f32"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "f64"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  8
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "uuid",
+  "fsb3",
+  "f16",
+  "json",
+  "large_string",
+  "binary",
+  "large_binary",
+  "f32",
+  "f64"
+ ],
+ "rows": [
+  {
+   "uuid": {
+    "base64": "AAAAAAAAAAAAAAAAAAAAAA=="
+   },
+   "fsb3": {
+    "base64": "YWJj"
+   },
+   "f16": 0.0,
+   "json": "{\"a\":1}",
+   "large_string": "",
+   "binary": {
+    "base64": ""
+   },
+   "large_binary": {
+    "base64": ""
+   },
+   "f32": 0.10000000149011612,
+   "f64": 0.1
+  },
+  {
+   "uuid": {
+    "base64": "Ej5FZ+ibEtOkVkJmFBdAAA=="
+   },
+   "fsb3": {
+    "base64": "AAEC"
+   },
+   "f16": -0.0,
+   "json": "[1,2,3]",
+   "large_string": "large",
+   "binary": {
+    "base64": "AA=="
+   },
+   "large_binary": {
+    "base64": "AA=="
+   },
+   "f32": -0.0,
+   "f64": -0.0
+  },
+  {
+   "uuid": null,
+   "fsb3": null,
+   "f16": 1.5,
+   "json": null,
+   "large_string": null,
+   "binary": null,
+   "large_binary": null,
+   "f32": "NaN",
+   "f64": "NaN"
+  },
+  {
+   "uuid": {
+    "base64": "/////////////////////w=="
+   },
+   "fsb3": {
+    "base64": "//79"
+   },
+   "f16": "NaN",
+   "json": "\"str\"",
+   "large_string": "ünicöde",
+   "binary": {
+    "base64": "3q2+7w=="
+   },
+   "large_binary": {
+    "base64": "3q2+7w=="
+   },
+   "f32": "Infinity",
+   "f64": "Infinity"
+  },
+  {
+   "uuid": {
+    "base64": "AAAAAAAAAAAAAAAAAAAAAA=="
+   },
+   "fsb3": {
+    "base64": "YWJj"
+   },
+   "f16": 65504.0,
+   "json": "null",
+   "large_string": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "binary": {
+    "base64": "YWJj"
+   },
+   "large_binary": {
+    "base64": "YWJj"
+   },
+   "f32": "-Infinity",
+   "f64": "-Infinity"
+  },
+  {
+   "uuid": {
+    "base64": "Ej5FZ+ibEtOkVkJmFBdAAA=="
+   },
+   "fsb3": {
+    "base64": "AAEC"
+   },
+   "f16": "-Infinity",
+   "json": "{}",
+   "large_string": "a",
+   "binary": {
+    "base64": "Cg=="
+   },
+   "large_binary": {
+    "base64": "Cg=="
+   },
+   "f32": 9.99994610111476e-41,
+   "f64": 5e-324
+  },
+  {
+   "uuid": null,
+   "fsb3": null,
+   "f16": 6.097555160522461e-05,
+   "json": "true",
+   "large_string": "b",
+   "binary": {
+    "base64": "fw=="
+   },
+   "large_binary": {
+    "base64": "fw=="
+   },
+   "f32": 3.3999999521443642e+38,
+   "f64": 1e+16
+  },
+  {
+   "uuid": {
+    "base64": "/////////////////////w=="
+   },
+   "fsb3": {
+    "base64": "//79"
+   },
+   "f16": 0.3330078125,
+   "json": "1.5",
+   "large_string": "c",
+   "binary": {
+    "base64": "eg=="
+   },
+   "large_binary": {
+    "base64": "eg=="
+   },
+   "f32": null,
+   "f64": null
+  }
+ ],
+ "row_hash": "4ffd6380f38643c58169504fe553aeca8fa8d97786ab08f551db811d3de746d8"
+}

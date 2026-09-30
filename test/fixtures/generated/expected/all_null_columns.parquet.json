@@ -1,0 +1,325 @@
+{
+ "num_rows": 20,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "id"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "null_int"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "null_string"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "null_double"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "null_list",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "null_struct",
+    "a"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "null_type"
+   ],
+   "physical_type": "INT32",
+   "logical_type": "Null",
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  20
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "id",
+  "null_int",
+  "null_string",
+  "null_double",
+  "null_list",
+  "null_struct",
+  "null_type"
+ ],
+ "rows": [
+  {
+   "id": 0,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 1,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 2,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 3,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 4,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 5,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 6,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 7,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 8,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 9,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 10,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 11,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 12,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 13,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 14,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 15,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 16,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 17,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 18,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  },
+  {
+   "id": 19,
+   "null_int": null,
+   "null_string": null,
+   "null_double": null,
+   "null_list": null,
+   "null_struct": null,
+   "null_type": null
+  }
+ ],
+ "row_hash": "46202d54c6f4690340c79ee5696408f2166dcd532db3159e269fad8294e9bafd"
+}

@@ -1,0 +1,126 @@
+{
+ "num_rows": 3,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.2 (build c6522788629e590a53eb79874b95f6c3ff11f16c)",
+ "schema": [
+  {
+   "path": [
+    "a",
+    "list",
+    "element",
+    "list",
+    "element",
+    "list",
+    "element"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 7,
+   "max_repetition_level": 3
+  },
+  {
+   "path": [
+    "b"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  3
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "a",
+  "b"
+ ],
+ "rows": [
+  {
+   "a": [
+    [
+     [
+      "a",
+      "b"
+     ],
+     [
+      "c"
+     ]
+    ],
+    [
+     null,
+     [
+      "d"
+     ]
+    ]
+   ],
+   "b": 1
+  },
+  {
+   "a": [
+    [
+     [
+      "a",
+      "b"
+     ],
+     [
+      "c",
+      "d"
+     ]
+    ],
+    [
+     null,
+     [
+      "e"
+     ]
+    ]
+   ],
+   "b": 1
+  },
+  {
+   "a": [
+    [
+     [
+      "a",
+      "b"
+     ],
+     [
+      "c",
+      "d"
+     ],
+     [
+      "e"
+     ]
+    ],
+    [
+     null,
+     [
+      "f"
+     ]
+    ]
+   ],
+   "b": 1
+  }
+ ],
+ "row_hash": "38e700ed95a7c2d0666089d4d5b461496e630114808548bb95588b6159eb88b3"
+}

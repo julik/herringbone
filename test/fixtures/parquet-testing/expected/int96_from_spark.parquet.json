@@ -1,0 +1,58 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.13.1 (build db4183109d5b734ec5930d870cdae161e408ddba)",
+ "schema": [
+  {
+   "path": [
+    "a"
+   ],
+   "physical_type": "INT96",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN_DICTIONARY",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "a"
+ ],
+ "rows": [
+  {
+   "a": "2024-01-01T20:34:56.123456000"
+  },
+  {
+   "a": "2024-01-01T01:00:00.000000000"
+  },
+  {
+   "a": "1816-03-29T08:56:08.066277376"
+  },
+  {
+   "a": "2024-12-30T23:00:00.000000000"
+  },
+  {
+   "a": null
+  },
+  {
+   "a": "2147-08-27T00:35:19.850745856"
+  }
+ ],
+ "row_hash": "d1e4d4d6259a1c88b82028471cbaafeed4012ac08edca1d8b46c6c7b45fcbd34"
+}

@@ -1,0 +1,661 @@
+{
+ "num_rows": 50,
+ "num_row_groups": 5,
+ "created_by": "parquet-mr version 1.18.0-SNAPSHOT (build c5dcd8ca5bad5fde9c797b876a16b5bf3b9206c0)",
+ "schema": [
+  {
+   "path": [
+    "float_ieee754"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "float_typedef"
+   ],
+   "physical_type": "FLOAT",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_ieee754"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "double_typedef"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "float16_ieee754"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Float16",
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0,
+   "type_length": 2
+  },
+  {
+   "path": [
+    "float16_typedef"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Float16",
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0,
+   "type_length": 2
+  }
+ ],
+ "row_group_num_rows": [
+  10,
+  10,
+  10,
+  10,
+  10
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ],
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ]
+  ],
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ]
+  ],
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ]
+  ],
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ]
+  ],
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ],
+   [
+    "BIT_PACKED",
+    "PLAIN"
+   ]
+  ]
+ ],
+ "columns": [
+  "float_ieee754",
+  "float_typedef",
+  "double_ieee754",
+  "double_typedef",
+  "float16_ieee754",
+  "float16_typedef"
+ ],
+ "rows": [
+  {
+   "float_ieee754": -2.0,
+   "float_typedef": -2.0,
+   "double_ieee754": -2.0,
+   "double_typedef": -2.0,
+   "float16_ieee754": -2.0,
+   "float16_typedef": -2.0
+  },
+  {
+   "float_ieee754": -1.0,
+   "float_typedef": -1.0,
+   "double_ieee754": -1.0,
+   "double_typedef": -1.0,
+   "float16_ieee754": -1.0,
+   "float16_typedef": -1.0
+  },
+  {
+   "float_ieee754": -0.0,
+   "float_typedef": -0.0,
+   "double_ieee754": -0.0,
+   "double_typedef": -0.0,
+   "float16_ieee754": -0.0,
+   "float16_typedef": -0.0
+  },
+  {
+   "float_ieee754": 0.0,
+   "float_typedef": 0.0,
+   "double_ieee754": 0.0,
+   "double_typedef": 0.0,
+   "float16_ieee754": 0.0,
+   "float16_typedef": 0.0
+  },
+  {
+   "float_ieee754": 0.5,
+   "float_typedef": 0.5,
+   "double_ieee754": 0.5,
+   "double_typedef": 0.5,
+   "float16_ieee754": 0.5,
+   "float16_typedef": 0.5
+  },
+  {
+   "float_ieee754": 1.0,
+   "float_typedef": 1.0,
+   "double_ieee754": 1.0,
+   "double_typedef": 1.0,
+   "float16_ieee754": 1.0,
+   "float16_typedef": 1.0
+  },
+  {
+   "float_ieee754": 2.0,
+   "float_typedef": 2.0,
+   "double_ieee754": 2.0,
+   "double_typedef": 2.0,
+   "float16_ieee754": 2.0,
+   "float16_typedef": 2.0
+  },
+  {
+   "float_ieee754": 3.0,
+   "float_typedef": 3.0,
+   "double_ieee754": 3.0,
+   "double_typedef": 3.0,
+   "float16_ieee754": 3.0,
+   "float16_typedef": 3.0
+  },
+  {
+   "float_ieee754": 4.0,
+   "float_typedef": 4.0,
+   "double_ieee754": 4.0,
+   "double_typedef": 4.0,
+   "float16_ieee754": 4.0,
+   "float16_typedef": 4.0
+  },
+  {
+   "float_ieee754": 5.0,
+   "float_typedef": 5.0,
+   "double_ieee754": 5.0,
+   "double_typedef": 5.0,
+   "float16_ieee754": 5.0,
+   "float16_typedef": 5.0
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": -2.0,
+   "float_typedef": -2.0,
+   "double_ieee754": -2.0,
+   "double_typedef": -2.0,
+   "float16_ieee754": -2.0,
+   "float16_typedef": -2.0
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": -1.0,
+   "float_typedef": -1.0,
+   "double_ieee754": -1.0,
+   "double_typedef": -1.0,
+   "float16_ieee754": -1.0,
+   "float16_typedef": -1.0
+  },
+  {
+   "float_ieee754": -0.0,
+   "float_typedef": -0.0,
+   "double_ieee754": -0.0,
+   "double_typedef": -0.0,
+   "float16_ieee754": -0.0,
+   "float16_typedef": -0.0
+  },
+  {
+   "float_ieee754": 0.0,
+   "float_typedef": 0.0,
+   "double_ieee754": 0.0,
+   "double_typedef": 0.0,
+   "float16_ieee754": 0.0,
+   "float16_typedef": 0.0
+  },
+  {
+   "float_ieee754": 1.0,
+   "float_typedef": 1.0,
+   "double_ieee754": 1.0,
+   "double_typedef": 1.0,
+   "float16_ieee754": 1.0,
+   "float16_typedef": 1.0
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": 3.0,
+   "float_typedef": 3.0,
+   "double_ieee754": 3.0,
+   "double_typedef": 3.0,
+   "float16_ieee754": 3.0,
+   "float16_typedef": 3.0
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": "NaN",
+   "float_typedef": "NaN",
+   "double_ieee754": "NaN",
+   "double_typedef": "NaN",
+   "float16_ieee754": "NaN",
+   "float16_typedef": "NaN"
+  },
+  {
+   "float_ieee754": 0.0,
+   "float_typedef": 0.0,
+   "double_ieee754": 0.0,
+   "double_typedef": 0.0,
+   "float16_ieee754": 0.0,
+   "float16_typedef": 0.0
+  },
+  {
+   "float_ieee754": 0.0,
+   "float_typedef": 0.0,
+   "double_ieee754": 0.0,
+   "double_typedef": 0.0,
+   "float16_ieee754": 0.0,
+   "float16_typedef": 0.0
+  },
+  {
+   "float_ieee754": 0.0,
+   "float_typedef": 0.0,
+   "double_ieee754": 0.0,
+   "double_typedef": 0.0,
+   "float16_ieee754": 0.0,
+   "float16_typedef": 0.0
+  },
+  {
+   "float_ieee754": 0.5,
+   "float_typedef": 0.5,
+   "double_ieee754": 0.5,
+   "double_typedef": 0.5,
+   "float16_ieee754": 0.5,
+   "float16_typedef": 0.5
+  },
+  {
+   "float_ieee754": 1.0,
+   "float_typedef": 1.0,
+   "double_ieee754": 1.0,
+   "double_typedef": 1.0,
+   "float16_ieee754": 1.0,
+   "float16_typedef": 1.0
+  },
+  {
+   "float_ieee754": 1.5,
+   "float_typedef": 1.5,
+   "double_ieee754": 1.5,
+   "double_typedef": 1.5,
+   "float16_ieee754": 1.5,
+   "float16_typedef": 1.5
+  },
+  {
+   "float_ieee754": 2.0,
+   "float_typedef": 2.0,
+   "double_ieee754": 2.0,
+   "double_typedef": 2.0,
+   "float16_ieee754": 2.0,
+   "float16_typedef": 2.0
+  },
+  {
+   "float_ieee754": 3.0,
+   "float_typedef": 3.0,
+   "double_ieee754": 3.0,
+   "double_typedef": 3.0,
+   "float16_ieee754": 3.0,
+   "float16_typedef": 3.0
+  },
+  {
+   "float_ieee754": 4.0,
+   "float_typedef": 4.0,
+   "double_ieee754": 4.0,
+   "double_typedef": 4.0,
+   "float16_ieee754": 4.0,
+   "float16_typedef": 4.0
+  },
+  {
+   "float_ieee754": 5.0,
+   "float_typedef": 5.0,
+   "double_ieee754": 5.0,
+   "double_typedef": 5.0,
+   "float16_ieee754": 5.0,
+   "float16_typedef": 5.0
+  },
+  {
+   "float_ieee754": -5.0,
+   "float_typedef": -5.0,
+   "double_ieee754": -5.0,
+   "double_typedef": -5.0,
+   "float16_ieee754": -5.0,
+   "float16_typedef": -5.0
+  },
+  {
+   "float_ieee754": -4.0,
+   "float_typedef": -4.0,
+   "double_ieee754": -4.0,
+   "double_typedef": -4.0,
+   "float16_ieee754": -4.0,
+   "float16_typedef": -4.0
+  },
+  {
+   "float_ieee754": -3.0,
+   "float_typedef": -3.0,
+   "double_ieee754": -3.0,
+   "double_typedef": -3.0,
+   "float16_ieee754": -3.0,
+   "float16_typedef": -3.0
+  },
+  {
+   "float_ieee754": -2.0,
+   "float_typedef": -2.0,
+   "double_ieee754": -2.0,
+   "double_typedef": -2.0,
+   "float16_ieee754": -2.0,
+   "float16_typedef": -2.0
+  },
+  {
+   "float_ieee754": -1.5,
+   "float_typedef": -1.5,
+   "double_ieee754": -1.5,
+   "double_typedef": -1.5,
+   "float16_ieee754": -1.5,
+   "float16_typedef": -1.5
+  },
+  {
+   "float_ieee754": -1.0,
+   "float_typedef": -1.0,
+   "double_ieee754": -1.0,
+   "double_typedef": -1.0,
+   "float16_ieee754": -1.0,
+   "float16_typedef": -1.0
+  },
+  {
+   "float_ieee754": -0.5,
+   "float_typedef": -0.5,
+   "double_ieee754": -0.5,
+   "double_typedef": -0.5,
+   "float16_ieee754": -0.5,
+   "float16_typedef": -0.5
+  },
+  {
+   "float_ieee754": -0.0,
+   "float_typedef": -0.0,
+   "double_ieee754": -0.0,
+   "double_typedef": -0.0,
+   "float16_ieee754": -0.0,
+   "float16_typedef": -0.0
+  },
+  {
+   "float_ieee754": -0.0,
+   "float_typedef": -0.0,
+   "double_ieee754": -0.0,
+   "double_typedef": -0.0,
+   "float16_ieee754": -0.0,
+   "float16_typedef": -0.0
+  },
+  {
+   "float_ieee754": -0.0,
+   "float_typedef": -0.0,
+   "double_ieee754": -0.0,
+   "double_typedef": -0.0,
+   "float16_ieee754": -0.0,
+   "float16_typedef": -0.0
+  }
+ ],
+ "row_hash": "4c8df6ddd9c0ddcde7bd820b703e4db400fd16bfd3cb4d4dfa42d67df44ba7e6"
+}

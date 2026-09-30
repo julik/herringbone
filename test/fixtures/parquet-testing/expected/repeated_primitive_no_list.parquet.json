@@ -1,0 +1,176 @@
+{
+ "num_rows": 4,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 53.2.0",
+ "schema": [
+  {
+   "path": [
+    "Int32_list"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "String_list"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "group_of_lists",
+    "Int32_list_in_group"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "group_of_lists",
+    "String_list_in_group"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  4
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "Int32_list",
+  "String_list",
+  "group_of_lists"
+ ],
+ "rows": [
+  {
+   "Int32_list": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "String_list": [
+    "foo",
+    "zero",
+    "one",
+    "two"
+   ],
+   "group_of_lists": {
+    "Int32_list_in_group": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "String_list_in_group": [
+     "foo",
+     "zero",
+     "one",
+     "two"
+    ]
+   }
+  },
+  {
+   "Int32_list": [],
+   "String_list": [
+    "three"
+   ],
+   "group_of_lists": {
+    "Int32_list_in_group": [],
+    "String_list_in_group": [
+     "three"
+    ]
+   }
+  },
+  {
+   "Int32_list": [
+    4
+   ],
+   "String_list": [
+    "four"
+   ],
+   "group_of_lists": {
+    "Int32_list_in_group": [
+     4
+    ],
+    "String_list_in_group": [
+     "four"
+    ]
+   }
+  },
+  {
+   "Int32_list": [
+    5,
+    6,
+    7,
+    8
+   ],
+   "String_list": [
+    "five",
+    "six",
+    "seven",
+    "eight"
+   ],
+   "group_of_lists": {
+    "Int32_list_in_group": [
+     5,
+     6,
+     7,
+     8
+    ],
+    "String_list_in_group": [
+     "five",
+     "six",
+     "seven",
+     "eight"
+    ]
+   }
+  }
+ ],
+ "row_hash": "68d416109fb00bc016dfcd0a86428338ab6979a1df8d13c7cfdbc02390138f14"
+}

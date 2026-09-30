@@ -1,0 +1,129 @@
+{
+ "num_rows": 0,
+ "num_row_groups": 1,
+ "created_by": "parquet-rs version 0.3.0 (build b45ce7cba2199f22d93269c150d8a83916c69b5e)",
+ "schema": [
+  {
+   "path": [
+    "id"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "phoneNumbers",
+    "phone",
+    "number"
+   ],
+   "physical_type": "INT64",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 1
+  },
+  {
+   "path": [
+    "phoneNumbers",
+    "phone",
+    "kind"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 3,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED",
+   "UNCOMPRESSED",
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "id",
+  "phoneNumbers"
+ ],
+ "rows": [
+  {
+   "id": 1,
+   "phoneNumbers": null
+  },
+  {
+   "id": 2,
+   "phoneNumbers": null
+  },
+  {
+   "id": 3,
+   "phoneNumbers": {
+    "phone": []
+   }
+  },
+  {
+   "id": 4,
+   "phoneNumbers": {
+    "phone": [
+     {
+      "number": 5555555555,
+      "kind": null
+     }
+    ]
+   }
+  },
+  {
+   "id": 5,
+   "phoneNumbers": {
+    "phone": [
+     {
+      "number": 1111111111,
+      "kind": "home"
+     }
+    ]
+   }
+  },
+  {
+   "id": 6,
+   "phoneNumbers": {
+    "phone": [
+     {
+      "number": 1111111111,
+      "kind": "home"
+     },
+     {
+      "number": 2222222222,
+      "kind": null
+     },
+     {
+      "number": 3333333333,
+      "kind": "mobile"
+     }
+    ]
+   }
+  }
+ ],
+ "row_hash": "85ec25cd51114d4c03224853b7fa85cd2666da6839bca82fb6f7e869407a8a4c"
+}

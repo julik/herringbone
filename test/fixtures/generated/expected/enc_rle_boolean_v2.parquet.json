@@ -1,0 +1,188 @@
+{
+ "num_rows": 300,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "bool"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  300
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "bool"
+ ],
+ "rows": [
+  {
+   "bool": null
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": null
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": null
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": null
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": null
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": null
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": false
+  },
+  {
+   "bool": true
+  },
+  {
+   "bool": true
+  }
+ ],
+ "row_hash": "3e2d701a29e81295e01f1efbbc12ea1ee05fb9c65857e890012b7b82c52124ce"
+}

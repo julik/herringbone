@@ -1,0 +1,165 @@
+{
+ "num_rows": 6,
+ "num_row_groups": 1,
+ "created_by": "parquet-cpp-arrow version 25.0.1",
+ "schema": [
+  {
+   "path": [
+    "d_5_2"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=5, scale=2)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 3,
+   "precision": 5,
+   "scale": 2
+  },
+  {
+   "path": [
+    "d_9_0"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=9, scale=0)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 4,
+   "precision": 9,
+   "scale": 0
+  },
+  {
+   "path": [
+    "d_18_6"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=18, scale=6)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 8,
+   "precision": 18,
+   "scale": 6
+  },
+  {
+   "path": [
+    "d_38_10"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=38, scale=10)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 16,
+   "precision": 38,
+   "scale": 10
+  },
+  {
+   "path": [
+    "d_76_20"
+   ],
+   "physical_type": "FIXED_LEN_BYTE_ARRAY",
+   "logical_type": "Decimal(precision=76, scale=20)",
+   "converted_type": "DECIMAL",
+   "max_definition_level": 1,
+   "max_repetition_level": 0,
+   "type_length": 32,
+   "precision": 76,
+   "scale": 20
+  }
+ ],
+ "row_group_num_rows": [
+  6
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "d_5_2",
+  "d_9_0",
+  "d_18_6",
+  "d_38_10",
+  "d_76_20"
+ ],
+ "rows": [
+  {
+   "d_5_2": "0.00",
+   "d_9_0": "0",
+   "d_18_6": "0.000000",
+   "d_38_10": "0.0000000000",
+   "d_76_20": "0.00000000000000000000"
+  },
+  {
+   "d_5_2": "1.23",
+   "d_9_0": "1",
+   "d_18_6": "123456789012.345678",
+   "d_38_10": "1234567890123456789012345678.1234567890",
+   "d_76_20": "12345678901234567890123456789012345678901234567890.12345678901234567890"
+  },
+  {
+   "d_5_2": "-1.23",
+   "d_9_0": "-1",
+   "d_18_6": "-0.000001",
+   "d_38_10": "-0.0000000001",
+   "d_76_20": "-1.00000000000000000000"
+  },
+  {
+   "d_5_2": "999.99",
+   "d_9_0": "999999999",
+   "d_18_6": "999999999999.999999",
+   "d_38_10": "9999999999999999999999999999.9999999999",
+   "d_76_20": "0.00000000000000000001"
+  },
+  {
+   "d_5_2": null,
+   "d_9_0": null,
+   "d_18_6": null,
+   "d_38_10": null,
+   "d_76_20": null
+  },
+  {
+   "d_5_2": "-999.99",
+   "d_9_0": "-999999999",
+   "d_18_6": "-1.500000",
+   "d_38_10": "-42.5000000000",
+   "d_76_20": "-3.14159000000000000000"
+  }
+ ],
+ "row_hash": "1a1a147b88f790a93043b785fc4906a0344bfab1ee9c5b2ef335eba1724b41c6"
+}

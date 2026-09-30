@@ -1,0 +1,4021 @@
+{
+ "num_rows": 1,
+ "num_row_groups": 1,
+ "created_by": "UrbanLogiq",
+ "schema": [
+  {
+   "path": [
+    "roll_num",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "roll_num",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "roll_num",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "roll_num",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "roll_num",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "roll_num",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "PC_CUR",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2012",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "CVA_2016",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_3",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "BIA_4",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_FRONTAGE",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_DEPTH",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ACTUAL_LOT_SIZE",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "SOURCE_GLA",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "IPS_GLA",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "GLA_ALL",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "bia",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_LOT_SIZE",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_area",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_FRONTAGE",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "EFFECTIVE_DEPTH",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "rw_area_tot",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "effective_lot_sqft",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "dup",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "nonCTXT",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "vacantland",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "parkingbillboard",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "cvalte10",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "condootherhotel",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_lot_size",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "calculated_efflot_size",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsite",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missinggla",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "missingsitegla",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "actual_lot_size_sqft",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "min"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "max"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "mean"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "sum"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "lotsize_sqft",
+    "variance"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "count",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=true, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=true, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=true, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=true, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_observation_date",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Timestamp(isAdjustedToUTC=true, timeUnit=microseconds, is_from_converted_type=true, force_set_converted_type=false)",
+   "converted_type": "TIMESTAMP_MICROS",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "min"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "max"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "mean"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "count"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=false)",
+   "converted_type": "UINT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "sum"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "ul_tz_offset_minutes_ul_observation_date",
+    "variance"
+   ],
+   "physical_type": "INT64",
+   "logical_type": "Int(bitWidth=64, isSigned=true)",
+   "converted_type": "INT_64",
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  1
+ ],
+ "codecs": [
+  [
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD",
+   "ZSTD"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "PLAIN",
+    "RLE",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "roll_num",
+  "PC_CUR",
+  "CVA_2012",
+  "CVA_2016",
+  "BIA_3",
+  "BIA_4",
+  "ACTUAL_FRONTAGE",
+  "ACTUAL_DEPTH",
+  "ACTUAL_LOT_SIZE",
+  "GLA",
+  "SOURCE_GLA",
+  "IPS_GLA",
+  "GLA_ALL",
+  "bia",
+  "EFFECTIVE_LOT_SIZE",
+  "effective_lot_area",
+  "EFFECTIVE_FRONTAGE",
+  "EFFECTIVE_DEPTH",
+  "rw_area_tot",
+  "effective_lot_sqft",
+  "dup",
+  "nonCTXT",
+  "vacantland",
+  "parkingbillboard",
+  "cvalte10",
+  "condootherhotel",
+  "calculated_lot_size",
+  "calculated_efflot_size",
+  "missingsite",
+  "missinggla",
+  "missingsitegla",
+  "actual_lot_size_sqft",
+  "lotsize_sqft",
+  "count",
+  "ul_observation_date",
+  "ul_tz_offset_minutes_ul_observation_date"
+ ],
+ "rows": [
+  {
+   "roll_num": {
+    "min": 190406409000602,
+    "max": 190407175004000,
+    "mean": 190406671229999,
+    "count": 495,
+    "sum": 94251302258849568,
+    "variance": 0
+   },
+   "PC_CUR": {
+    "min": 115,
+    "max": 742,
+    "mean": 416,
+    "count": 495,
+    "sum": 206195,
+    "variance": 10374
+   },
+   "CVA_2012": {
+    "min": 737,
+    "max": 32150509,
+    "mean": 2401239,
+    "count": 495,
+    "sum": 1188613496,
+    "variance": 12977533288261
+   },
+   "CVA_2016": {
+    "min": 1000,
+    "max": 35195000,
+    "mean": 3519838,
+    "count": 495,
+    "sum": 1742320297,
+    "variance": 24581100553044
+   },
+   "BIA_3": {
+    "min": 0.0,
+    "max": 0.0,
+    "mean": 0.0,
+    "count": 0,
+    "sum": 0.0,
+    "variance": 0.0
+   },
+   "BIA_4": {
+    "min": 0.0,
+    "max": 0.0,
+    "mean": 0.0,
+    "count": 0,
+    "sum": 0.0,
+    "variance": 0.0
+   },
+   "ACTUAL_FRONTAGE": {
+    "min": 0.0,
+    "max": 658.63,
+    "mean": 57.76452991452993,
+    "count": 351,
+    "sum": 20275.350000000006,
+    "variance": 6310.500499135526
+   },
+   "ACTUAL_DEPTH": {
+    "min": 0.0,
+    "max": 312.16,
+    "mean": 49.40901785714286,
+    "count": 336,
+    "sum": 16601.43,
+    "variance": 3214.842695450431
+   },
+   "ACTUAL_LOT_SIZE": {
+    "min": 0.0,
+    "max": 74136.0,
+    "mean": 6162.133196721318,
+    "count": 366,
+    "sum": 2255340.7500000023,
+    "variance": 104255249.59826614
+   },
+   "GLA": {
+    "min": 0.0,
+    "max": 523800.0,
+    "mean": 19484.146706586827,
+    "count": 334,
+    "sum": 6507705.0,
+    "variance": 3563198650.906335
+   },
+   "SOURCE_GLA": {
+    "min": 2628.0,
+    "max": 16085.0,
+    "mean": 6698.8,
+    "count": 10,
+    "sum": 66988.0,
+    "variance": 28540252.400000002
+   },
+   "IPS_GLA": {
+    "min": 288.0,
+    "max": 1985.0,
+    "mean": 1285.0,
+    "count": 4,
+    "sum": 5140.0,
+    "variance": 509875.3333333333
+   },
+   "GLA_ALL": {
+    "min": 0.0,
+    "max": 523800.0,
+    "mean": 18907.566091954024,
+    "count": 348,
+    "sum": 6579833.0,
+    "variance": 3428378496.7881336
+   },
+   "bia": {
+    "min": 0,
+    "max": 1,
+    "mean": 0,
+    "count": 495,
+    "sum": 452,
+    "variance": 0
+   },
+   "EFFECTIVE_LOT_SIZE": {
+    "min": 0.0,
+    "max": 64749.63000000001,
+    "mean": 4951.024888352274,
+    "count": 352,
+    "sum": 1742760.7607000005,
+    "variance": 81195383.98823886
+   },
+   "effective_lot_area": {
+    "min": 0.0,
+    "max": 2.8000000000000003,
+    "mean": 0.14237550619122732,
+    "count": 352,
+    "sum": 50.11617817931202,
+    "variance": 0.07516922114035923
+   },
+   "EFFECTIVE_FRONTAGE": {
+    "min": 0.0,
+    "max": 658063.0,
+    "mean": 1991.3067846607655,
+    "count": 339,
+    "sum": 675052.9999999995,
+    "variance": 1277234044.0126908
+   },
+   "EFFECTIVE_DEPTH": {
+    "min": 0.0,
+    "max": 300.7,
+    "mean": 65.32364985163204,
+    "count": 337,
+    "sum": 22014.069999999996,
+    "variance": 3904.805190507992
+   },
+   "rw_area_tot": {
+    "min": 0.0,
+    "max": 18169.0,
+    "mean": 1528.077097505669,
+    "count": 441,
+    "sum": 673882.0,
+    "variance": 6122348.621315204
+   },
+   "effective_lot_sqft": {
+    "min": 0.0,
+    "max": 121968.0,
+    "mean": 6201.877049689864,
+    "count": 352,
+    "sum": 2183060.721490832,
+    "variance": 142631612.6463931
+   },
+   "dup": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "nonCTXT": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "vacantland": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "parkingbillboard": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "cvalte10": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "condootherhotel": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "calculated_lot_size": {
+    "min": 0.0,
+    "max": 100.0,
+    "mean": 1.2345679012345678,
+    "count": 81,
+    "sum": 100.0,
+    "variance": 123.45679012345684
+   },
+   "calculated_efflot_size": {
+    "min": 0.0,
+    "max": 4172.084000000002,
+    "mean": 42.29786138613863,
+    "count": 101,
+    "sum": 4272.084000000002,
+    "variance": 172355.84886194076
+   },
+   "missingsite": {
+    "min": 0,
+    "max": 1,
+    "mean": 0,
+    "count": 495,
+    "sum": 208,
+    "variance": 0
+   },
+   "missinggla": {
+    "min": 0,
+    "max": 1,
+    "mean": 0,
+    "count": 495,
+    "sum": 44,
+    "variance": 0
+   },
+   "missingsitegla": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   },
+   "actual_lot_size_sqft": {
+    "min": 0.0,
+    "max": 121968.0,
+    "mean": 8685.222814207653,
+    "count": 366,
+    "sum": 3178791.550000001,
+    "variance": 243347757.98270744
+   },
+   "lotsize_sqft": {
+    "min": 0.0,
+    "max": 121968.0,
+    "mean": 8841.174394454862,
+    "count": 364,
+    "sum": 3218187.4795815693,
+    "variance": 244563632.41811454
+   },
+   "count": {
+    "min": 1,
+    "max": 1,
+    "mean": 1,
+    "count": 495,
+    "sum": 495,
+    "variance": 0
+   },
+   "ul_observation_date": {
+    "min": "52951-07-27T10:00:00.000000Z",
+    "max": "52951-07-27T10:00:00.000000Z",
+    "mean": "1970-01-01T00:00:00.000000Z",
+    "count": 495,
+    "sum": "1970-01-01T00:00:00.000000Z",
+    "variance": "1970-01-01T00:00:00.000000Z"
+   },
+   "ul_tz_offset_minutes_ul_observation_date": {
+    "min": 0,
+    "max": 0,
+    "mean": 0,
+    "count": 495,
+    "sum": 0,
+    "variance": 0
+   }
+  }
+ ],
+ "row_hash": "fb01f6db8a5f378ab05822b8f5b2e636e68c2417a93b6c583951f5a7dd71e593"
+}

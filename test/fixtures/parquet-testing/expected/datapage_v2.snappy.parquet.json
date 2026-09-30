@@ -1,0 +1,149 @@
+{
+ "num_rows": 5,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.1 (build 4aba4dae7bb0d4edbcf7923ae1339f28fd3f7fcf)",
+ "schema": [
+  {
+   "path": [
+    "a"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "String",
+   "converted_type": "UTF8",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "b"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "c"
+   ],
+   "physical_type": "DOUBLE",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "d"
+   ],
+   "physical_type": "BOOLEAN",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 0,
+   "max_repetition_level": 0
+  },
+  {
+   "path": [
+    "e",
+    "list",
+    "element"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 1
+  }
+ ],
+ "row_group_num_rows": [
+  5
+ ],
+ "codecs": [
+  [
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY",
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "DELTA_BINARY_PACKED"
+   ],
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ],
+   [
+    "RLE"
+   ],
+   [
+    "PLAIN",
+    "RLE_DICTIONARY"
+   ]
+  ]
+ ],
+ "columns": [
+  "a",
+  "b",
+  "c",
+  "d",
+  "e"
+ ],
+ "rows": [
+  {
+   "a": "abc",
+   "b": 1,
+   "c": 2.0,
+   "d": true,
+   "e": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "a": "abc",
+   "b": 2,
+   "c": 3.0,
+   "d": true,
+   "e": null
+  },
+  {
+   "a": "abc",
+   "b": 3,
+   "c": 4.0,
+   "d": true,
+   "e": null
+  },
+  {
+   "a": null,
+   "b": 4,
+   "c": 5.0,
+   "d": false,
+   "e": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "a": "abc",
+   "b": 5,
+   "c": 2.0,
+   "d": true,
+   "e": [
+    1,
+    2
+   ]
+  }
+ ],
+ "row_hash": "120b0f27b3ea190ec5460be734d3bccde349f09238c6542d5652623b992e2064"
+}

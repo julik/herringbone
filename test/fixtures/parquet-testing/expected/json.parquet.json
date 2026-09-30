@@ -1,0 +1,52 @@
+{
+ "num_rows": 4,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.18.0-SNAPSHOT (build 1a9e455655604acf09cdd45b4e2958661d38281c)",
+ "schema": [
+  {
+   "path": [
+    "json_field"
+   ],
+   "physical_type": "BYTE_ARRAY",
+   "logical_type": "JSON",
+   "converted_type": "JSON",
+   "max_definition_level": 1,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  4
+ ],
+ "codecs": [
+  [
+   "UNCOMPRESSED"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "json_field"
+ ],
+ "rows": [
+  {
+   "json_field": "{\"a\":1}"
+  },
+  {
+   "json_field": "{\"a\":1,\"b\":null}"
+  },
+  {
+   "json_field": "[1,null,3]"
+  },
+  {
+   "json_field": null
+  }
+ ],
+ "row_hash": "973574bc7036e55c3ab9fa1dbeb2400e70c9b3986a15a5e4afbafdea68e22a2c"
+}

@@ -1,0 +1,81 @@
+{
+ "num_rows": 8,
+ "num_row_groups": 1,
+ "created_by": "parquet-mr version 1.8.2 (build c6522788629e590a53eb79874b95f6c3ff11f16c)",
+ "schema": [
+  {
+   "path": [
+    "b_struct",
+    "b_c_int"
+   ],
+   "physical_type": "INT32",
+   "logical_type": null,
+   "converted_type": null,
+   "max_definition_level": 2,
+   "max_repetition_level": 0
+  }
+ ],
+ "row_group_num_rows": [
+  8
+ ],
+ "codecs": [
+  [
+   "SNAPPY"
+  ]
+ ],
+ "encodings": [
+  [
+   [
+    "BIT_PACKED",
+    "PLAIN",
+    "RLE"
+   ]
+  ]
+ ],
+ "columns": [
+  "b_struct"
+ ],
+ "rows": [
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  },
+  {
+   "b_struct": {
+    "b_c_int": null
+   }
+  }
+ ],
+ "row_hash": "c0738b80e7502103ec8a433f539f539a959b69a60fac9e77df2f701303c5a013"
+}
