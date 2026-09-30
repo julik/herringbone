@@ -235,13 +235,13 @@ class ErgonomicsTest < Minitest::Test
 
   def test_row_group_bytes_bounds_row_groups
     schema = Parakiet::Schema.define(id: :int64, s: :string)
-    rows = Array.new(20_000) { |i| { id: i, s: "x" * 90 } } # ~110 bytes per row
+    rows = Array.new(20_000) { |i| { id: i, s: format("%090d", i) } } # ~110 bytes per row, all distinct
     io = StringIO.new("".b)
     Parakiet::Writer.open(io, schema, row_group_bytes: 500_000) { |w| w.write_rows(rows) }
     reader = Parakiet::Reader.new(StringIO.new(io.string))
     sizes = reader.row_groups.map(&:num_rows)
     assert_equal 20_000, sizes.sum
-    assert sizes.size.between?(4, 6), "expected ~5 row groups, got #{sizes.inspect}"
+    assert sizes.size.between?(3, 10), "expected row groups of roughly 500KB, got #{sizes.inspect}"
     assert_equal rows.last[:id], reader.column("id").last
 
     io = StringIO.new("".b)

@@ -26,6 +26,7 @@ require_relative "parakiet/types"
 require_relative "parakiet/schema"
 require_relative "parakiet/active_record"
 require_relative "parakiet/reader"
+require_relative "parakiet/byte_values"
 require_relative "parakiet/writer"
 
 module Parakiet

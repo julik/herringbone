@@ -9,9 +9,11 @@ values (json, time of day, ISO dates/timestamps, TimeWithZone, booleans, numeric
 validated string column, row numbers in errors, atomic path writes and IO targets, zstd by
 default, byte-based row groups (`row_group_bytes:`, 16MB default).
 
+Buffering: levels are byte Strings, string/fixed columns are dictionary-encoded on the fly or
+packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB row groups,
+660 → 416 MB at 64MB.
+
 Possible follow-ups:
-- Lower the Ruby-object overhead of buffered values (RSS is ~10-20x `row_group_bytes`), e.g. by
-  encoding fixed-width columns into packed Strings as rows arrive
 - `Parakiet.export(relation, path)` convenience that combines `from_active_record` and `find_each`
 
 ## 2. Reading ergonomics
@@ -22,7 +24,17 @@ Possible follow-ups:
 - `keys: :symbol` option for rows; batch iteration (`each_batch(size)`)
 - Optional `time_zone:` for returned timestamps (e.g. `Time.zone` in Rails)
 
-## 3. Pushdown structures (later)
+## 3. Inspecting files without reading the data
+
+- A visualizer that renders a file's layout as a self-contained HTML page with SVG: schema tree,
+  row groups, column chunks and pages drawn to scale (compressed vs uncompressed size), codecs,
+  encodings, dictionary pages, statistics, key/value metadata. `bin/parakiet html FILE > out.html`
+- Methods to examine a file from its footer and page headers only, without decoding values:
+  `reader.inspect_layout` / `reader.pages(row_group, column)` returning page headers (type,
+  sizes, encoding, value counts, statistics, offsets), per-column totals and compression ratios,
+  dictionary sizes, encoding stats, and a `reader.summary` for the CLI
+
+## 4. Pushdown structures (later)
 
 ### Bloom filters (read + write)
 

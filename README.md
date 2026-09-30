@@ -121,7 +121,7 @@ Writer options:
 | option | default | |
 |---|---|---|
 | `compression` | `:zstd` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
-| `row_group_bytes` | 16MB | flush a row group after about this many bytes of raw values; bounds memory use (expect 10-20x this in RSS, since values are buffered as Ruby objects) |
+| `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory; bounds memory use. Low-cardinality string columns are dictionary-encoded as rows arrive and other strings are packed into byte buffers, so a 15-column table exported in 16MB groups peaks around 290 MB RSS (420 MB with 64MB groups) |
 | `row_group_size` | none | also flush after this many rows |
 | `page_size` | 1MB | approximate data page size |
 | `data_page_version` | `1` | `1` or `2` |

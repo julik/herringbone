@@ -20,9 +20,8 @@ module Parakiet
   #
   # Options:
   #   compression:     :zstd (default), :snappy, :gzip, :lz4 (LZ4_RAW), :brotli, :none
-  #   row_group_bytes: flush a row group once roughly this many bytes of (unencoded) values are
-  #                    buffered (default 16MB). This bounds memory use while writing: Ruby
-  #                    holds the buffered values as objects, so expect roughly 10-20x that in RSS.
+  #   row_group_bytes: flush a row group once the buffered values take roughly this much memory
+  #                    (default 16MB). This bounds memory use while writing.
   #   row_group_size:  also flush after this many rows (default: no row limit)
   #   page_size:       approximate uncompressed data page size in bytes (default 1MB)
   #   data_page_version: 1 (default) or 2
@@ -191,11 +190,18 @@ module Parakiet
 
     private
 
+    # Levels are kept as binary Strings (one byte per entry). Values are an Array for numeric and
+    # boolean columns, and a compact ByteValues for BYTE_ARRAY / FIXED_LEN_BYTE_ARRAY columns.
     ColumnBuffer = Struct.new(:defs, :reps, :values)
 
     def reset_buffers
       @buffers = @schema.columns.map do |col|
-        ColumnBuffer.new([], col.max_repetition_level.positive? ? [] : nil, [])
+        if col.max_definition_level > 255 || col.max_repetition_level > 255
+          raise UnsupportedError, "Column #{col.dotted_path} is nested too deeply"
+        end
+        ColumnBuffer.new(String.new(encoding: Encoding::BINARY),
+          col.max_repetition_level.positive? ? String.new(encoding: Encoding::BINARY) : nil,
+          new_values_store(col))
       end
       # Top-level, non-repeated leaves are written directly, everything else is shredded
       @plan = @schema.fields.map do |field|
@@ -204,6 +210,14 @@ module Parakiet
       end
       @nested_buffers = @plan.reject { |p| p[3] }.flat_map { |p| p[0].leaves.map { |c| @buffers[c.index] } }
       @buffered_rows = 0
+    end
+
+    def new_values_store(col)
+      case col.type
+      when T::BYTE_ARRAY then ByteValues.new(dictionary: use_dictionary?(col))
+      when T::FIXED_LEN_BYTE_ARRAY then ByteValues.new(width: col.type_length, dictionary: use_dictionary?(col))
+      else []
+      end
     end
 
     def open_target(target)
@@ -245,9 +259,13 @@ module Parakiet
     def estimate_bytes_per_row
       bytes = @schema.columns.sum do |col|
         buf = @buffers[col.index]
-        width = value_width(col)
-        values = width ? buf.values.size * width : buf.values.sum { |v| v.bytesize + 4 }
-        values + buf.defs.size + (buf.reps ? buf.reps.size : 0)
+        values = buf.values
+        held = if values.is_a?(ByteValues)
+          values.memory_bytes
+        else
+          values.size * (col.type == T::INT96 ? 48 : 8)
+        end
+        held + buf.defs.bytesize + (buf.reps ? buf.reps.bytesize : 0)
       end
       bytes / [@buffered_rows, 1].max
     end
@@ -291,8 +309,9 @@ module Parakiet
     # Removes the entries a failed row left behind, so the buffers stay aligned
     def rollback_row(marks)
       @plan.each do |field, _, _, buf|
-        next unless buf && buf.defs.size > @buffered_rows
-        d = buf.defs.pop
+        next unless buf && buf.defs.bytesize > @buffered_rows
+        d = buf.defs.getbyte(-1)
+        buf.defs.slice!(-1..)
         buf.values.pop if d == field.def_level
       end
       marks&.each_with_index do |(defs, reps, values), i|
@@ -360,15 +379,23 @@ module Parakiet
       end
     end
 
-    def write_column_chunk(col, buf)
+    def write_column_chunk(col, buffer)
       type = col.type
-      values = buf.values
       path = col.dotted_path
       dict_values = nil
       indices = nil
-      if use_dictionary?(col) && !values.empty?
+      values = buffer.values
+      if values.is_a?(ByteValues)
+        kind, values, indices = values.materialize
+        if kind == :dictionary
+          dict_values = values
+          values = nil
+        end
+      elsif use_dictionary?(col) && !values.empty?
         dict_values, indices = build_dictionary(values, type, col.type_length)
       end
+      # Levels as Arrays of Integers, for this column only
+      buf = ColumnBuffer.new(buffer.defs.unpack("C*"), buffer.reps&.unpack("C*"), values)
       value_encoding = if dict_values
         E::RLE_DICTIONARY
       else
@@ -396,7 +423,14 @@ module Parakiet
       max_def = col.max_definition_level
       max_rep = col.max_repetition_level
       value_index = 0
-      page_ranges(buf, col).each do |from, to|
+      value_bytes = if indices
+        indices.size * 4
+      elsif (width = value_width(col))
+        values.size * width
+      else
+        values.sum(&:bytesize) + 4 * values.size
+      end
+      page_ranges(buf, value_bytes).each do |from, to|
         n = to - from
         defs = buf.defs[from, n]
         reps = buf.reps&.slice(from, n)
@@ -427,7 +461,7 @@ module Parakiet
         total_compressed_size: @pos - chunk_start,
         data_page_offset: data_offset,
         dictionary_page_offset: dictionary_offset,
-        statistics: @statistics ? statistics_for(col, buf) : nil
+        statistics: @statistics ? statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }) : nil
       )
       Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
     end
@@ -465,11 +499,9 @@ module Parakiet
 
     # Splits a column buffer into pages of roughly @page_size bytes. Repeated columns
     # are only cut where a new row starts.
-    def page_ranges(buf, col)
+    def page_ranges(buf, value_bytes)
       n = buf.defs.size
-      width = value_width(col)
-      values = buf.values
-      bytes = n + (width ? values.size * width : values.sum(&:bytesize) + 4 * values.size)
+      bytes = n + value_bytes
       pages = (bytes + @page_size - 1) / @page_size
       return [[0, n]] if pages <= 1
       per = (n + pages - 1) / pages
@@ -557,11 +589,11 @@ module Parakiet
       write_page(header, "".b, rep_bytes + def_bytes + compressed)
     end
 
-    def statistics_for(col, buf)
+    def statistics_for(col, defs, values)
       max_def = col.max_definition_level
-      nulls = max_def.zero? ? 0 : buf.defs.count { |d| d < max_def }
+      nulls = max_def.zero? ? 0 : defs.size - defs.count(max_def)
       stats = Format::Statistics.new(null_count: nulls)
-      min, max = min_max(col, buf.values)
+      min, max = min_max(col, values)
       if min
         stats.min_value = min
         stats.max_value = max
