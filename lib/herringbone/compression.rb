@@ -60,36 +60,24 @@ module Herringbone
       raise UnsupportedError, "#{Format::Codec::NAMES[codec] || codec} compression is not supported"
     end
 
-    # Whether +codec+ (a name like :zstd or a codec id) can be used in this process
-    def available?(codec)
-      ensure_available!(codec)
-      true
-    rescue UnsupportedError
-      false
-    end
-
     SUPPORTED = [
       Format::Codec::UNCOMPRESSED, Format::Codec::SNAPPY, Format::Codec::GZIP,
       Format::Codec::LZ4_RAW, Format::Codec::LZ4
     ].freeze
 
-    CODECS_BY_NAME = {
-      none: Format::Codec::UNCOMPRESSED, uncompressed: Format::Codec::UNCOMPRESSED,
-      snappy: Format::Codec::SNAPPY, gzip: Format::Codec::GZIP, brotli: Format::Codec::BROTLI,
-      lz4: Format::Codec::LZ4_RAW, lz4_raw: Format::Codec::LZ4_RAW, lz4_hadoop: Format::Codec::LZ4,
-      zstd: Format::Codec::ZSTD, lzo: Format::Codec::LZO
-    }.freeze
-
-    # Canonical name of each codec id, as accepted by codec_id
+    # Codec id => name, as given to the writer's compression: option and listed by Herringbone.codecs
     NAMES = {
       Format::Codec::UNCOMPRESSED => :none, Format::Codec::SNAPPY => :snappy, Format::Codec::GZIP => :gzip,
-      Format::Codec::LZO => :lzo, Format::Codec::BROTLI => :brotli, Format::Codec::LZ4 => :lz4_hadoop,
-      Format::Codec::ZSTD => :zstd, Format::Codec::LZ4_RAW => :lz4_raw
+      Format::Codec::LZ4_RAW => :lz4, Format::Codec::LZ4 => :lz4_hadoop, Format::Codec::ZSTD => :zstd,
+      Format::Codec::BROTLI => :brotli, Format::Codec::LZO => :lzo
     }.freeze
+    CODECS_BY_NAME = NAMES.invert.freeze
 
     def codec_id(name)
       return name if name.is_a?(Integer)
-      CODECS_BY_NAME.fetch(name.to_s.downcase.to_sym) { raise ArgumentError, "Unknown compression codec #{name.inspect}" }
+      CODECS_BY_NAME.fetch(name.to_s.downcase.to_sym) do
+        raise ArgumentError, "Unknown compression codec #{name.inspect}, expected one of #{NAMES.values.map(&:inspect).join(", ")}"
+      end
     end
 
     def decompress(codec, data, uncompressed_size)
@@ -107,7 +95,7 @@ module Herringbone
       end
       out = out.b
       if out.bytesize != uncompressed_size
-        raise DecodeError, "Decompressed #{out.bytesize} bytes, expected #{uncompressed_size}"
+        raise FormatError, "Decompressed #{out.bytesize} bytes, expected #{uncompressed_size}"
       end
       out
     end

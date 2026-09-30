@@ -237,7 +237,7 @@ module Herringbone
         width = RLE_WIDTH[max]
         case encoding
         when E::RLE
-          len = data.byteslice(pos, 4)&.unpack1("V") or raise DecodeError, "Truncated levels"
+          len = data.byteslice(pos, 4)&.unpack1("V") or raise FormatError, "Truncated levels"
           start = pos + 4
           [PageStream::HybridDecoder.new(data, start, start + len, width), start + len]
         when E::BIT_PACKED

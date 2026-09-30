@@ -5,22 +5,18 @@ module Herringbone
     # Builds a schema from an ActiveRecord model, so that the Hashes returned by
     # +record.attributes+ can be written directly:
     #
-    #   schema = Herringbone::Schema.from_active_record(Order)
-    #   Herringbone::Writer.open("orders.parquet", schema) do |w|
-    #     Order.find_each { |order| w << order.attributes }
-    #   end
+    #   schema = Herringbone::Schema.from_active_record(Order, except: %w[notes])
+    #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order, schema: schema) }
     #
     # ActiveRecord is not required: this only uses what a model class exposes
     # (+columns+, +primary_key+ and, when present, +defined_enums+).
     #
-    # only:   attribute names to include (Strings or Symbols)
-    # except: attribute names to leave out
-    # enums:  :string (default) writes enum attributes as STRING columns, :enum uses the
-    #         Parquet ENUM annotation (which pyarrow/pandas read as binary). Either way the
-    #         enum labels are written, and the writer rejects values outside the enum mapping
-    #         (stored values such as 0/1 are accepted and written as their labels).
-    def self.from_active_record(model, only: nil, except: nil, enums: :string)
-      raise ArgumentError, "enums: must be :string or :enum" unless %i[string enum].include?(enums)
+    # only:         attribute names to include (Strings or Symbols)
+    # except:       attribute names to leave out
+    # parquet_enum: Rails enum attributes are string columns holding the labels (the writer
+    #               rejects values outside the enum; stored values such as 0/1 are written as
+    #               their labels). true adds the Parquet ENUM annotation, see Builder#enum.
+    def self.from_active_record(model, only: nil, except: nil, parquet_enum: false)
       only = only && Array(only).map(&:to_s)
       except = Array(except).map(&:to_s)
       defined_enums = model.respond_to?(:defined_enums) ? model.defined_enums.to_h { |k, v| [k.to_s, v] } : {}
@@ -34,7 +30,7 @@ module Herringbone
         primary = primary_keys.include?(name)
         nullable = column.null != false && !primary
         if (mapping = defined_enums[name])
-          builder.enum(name, values: mapping.to_h, parquet_enum: enums == :enum, null: nullable)
+          builder.enum(name, values: mapping.to_h, parquet_enum: parquet_enum, null: nullable)
         else
           ActiveRecordMapping.add_column(builder, column, nullable, primary)
         end
@@ -126,36 +122,6 @@ module Herringbone
         return :"uint#{bits}" if unsigned
         { 8 => :int8, 16 => :int16, 32 => :int32, 64 => :int64 }.fetch(bits)
       end
-    end
-  end
-end
-
-module Herringbone
-  # Exports an ActiveRecord model or relation as Parquet into an IO:
-  #
-  #   File.open("orders.parquet", "wb") do |file|
-  #     Herringbone.export(Order.where(created_at: 1.year.ago..), file, compression: :zstd)
-  #   end
-  #
-  # The schema comes from Schema.from_active_record (pass only:/except:/enums: to shape it, or
-  # schema: to use your own). Records are loaded with find_each(batch_size:) when the relation
-  # supports it, and each record's attributes are written, so memory stays bounded. Other options
-  # go to Writer. Returns the number of rows written.
-  def self.export(relation, io, schema: nil, only: nil, except: nil, enums: :string, batch_size: 1000, **writer_options)
-    model = if relation.respond_to?(:klass) then relation.klass
-    elsif relation.respond_to?(:columns) then relation
-    end
-    if schema.nil?
-      raise ArgumentError, "Cannot derive a schema from #{relation.class}; pass schema:" unless model
-      schema = Schema.from_active_record(model, only: only, except: except, enums: enums)
-    end
-    Writer.open(io, schema, **writer_options) do |writer|
-      if relation.respond_to?(:find_each)
-        relation.find_each(batch_size: batch_size) { |record| writer << record }
-      else
-        relation.each { |record| writer << record }
-      end
-      writer.rows_written
     end
   end
 end

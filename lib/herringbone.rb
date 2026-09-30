@@ -7,8 +7,9 @@ require_relative "herringbone/version"
 # Pure-Ruby reader and writer for Apache Parquet files
 module Herringbone
   class Error < StandardError; end
+  # The file is not valid Parquet (bad metadata, corrupt pages...)
   class FormatError < Error; end
-  class DecodeError < FormatError; end
+  # A value cannot be written to its column
   class EncodeError < Error; end
   class UnsupportedError < Error; end
 end
@@ -34,27 +35,38 @@ require_relative "herringbone/inspector"
 require_relative "herringbone/visualizer"
 
 module Herringbone
-  Delta = Encodings::Delta
-
   module_function
 
-  # All of these take IOs, never paths: Herringbone does not open files itself.
-  #   File.open("data.parquet", "rb") { |f| Herringbone.read(f) }
-
-  def open(io, **options, &block) = Reader.open(io, **options, &block)
-
-  # Rows of a file as an Array of Hashes. Options: keys: (:string, :symbol), time_zone: (see Reader)
-  # With as: :columns, a Hash of column name => Array of values instead (faster for wide files).
-  # where:, from: and limit: select rows, see Reader#each_batch.
-  def read(io, columns: nil, as: :rows, where: nil, from: nil, limit: nil, **options)
-    raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
-    select = { columns: columns, where: where, from: from, limit: limit }
-    Reader.open(io, **options) { |r| as == :columns ? r.read_columns(**select) : r.rows(**select) }
+  # Writes +records+ to +io+ (any IO responding to #write; Herringbone never opens files by path)
+  # and returns the number of rows written. +records+ is an Enumerable of rows, or an ActiveRecord
+  # model or relation, which is read with find_each. Without +schema+, the schema comes from the
+  # model's columns (Schema.from_active_record) or is inferred from the first rows (Schema.infer).
+  # Other options go to Writer.
+  #
+  #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
+  def write(io, records, schema: nil, **options)
+    model = if records.respond_to?(:klass) then records.klass
+    elsif records.respond_to?(:columns) && records.respond_to?(:find_each) then records
+    end
+    schema ||= model ? Schema.from_active_record(model) : Schema.infer(records)
+    Writer.open(io, schema, **options) do |writer|
+      if records.respond_to?(:find_each)
+        records.find_each { |record| writer << record }
+      else
+        records.each { |record| writer << record }
+      end
+      writer.rows_written
+    end
   end
 
-  # Writes an Enumerable of rows to +io+. Without a schema, one is inferred from the first rows.
-  def write(io, rows, schema: nil, **options)
-    schema ||= Schema.infer(rows)
-    Writer.open(io, schema, **options) { |w| w.write_rows(rows) }
+  # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].
+  # :zstd and :brotli are listed when the zstd-ruby / brotli gems can be loaded.
+  def codecs
+    Compression::NAMES.values.select do |name|
+      Compression.ensure_available!(name)
+      true
+    rescue UnsupportedError
+      false
+    end
   end
 end

@@ -3,6 +3,11 @@
 Commit `f249c4a` ("Faster bloom filter hashing: distinct values once, big-integer-free XXH64,
 optional xxhash gem"), on top of the bloom filter support from `e543808`.
 
+> Later API simplification: the `HERRINGBONE_PURE_RUBY_XXHASH` environment variable, the
+> `xxh64_i64` alias and `Reader#row_groups_that_may_contain` were removed. Pure Ruby can still be
+> forced with `Herringbone::XXHash.backend = :ruby` (meant for tests and benchmarks), and
+> `where:` / `scan_plan` replace the row group helper.
+
 ## The problem
 
 Parquet bloom filters hash every value with XXH64 (seed 0). Herringbone's first version did this

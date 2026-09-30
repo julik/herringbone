@@ -59,17 +59,17 @@ size = ->(path) { "#{(File.size(path) / 1024.0 / 1024).round(1)} MB" }
 
 puts "== Write (snappy)"
 measure("herringbone Writer (hash rows)") do
-  File.open(herringbone_file, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :snappy) { |w| w.write_rows(ROWS_HASHES) } }
+  File.open(herringbone_file, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :snappy) { |w| ROWS_HASHES.each { |r| w << r } } }
   size.call(herringbone_file)
 end
 measure("herringbone Writer (hash rows, uncompressed)") do
   path = File.join(DIR, "herringbone_none.parquet")
-  File.open(path, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :none) { |w| w.write_rows(ROWS_HASHES) } }
+  File.open(path, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :none) { |w| ROWS_HASHES.each { |r| w << r } } }
   size.call(path)
 end
 measure("herringbone Writer (hash rows, zstd via zstd-ruby)") do
   path = File.join(DIR, "herringbone_zstd.parquet")
-  File.open(path, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :zstd) { |w| w.write_rows(ROWS_HASHES) } }
+  File.open(path, "wb") { |f| Herringbone::Writer.open(f, Dataset.herringbone_schema, compression: :zstd) { |w| ROWS_HASHES.each { |r| w << r } } }
   size.call(path)
 end
 measure("parquet-ruby write_rows (array rows)") do
@@ -83,7 +83,7 @@ puts "== Read all rows"
 { "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
   measure("herringbone each_row, #{name}") do
     n = 0
-    File.open(path, "rb") { |f| Herringbone::Reader.open(f) { |r| r.each_row { n += 1 } } }
+    File.open(path, "rb") { |f| Herringbone::Reader.new(f).each_row { n += 1 } }
     "#{n} rows"
   end
   measure("parquet-ruby each_row, #{name}") do
@@ -97,7 +97,7 @@ puts
 puts "== Read one column (amount)"
 { "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
   measure("herringbone column, #{name}") do
-    sum = File.open(path, "rb") { |f| Herringbone::Reader.open(f) { |r| r.column("amount").sum } }
+    sum = File.open(path, "rb") { |f| Herringbone::Reader.new(f).read(as: :columns, columns: ["amount"])["amount"].sum }
     "sum=#{sum.to_s("F")}"
   end
   measure("parquet-ruby each_column, #{name}") do
@@ -109,8 +109,8 @@ end
 
 puts
 puts "== Round trip check"
-a = File.open(parquet_ruby_file, "rb") { |f| Herringbone::Reader.open(f) { |r| r.each_row.first(3) } }
-b = File.open(herringbone_file, "rb") { |f| Herringbone::Reader.open(f) { |r| r.each_row.first(3) } }
+a = File.open(parquet_ruby_file, "rb") { |f| Herringbone::Reader.new(f).each_row.first(3) }
+b = File.open(herringbone_file, "rb") { |f| Herringbone::Reader.new(f).each_row.first(3) }
 c = Parquet.each_row(herringbone_file).first(3)
 puts "herringbone reads parquet-ruby's file identically to its own: #{a == b}"
 puts "parquet-ruby reads herringbone's file (first row): #{c.first.inspect}"

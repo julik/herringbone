@@ -16,30 +16,29 @@ module Herringbone
   #     end
   #   end
   #
-  # +schema+ is a Herringbone::Schema or a Hash spec (see Schema.define). The output is any IO that
-  # responds to #write (a File, StringIO, Tempfile, socket, pipe...); it is written sequentially and
-  # never seeked, rewound or closed by the writer. Herringbone does not open files by path.
+  # The output is any IO that responds to #write (a File, StringIO, Tempfile, socket, pipe...); it
+  # is written sequentially and never seeked, rewound or closed by the writer. Herringbone does
+  # not open files by path.
   #
   # Options:
   #   compression:     :snappy (default), :zstd, :gzip, :lz4 (LZ4_RAW), :lz4_hadoop, :brotli, :none
   #                    (:zstd and :brotli need the zstd-ruby / brotli gems)
   #   row_group_bytes: flush a row group once the buffered values take roughly this much memory
   #                    (default 16MB). This bounds memory use while writing.
-  #   row_group_size:  also flush after this many rows (default: no row limit)
-  #   page_size:       approximate uncompressed data page size in bytes (default 1MB)
-  #   page_row_limit:  at most this many rows per data page (default 20_000), which keeps the page
+  #   row_group_rows:  also flush after this many rows (default: no row limit)
+  #   page_bytes:      approximate uncompressed data page size (default 1MB)
+  #   page_rows:       at most this many rows per data page (default 20_000), which keeps the page
   #                    index selective
-  #   page_index:      write ColumnIndex/OffsetIndex structures (default true), so readers such as
-  #                    DuckDB, Spark, Trino and Arrow can skip pages by row range or min/max
   #   data_page_version: 1 (default) or 2
   #   dictionary:      true/false, or an Array of column paths to dictionary-encode
   #   encodings:       { "path.to.column" => :delta_binary_packed, ... } for non-dictionary pages
-  #   statistics:      write min/max/null_count statistics (default true)
   #   metadata:        Hash of String => String key/value metadata for the footer
   #   bloom_filters:   write split block bloom filters: true (every column that supports them),
   #                    an Array of column paths, or { "path" => true | { ndv:, fpp:, max_bytes: } }.
   #                    Without ndv: the distinct values of each row group are counted. fpp defaults
   #                    to 0.01 and max_bytes to 1MB. Filters are written after each row group.
+  #
+  # Statistics and page indexes (ColumnIndex/OffsetIndex) are always written.
   class Writer
     MAGIC = "PAR1"
     T = Format::Type
@@ -66,8 +65,6 @@ module Herringbone
 
     attr_reader :schema
 
-    # Opens a writer on a path or an IO. With a block, the file is finished when the block returns
-    # (or discarded if it raises) and the block's value is returned; without one, call #close.
     # Opens a writer on +io+. With a block, the file is finished (footer written) when the block
     # returns and the block's value is returned; if the block raises, the writer is aborted and no
     # footer is written. Without a block, call #close to finish. The IO is never closed.
@@ -84,21 +81,20 @@ module Herringbone
       result
     end
 
-    def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
-      page_size: 1024 * 1024, page_row_limit: 20_000, page_index: true, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {},
-      bloom_filters: nil)
-      @schema = Schema.coerce(schema)
-      schema = @schema
+    def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
+      page_bytes: 1024 * 1024, page_rows: 20_000, data_page_version: 1, dictionary: true, encodings: {},
+      metadata: {}, bloom_filters: nil)
+      raise ArgumentError, "Expected a Herringbone::Schema, got #{schema.class}" unless schema.is_a?(Schema)
+      @schema = schema
       @codec = Compression.codec_id(compression)
       # Fail before creating any file if the codec's library is missing
       Compression.ensure_available!(@codec)
       @row_group_bytes = Integer(row_group_bytes)
-      @row_group_size = row_group_size && Integer(row_group_size)
-      @row_limit = @row_group_size || ESTIMATE_AFTER_ROWS
-      @page_size = Integer(page_size)
-      @page_row_limit = Integer(page_row_limit)
-      raise ArgumentError, "page_row_limit must be positive" unless @page_row_limit.positive?
-      @page_index = page_index
+      @row_group_rows = row_group_rows && Integer(row_group_rows)
+      @row_limit = @row_group_rows || ESTIMATE_AFTER_ROWS
+      @page_bytes = Integer(page_bytes)
+      @page_rows = Integer(page_rows)
+      raise ArgumentError, "page_rows must be positive" unless @page_rows.positive?
       @page_indexes = [] # [ColumnChunk, ColumnIndex or nil, OffsetIndex] per written column chunk
       @data_page_version = Integer(data_page_version)
       raise ArgumentError, "data_page_version must be 1 or 2" unless [1, 2].include?(@data_page_version)
@@ -106,7 +102,6 @@ module Herringbone
       @encodings = encodings.to_h { |path, enc| [path.to_s, encoding_id(path, enc)] }
       unknown = @encodings.keys - schema.columns.map(&:dotted_path)
       raise ArgumentError, "encodings: no such column #{unknown.join(", ")}" unless unknown.empty?
-      @statistics = statistics
       @metadata = metadata
       @bloom_filters = bloom_filter_config(bloom_filters)
       @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter] for the row group being written
@@ -115,7 +110,7 @@ module Herringbone
       @pos = 0
       @closed = false
       @bytes_per_row = nil
-      @io = Writer.check_io!(io)
+      @io = check_io!(io)
       write_raw(MAGIC)
       reset_buffers
     end
@@ -152,12 +147,6 @@ module Herringbone
       end
       @buffered_rows += 1
       check_row_group_size if @buffered_rows >= @row_limit
-      self
-    end
-    alias_method :write, :<<
-
-    def write_rows(rows)
-      rows.each { |row| self << row }
       self
     end
 
@@ -209,14 +198,14 @@ module Herringbone
       @closed = true
     end
 
+    private
+
     # Pathname responds to #write too (writing a whole file by path), so it is rejected explicitly
-    def self.check_io!(io)
+    def check_io!(io)
       return io if io.respond_to?(:write) && !io.is_a?(String) && !(defined?(Pathname) && io.is_a?(Pathname))
       raise ArgumentError, "Herringbone::Writer expects an IO that responds to #write " \
         "(e.g. File.open(path, \"wb\") or StringIO.new), got #{io.class}"
     end
-
-    private
 
     # Levels are kept as binary Strings (one byte per entry). Values are an Array for numeric and
     # boolean columns, and a compact ByteValues for BYTE_ARRAY / FIXED_LEN_BYTE_ARRAY columns.
@@ -248,7 +237,7 @@ module Herringbone
       end
     end
 
-    # Flushes when the buffered values reach row_group_bytes (or row_group_size rows). The bytes per
+    # Flushes when the buffered values reach row_group_bytes (or row_group_rows rows). The bytes per
     # row are estimated from the buffered values after the first rows, then refreshed per row group.
     def check_row_group_size
       @bytes_per_row ||= estimate_bytes_per_row
@@ -264,7 +253,7 @@ module Herringbone
 
     def row_limit_for(bytes_per_row)
       by_bytes = [@row_group_bytes / [bytes_per_row, 1].max, ESTIMATE_AFTER_ROWS].max
-      @row_group_size ? [@row_group_size, by_bytes].min : by_bytes
+      @row_group_rows ? [@row_group_rows, by_bytes].min : by_bytes
     end
 
     def estimate_bytes_per_row
@@ -441,7 +430,7 @@ module Herringbone
       else
         values.sum(&:bytesize) + 4 * values.size
       end
-      order = @page_index || @statistics ? sort_key(col) : nil
+      order = sort_key(col)
       pages = []
       first_row = 0
       page_ranges(buf, value_bytes).each do |from, to|
@@ -453,7 +442,7 @@ module Herringbone
         value_index += non_null
         page_offset = @pos
         range = nil
-        if @page_index && order && non_null.positive?
+        if order && non_null.positive?
           in_page = dict_values ? page_values.uniq.map { |i| dict_values[i] } : page_values
           range = value_range(col, in_page, order)
         end
@@ -483,13 +472,13 @@ module Herringbone
         total_compressed_size: @pos - chunk_start,
         data_page_offset: data_offset,
         dictionary_page_offset: dictionary_offset,
-        statistics: @statistics ? statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }, order) : nil
+        statistics: statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }, order)
       )
       chunk = Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
       if (bloom = @bloom_filters[path])
         @pending_bloom_filters << [meta, build_bloom_filter(col, bloom, dict_values, values)]
       end
-      @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)] if @page_index
+      @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)]
       chunk
     end
 
@@ -635,14 +624,14 @@ module Herringbone
       [dict, values.map(&index)]
     end
 
-    # Splits a column buffer into pages of roughly @page_size bytes. Repeated columns
+    # Splits a column buffer into pages of roughly @page_bytes bytes. Repeated columns
     # are only cut where a new row starts.
     def page_ranges(buf, value_bytes)
       n = buf.defs.size
       bytes = n + value_bytes
-      pages = (bytes + @page_size - 1) / @page_size
+      pages = (bytes + @page_bytes - 1) / @page_bytes
       per = pages <= 1 ? n : (n + pages - 1) / pages
-      per = @page_row_limit if per > @page_row_limit
+      per = @page_rows if per > @page_rows
       return [[0, n]] if per >= n
       reps = buf.reps
       ranges = []

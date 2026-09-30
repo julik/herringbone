@@ -2,7 +2,7 @@
 
 require_relative "test_helper"
 
-# each_batch(as: :columns), read_columns and Herringbone.read(as: :columns)
+# each_batch(as: :columns) and read(as: :columns)
 class ColumnarReadTest < Minitest::Test
   FILES = Dir[File.join(FIXTURES_DIR, "{parquet-testing,generated}", "*.parquet")].sort
 
@@ -28,7 +28,7 @@ class ColumnarReadTest < Minitest::Test
     FILES.each do |path|
       with_reader(path) do |r|
         begin
-          rows = r.rows
+          rows = r.read
         rescue Herringbone::UnsupportedError, Herringbone::FormatError
           next # files the row API cannot read either (covered by the conformance tests)
         end
@@ -46,10 +46,10 @@ class ColumnarReadTest < Minitest::Test
           assert Marshal.dump(rows) == Marshal.dump(rebuilt),
             "#{File.basename(path)}: column batches differ from rows (batch size #{size})"
         end
-        columns = r.read_columns
+        columns = r.read(as: :columns)
         assert_equal r.schema.fields.map(&:name), columns.keys
         if columns.any?
-          assert same?(rows.map { |row| row[columns.keys.first] }, columns.values.first), "#{File.basename(path)}: read_columns"
+          assert same?(rows.map { |row| row[columns.keys.first] }, columns.values.first), "#{File.basename(path)}: read(as: :columns)"
         end
         checked += 1
       end
@@ -59,9 +59,9 @@ class ColumnarReadTest < Minitest::Test
 
   def test_batches_are_full_and_span_row_groups
     io = StringIO.new("".b)
-    Herringbone.write(io, Array.new(2500) { |i| { id: i, tags: ["t#{i % 3}"] * (i % 3) } }, row_group_size: 700)
+    Herringbone.write(io, Array.new(2500) { |i| { id: i, tags: ["t#{i % 3}"] * (i % 3) } }, row_group_rows: 700)
     r = Herringbone::Reader.new(StringIO.new(io.string))
-    assert_equal 4, r.num_row_groups
+    assert_equal 4, r.row_groups.size
     sizes = []
     ids = []
     r.each_batch(1000, as: :columns) do |batch|
@@ -78,9 +78,9 @@ class ColumnarReadTest < Minitest::Test
   def test_wide_file_with_small_batches_across_row_groups
     rows = Array.new(50) { |i| (0...12).to_h { |c| ["c#{c}", i * 100 + c] } }
     io = StringIO.new("".b)
-    Herringbone.write(io, rows, row_group_size: 20)
+    Herringbone.write(io, rows, row_group_rows: 20)
     r = Herringbone::Reader.new(StringIO.new(io.string))
-    assert_equal 3, r.num_row_groups
+    assert_equal 3, r.row_groups.size
     [1, 3, 7, 11, 13, 50, 100].each do |size|
       column_batches = r.each_batch(size, as: :columns).to_a
       row_batches = r.each_batch(size).to_a
@@ -95,18 +95,18 @@ class ColumnarReadTest < Minitest::Test
     bytes = io.string
     r = Herringbone::Reader.new(StringIO.new(bytes))
     assert_equal({ "a" => [1, 2], "c" => [1.5, nil] }, r.each_batch(10, as: :columns, columns: %w[a c]).first)
-    assert_equal({ a: [1, 2], b: ["x", nil], c: [1.5, nil] }, r.read_columns(keys: :symbol))
-    assert_equal({ "b" => ["x", nil] }, Herringbone.read(StringIO.new(bytes), as: :columns, columns: ["b"]))
-    assert_equal [{ "a" => 1 }, { "a" => 2 }], Herringbone.read(StringIO.new(bytes), columns: ["a"])
+    assert_equal({ a: [1, 2], b: ["x", nil], c: [1.5, nil] }, Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol).read(as: :columns))
+    assert_equal({ "b" => ["x", nil] }, r.read(as: :columns, columns: ["b"]))
+    assert_equal [{ "a" => 1 }, { "a" => 2 }], r.read(columns: ["a"])
     assert_raises(ArgumentError) { r.each_batch(10, as: :cells).first }
-    assert_raises(ArgumentError) { Herringbone.read(StringIO.new(bytes), as: :cells) }
+    assert_raises(ArgumentError) { r.read(as: :cells) }
   end
 
   def test_empty_file
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, { a: :int32 }) { |_| }
+    Herringbone::Writer.open(io, Herringbone::Schema.define { int32 :a }) { |_| }
     r = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal [], r.each_batch(10, as: :columns).to_a
-    assert_equal({ "a" => [] }, r.read_columns)
+    assert_equal({ "a" => [] }, r.read(as: :columns))
   end
 end

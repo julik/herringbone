@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require_relative "support/writer_helpers"
 
 # where:, from:, limit:, scan_plan and page skipping
 class ScanTest < Minitest::Test
@@ -50,12 +51,12 @@ class ScanTest < Minitest::Test
 
   def write(rows = ROWS, **opts)
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, SCHEMA, page_row_limit: 500, row_group_size: 5000, **opts) { |w| w.write_rows(rows) }
+    Herringbone::Writer.open(io, SCHEMA, page_rows: 500, row_group_rows: 5000, **opts) { |w| rows.each { |r| w << r } }
     io.string
   end
 
-  def reader(bytes = FILES[:v1], io_class: StringIO)
-    Herringbone::Reader.new(io_class.new(bytes), keys: :symbol)
+  def reader(bytes = FILES[:v1])
+    Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol)
   end
 
   def expected(where, from: nil, limit: nil)
@@ -73,7 +74,7 @@ class ScanTest < Minitest::Test
     FILES[:v1] ||= write(bloom_filters: ["email"])
     FILES[:v2] ||= write(data_page_version: 2, compression: :gzip)
     FILES[:plain] ||= write(dictionary: false)
-    FILES[:no_index] ||= write(page_index: false)
+    FILES[:no_index] ||= WriterHelpers.strip_page_index(write)
   end
 
   QUERIES = [
@@ -99,8 +100,8 @@ class ScanTest < Minitest::Test
     FILES.each do |name, bytes|
       r = reader(bytes)
       QUERIES.each do |where|
-        assert_equal expected(where), r.rows(where: where), "#{name}: #{where.inspect}"
-        columns = r.read_columns(where: where, columns: %w[id tags])
+        assert_equal expected(where), r.read(where: where), "#{name}: #{where.inspect}"
+        columns = r.read(as: :columns, where: where, columns: %w[id tags])
         assert_equal expected(where).map { |row| row[:id] }, columns[:id], "#{name}: #{where.inspect} as columns"
         assert_equal expected(where).map { |row| row[:tags] }, columns[:tags]
       end
@@ -111,9 +112,9 @@ class ScanTest < Minitest::Test
     FILES.each do |name, bytes|
       r = reader(bytes)
       [[nil, nil], [0, 3], [4_999, 3], [5_000, 1], [12_345, 700], [19_998, 10], [25_000, nil], [nil, 0]].each do |from, limit|
-        assert_equal expected({}, from: from, limit: limit), r.rows(from: from, limit: limit), "#{name}: from #{from} limit #{limit}"
+        assert_equal expected({}, from: from, limit: limit), r.read(from: from, limit: limit), "#{name}: from #{from} limit #{limit}"
       end
-      assert_equal expected({ status: "new" }, from: 7_000, limit: 5), r.rows(where: { status: "new" }, from: 7_000, limit: 5)
+      assert_equal expected({ status: "new" }, from: 7_000, limit: 5), r.read(where: { status: "new" }, from: 7_000, limit: 5)
       batches = r.each_batch(64, limit: 200).map(&:size)
       assert_equal [64, 64, 64, 8], batches
     end
@@ -135,15 +136,16 @@ class ScanTest < Minitest::Test
   end
 
   def test_skipped_pages_are_not_read
-    full = reader(FILES[:plain], io_class: CountingIO)
-    full.rows
-    lookup = reader(FILES[:plain], io_class: CountingIO)
-    assert_equal 1, lookup.rows(where: { id: 12_345 }).size
-    assert_operator lookup.io.bytes_read, :<, full.io.bytes_read / 10,
-      "a point lookup reads a small fraction of the file (#{lookup.io.bytes_read} of #{full.io.bytes_read} bytes)"
-    tail = reader(FILES[:plain], io_class: CountingIO)
-    assert_equal 5, tail.rows(from: 19_000, limit: 5).size
-    assert_operator tail.io.bytes_read, :<, full.io.bytes_read / 10
+    bytes_read = lambda do |&read|
+      io = CountingIO.new(FILES[:plain])
+      read.call(Herringbone::Reader.new(io, keys: :symbol))
+      io.bytes_read
+    end
+    full = bytes_read.call(&:read)
+    lookup = bytes_read.call { |r| assert_equal 1, r.read(where: { id: 12_345 }).size }
+    assert_operator lookup, :<, full / 10, "a point lookup reads a small fraction of the file (#{lookup} of #{full} bytes)"
+    tail = bytes_read.call { |r| assert_equal 5, r.read(from: 19_000, limit: 5).size }
+    assert_operator tail, :<, full / 10
   end
 
   def test_fixtures_with_page_indexes_from_other_writers
@@ -154,11 +156,11 @@ class ScanTest < Minitest::Test
     }.each do |fixture, where|
       File.open(File.join(FIXTURES_DIR, fixture), "rb") do |f|
         r = Herringbone::Reader.new(f)
-        all = r.rows
+        all = r.read
         where ||= { r.schema.fields.first.name => all[all.size / 2][r.schema.fields.first.name] }
         want = all.select { |row| where.all? { |k, test| Filter.matches?(test, row[k]) } }
-        assert_equal want, r.rows(where: where), fixture
-        assert_equal all.drop(all.size / 3).first(17), r.rows(from: all.size / 3, limit: 17), fixture
+        assert_equal want, r.read(where: where), fixture
+        assert_equal all.drop(all.size / 3).first(17), r.read(from: all.size / 3, limit: 17), fixture
         # Pages can only be skipped where there is more than one of them
         pages = r.page_index(0, r.schema.column(where.keys.first.to_s))[1]&.page_locations&.size.to_i
         if pages > 1
@@ -170,24 +172,24 @@ class ScanTest < Minitest::Test
 
   def test_bad_conditions
     r = reader
-    assert_raises(ArgumentError) { r.rows(where: { nope: 1 }) }
-    assert_raises(ArgumentError) { r.rows(where: { "tags.list.element" => "t0" }) }
-    assert_raises(ArgumentError) { r.rows(where: [:id, 1]) }
-    assert_raises(ArgumentError) { r.rows(from: -1) }
-    assert_raises(ArgumentError) { r.rows(limit: -1) }
-    assert_equal [], r.rows(where: { id: "not a number" })
+    assert_raises(ArgumentError) { r.read(where: { nope: 1 }) }
+    assert_raises(ArgumentError) { r.read(where: { "tags.list.element" => "t0" }) }
+    assert_raises(ArgumentError) { r.read(where: [:id, 1]) }
+    assert_raises(ArgumentError) { r.read(from: -1) }
+    assert_raises(ArgumentError) { r.read(limit: -1) }
+    assert_equal [], r.read(where: { id: "not a number" })
   end
 
   def test_filter_columns_need_not_be_projected
     r = reader
-    got = r.rows(columns: %w[email], where: { id: 7 })
+    got = r.read(columns: %w[email], where: { id: 7 })
     assert_equal [{ email: ROWS[7][:email] }], got
   end
 
   def test_helpers
     bytes = FILES[:v1]
-    assert_equal expected({ id: 1..3 }), Herringbone.read(StringIO.new(bytes), where: { id: 1..3 }, keys: :symbol)
-    assert_equal({ "id" => [4, 5] }, Herringbone.read(StringIO.new(bytes), as: :columns, columns: ["id"], from: 4, limit: 2))
+    assert_equal expected({ id: 1..3 }), reader(bytes).read(where: { id: 1..3 })
+    assert_equal({ "id" => [4, 5] }, Herringbone::Reader.new(StringIO.new(bytes)).read(as: :columns, columns: ["id"], from: 4, limit: 2))
     assert_equal [ROWS[9][:id]], reader.each_row(where: { id: 9 }).map { |row| row[:id] }
   end
 end

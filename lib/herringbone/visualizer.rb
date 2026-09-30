@@ -12,11 +12,9 @@ module Herringbone
   # The design and idea come from Parquet X-ray by cfahlgren1
   # (https://huggingface.co/spaces/cfahlgren1/parquet-xray), credited at the top of every page.
   #
-  #   File.open("data.parquet", "rb") do |io|
-  #     Herringbone::Visualizer.new(io).to_html                     # => String
-  #     Herringbone::Visualizer.new(io, checksums: true).to_html    # also verifies page CRCs
-  #     File.open("layout.html", "w") { |out| Herringbone.visualize(io, out) }
-  #   end
+  # Used through Inspector#to_html:
+  #
+  #   File.open("data.parquet", "rb") { |io| Herringbone::Inspector.new(io).to_html }
   class Visualizer
     HIGHLIGHT_JS = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
     # The design and idea of this page come from Parquet X-ray; credited at the top of every page
@@ -30,15 +28,12 @@ module Herringbone
 
     PAGE_TYPES = { DATA_PAGE: 0, INDEX_PAGE: 1, DICTIONARY_PAGE: 2, DATA_PAGE_V2: 3 }.freeze
 
-    attr_reader :inspector
-
-    # +source+ is an Inspector, or anything Inspector.new accepts (a random-access IO or a Reader).
-    # With checksums: true, page bodies are read to verify their CRCs (Inspector#verify_checksums).
-    def initialize(source, title: nil, max_pages: MAX_PAGES, checksums: false)
-      @inspector = source.is_a?(Inspector) ? source : Inspector.new(source)
+    # +inspector+ is an Inspector. +title+ defaults to the file's name.
+    def initialize(inspector, title: nil, max_pages: MAX_PAGES)
+      raise ArgumentError, "Expected a Herringbone::Inspector, got #{inspector.class}" unless inspector.is_a?(Inspector)
+      @inspector = inspector
       @title = title
       @max_pages = max_pages
-      @checksums = checksums
     end
 
     def to_html
@@ -50,16 +45,11 @@ module Herringbone
       TEMPLATE.gsub(/%%(TITLE|HIGHLIGHT_JS|CREDIT_URL|DATA)%%/) { values.fetch(Regexp.last_match(1)) }
     end
 
-    # Writes the HTML to +out+ (an IO) and returns it
-    def write(out)
-      out.write(to_html)
-      out
-    end
+    private
 
     # The data embedded in the page
     def payload
       i = @inspector
-      i.verify_checksums if @checksums && !i.checksums_verified?
       budget = @max_pages
       totals = i.column_totals.to_h { |t| [t[:column], t] }
       {
@@ -84,8 +74,6 @@ module Herringbone
         footer_json: footer_json
       }
     end
-
-    private
 
     def file_info
       s = @inspector.summary
@@ -1104,14 +1092,5 @@ module Herringbone
       </body>
       </html>
     HTML
-  end
-
-  module_function
-
-  # Renders an HTML visualization of the Parquet file read from +io+ (a random-access IO or a
-  # Reader). Returns the HTML String, or writes it to +out+ (an IO) and returns +out+.
-  def visualize(io, out = nil)
-    visualizer = Visualizer.new(io)
-    out ? visualizer.write(out) : visualizer.to_html
   end
 end

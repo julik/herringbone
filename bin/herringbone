@@ -2,12 +2,10 @@
 # frozen_string_literal: true
 
 # Usage:
-#   herringbone schema FILE        print the schema
-#   herringbone meta FILE          print row groups, codecs and encodings
-#   herringbone cat FILE [N]       print rows as JSON lines (optionally only the first N)
-#   herringbone inspect FILE [OUT] write an HTML page showing the file's layout to OUT (or stdout)
-#   herringbone inspect FILE --text [--pages]   print a text summary of the layout (with every page header)
-#   herringbone inspect FILE --json             print the layout as JSON
+#   herringbone cat FILE [N]              print rows as JSON lines (optionally only the first N)
+#   herringbone inspect FILE [--pages]    print the schema, row groups, column chunks (and every page header)
+#   herringbone inspect FILE --json       print all of it as JSON
+#   herringbone inspect FILE --html       print a self-contained HTML page showing the file's layout
 #   add --verify-checksums to any inspect form to read page bodies and check their CRCs
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
@@ -27,67 +25,38 @@ def jsonable(v)
   end
 end
 
-USAGE = "usage: herringbone (schema|meta|cat) FILE [N]\n" \
-  "       herringbone inspect FILE [OUT.html | --text [--pages] | --json] [--verify-checksums]"
+USAGE = "usage: herringbone cat FILE [N]\n" \
+  "       herringbone inspect FILE [--pages | --json | --html] [--verify-checksums]"
+
+command, *rest = ARGV
+flags, args = rest.partition { |a| a.start_with?("--") }
+path, limit = args
+valid = case command
+when "cat" then flags.empty? && path && (limit.nil? || limit.match?(/\A\d+\z/))
+when "inspect"
+  formats = flags & %w[--pages --json --html]
+  path && limit.nil? && (flags - %w[--pages --json --html --verify-checksums]).empty? && formats.size <= 1
+end
+unless valid
+  warn USAGE
+  exit 1
+end
 
 # Parquet and file errors are reported in one line, without a backtrace
 begin
-  if ARGV[0] == "inspect"
-    flags, args = ARGV.drop(1).partition { |a| a.start_with?("--") }
-    path, out = args
-    unknown = flags - %w[--text --json --pages --verify-checksums]
-    checksums = flags.include?("--verify-checksums")
-    if !path || !unknown.empty? || (flags.include?("--text") && flags.include?("--json")) ||
-        (out && (flags - ["--verify-checksums"]).any?) || (flags.include?("--pages") && !flags.include?("--text"))
-      warn USAGE
-      exit 1
-    end
-    File.open(path, "rb") do |io|
-      inspector = Herringbone::Inspector.new(io)
-      if flags.include?("--json")
-        puts JSON.pretty_generate(inspector.to_h(checksums: checksums))
-      elsif flags.include?("--text")
-        puts inspector.report(pages: flags.include?("--pages"), checksums: checksums)
-      elsif out
-        html = Herringbone::Visualizer.new(inspector, checksums: checksums).to_html
-        File.open(out, "w") { |f| f.write(html) }
-        warn "wrote #{out}"
-      else
-        Herringbone::Visualizer.new(inspector, checksums: checksums).write($stdout)
-      end
-    end
-    exit 0
-  end
-
-  command, path, limit = ARGV
-  unless %w[schema meta cat].include?(command) && path
-    warn USAGE
-    exit 1
-  end
-
   File.open(path, "rb") do |io|
-    Herringbone::Reader.open(io) do |r|
-      case command
-      when "schema"
-        puts r.schema.inspect
-      when "meta"
-        puts "rows: #{r.num_rows}, row groups: #{r.num_row_groups}, created by: #{r.created_by}"
-        r.key_value_metadata.each { |k, v| puts "  #{k} = #{v.to_s[0, 80]}" }
-        r.row_groups.each_with_index do |rg, i|
-          puts "row group #{i}: #{rg.num_rows} rows"
-          rg.columns.each do |cc|
-            m = cc.meta_data
-            encodings = m.encodings.map { |e| Herringbone::Format::Encoding::NAMES[e] }.join(",")
-            puts "  #{m.path_in_schema.join(".")}: #{Herringbone::Format::Codec::NAMES[m.codec]} #{encodings} " \
-              "#{m.total_compressed_size}/#{m.total_uncompressed_size} bytes"
-          end
-        end
-      when "cat"
-        n = limit&.to_i
-        r.each_row.with_index do |row, i|
-          break if n && i >= n
-          puts JSON.generate(jsonable(row))
-        end
+    if command == "cat"
+      n = limit&.to_i
+      Herringbone::Reader.new(io).each_row(limit: n) { |row| puts JSON.generate(jsonable(row)) }
+    else
+      inspector = Herringbone::Inspector.new(io)
+      inspector.verify_checksums if flags.include?("--verify-checksums")
+      if flags.include?("--json")
+        puts JSON.pretty_generate(inspector.to_h)
+      elsif flags.include?("--html")
+        $stdout.write(inspector.to_html)
+      else
+        puts inspector.report(pages: flags.include?("--pages"))
       end
     end
   end

@@ -49,7 +49,7 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "Page has fewer values than its levels require" if @i + n > @values.size
+          raise FormatError, "Page has fewer values than its levels require" if @i + n > @values.size
           out = @values[@i, n]
           @i += n
           out
@@ -102,7 +102,7 @@ module Herringbone
 
         def next_run
           while @left.zero?
-            raise DecodeError, "RLE data exhausted" if @pos >= @limit
+            raise FormatError, "RLE data exhausted" if @pos >= @limit
             header, @pos = Encodings::RLE.read_uleb(@data, @pos)
             if header & 1 == 1
               @rle = false
@@ -132,14 +132,14 @@ module Herringbone
 
         def read(n)
           bytes = n * @width
-          raise DecodeError, "Truncated PLAIN data" if @pos + bytes > @data.bytesize
+          raise FormatError, "Truncated PLAIN data" if @pos + bytes > @data.bytesize
           out = @data.byteslice(@pos, bytes).unpack("#{@format}#{n}")
           @pos += bytes
           out
         end
 
         def skip(n)
-          raise DecodeError, "Truncated PLAIN data" if @pos + n * @width > @data.bytesize
+          raise FormatError, "Truncated PLAIN data" if @pos + n * @width > @data.bytesize
           @pos += n * @width
         end
       end
@@ -151,7 +151,7 @@ module Herringbone
 
         def read(n)
           bytes = n * 12
-          raise DecodeError, "Truncated INT96 data" if @pos + bytes > @data.bytesize
+          raise FormatError, "Truncated INT96 data" if @pos + bytes > @data.bytesize
           out = @data.byteslice(@pos, bytes).unpack("Q<L<" * n).each_slice(2).to_a
           @pos += bytes
           out
@@ -167,14 +167,14 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
+          raise FormatError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
           out = Array.new(n) { |i| @data.byteslice(@pos + i * @width, @width) }
           @pos += n * @width
           out
         end
 
         def skip(n)
-          raise DecodeError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
+          raise FormatError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
           @pos += n * @width
         end
       end
@@ -193,10 +193,10 @@ module Herringbone
           out = Array.new(n)
           i = 0
           while i < n
-            raise DecodeError, "Truncated BYTE_ARRAY data" if pos + 4 > size
+            raise FormatError, "Truncated BYTE_ARRAY data" if pos + 4 > size
             len = data.getbyte(pos) | (data.getbyte(pos + 1) << 8) | (data.getbyte(pos + 2) << 16) | (data.getbyte(pos + 3) << 24)
             pos += 4
-            raise DecodeError, "BYTE_ARRAY value overruns page" if pos + len > size
+            raise FormatError, "BYTE_ARRAY value overruns page" if pos + len > size
             out[i] = data.byteslice(pos, len)
             pos += len
             i += 1
@@ -211,10 +211,10 @@ module Herringbone
           size = data.bytesize
           pos = @pos
           n.times do
-            raise DecodeError, "Truncated BYTE_ARRAY data" if pos + 4 > size
+            raise FormatError, "Truncated BYTE_ARRAY data" if pos + 4 > size
             pos += 4 + (data.getbyte(pos) | (data.getbyte(pos + 1) << 8) | (data.getbyte(pos + 2) << 16) | (data.getbyte(pos + 3) << 24))
           end
-          raise DecodeError, "BYTE_ARRAY value overruns page" if pos > size
+          raise FormatError, "BYTE_ARRAY value overruns page" if pos > size
           @pos = pos
         end
       end
@@ -227,7 +227,7 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "Truncated BOOLEAN data" if @i + n > @bits.bytesize
+          raise FormatError, "Truncated BOOLEAN data" if @i + n > @bits.bytesize
           out = Array.new(n) { |k| @bits.getbyte(@i + k) == 49 }
           @i += n
           out
@@ -276,11 +276,11 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "DELTA_LENGTH_BYTE_ARRAY has too few values" if @i + n > @lengths.size
+          raise FormatError, "DELTA_LENGTH_BYTE_ARRAY has too few values" if @i + n > @lengths.size
           data = @data
           out = Array.new(n) do |k|
             len = @lengths[@i + k]
-            raise DecodeError, "DELTA_LENGTH_BYTE_ARRAY value overruns page" if len.negative? || @pos + len > data.bytesize
+            raise FormatError, "DELTA_LENGTH_BYTE_ARRAY value overruns page" if len.negative? || @pos + len > data.bytesize
             s = data.byteslice(@pos, len)
             @pos += len
             s
@@ -300,12 +300,12 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "DELTA_BYTE_ARRAY has too few values" if @i + n > @prefixes.size
+          raise FormatError, "DELTA_BYTE_ARRAY has too few values" if @i + n > @prefixes.size
           suffixes = @suffixes.read(n)
           prev = @prev
           out = Array.new(n) do |k|
             prefix = @prefixes[@i + k]
-            raise DecodeError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
+            raise FormatError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
             prev = prefix.zero? ? suffixes[k] : prev.byteslice(0, prefix) + suffixes[k]
           end
           @prev = prev
@@ -327,7 +327,7 @@ module Herringbone
         end
 
         def read(n)
-          raise DecodeError, "Truncated BYTE_STREAM_SPLIT data" if @i + n > @count
+          raise FormatError, "Truncated BYTE_STREAM_SPLIT data" if @i + n > @count
           streams = Array.new(@width) { |k| @data.byteslice(@pos + k * @count + @i, n) }.join
           @i += n
           plain, = Encodings::ByteStreamSplit.decode(streams, 0, n, @width)

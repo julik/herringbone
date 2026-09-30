@@ -54,8 +54,8 @@ unless File.exist?(FILE)
   puts "Writing #{ROWS} rows in one row group to #{FILE}..."
   pid = fork do
     File.open(FILE, "wb") do |f|
-      Herringbone::Writer.open(f, Dataset.herringbone_schema, row_group_size: 1_000_000, page_row_limit: PAGE_ROWS,
-        page_size: 64 * 1024 * 1024, row_group_bytes: 4 * 1024 * 1024 * 1024) do |w|
+      Herringbone::Writer.open(f, Dataset.herringbone_schema, row_group_rows: 1_000_000, page_rows: PAGE_ROWS,
+        page_bytes: 64 * 1024 * 1024, row_group_bytes: 4 * 1024 * 1024 * 1024) do |w|
         Dataset.each_record(ROWS) { |r| w << r }
       end
     end
@@ -67,7 +67,7 @@ end
 lib = $LOADED_FEATURES.grep(%r{herringbone/reader\.rb\z}).first
 File.open(FILE, "rb") do |f|
   r = Herringbone::Reader.new(f)
-  puts "#{r.num_rows} rows, #{r.num_row_groups} row group(s), #{(File.size(FILE) / 1024.0 / 1024).round(1)} MB, #{RUBY_DESCRIPTION}"
+  puts "#{r.num_rows} rows, #{r.row_groups.size} row group(s), #{(File.size(FILE) / 1024.0 / 1024).round(1)} MB, #{RUBY_DESCRIPTION}"
 end
 puts "reader: #{lib}"
 puts
@@ -77,19 +77,17 @@ measure("each_row") do
   File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).each_row { n += 1 } }
   "#{n} rows"
 end
-if Herringbone::Reader.method_defined?(:each_batch)
-  measure("each_batch(10_000)") do
-    n = 0
-    File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).each_batch(10_000) { |b| n += b.size } }
-    "#{n} rows"
-  end
+measure("each_batch(10_000)") do
+  n = 0
+  File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).each_batch(10_000) { |b| n += b.size } }
+  "#{n} rows"
 end
 measure("each_row(columns: [id, email])") do
   n = 0
   File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).each_row(columns: %w[id email]) { n += 1 } }
   "#{n} rows"
 end
-measure("column(amount)") do
-  sum = File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).column("amount").sum }
+measure("read(as: :columns, columns: [amount])") do
+  sum = File.open(FILE, "rb") { |f| Herringbone::Reader.new(f).read(as: :columns, columns: ["amount"])["amount"].sum }
   "sum=#{sum.to_s("F")}"
 end

@@ -12,8 +12,12 @@ class VisualizerTest < Minitest::Test
   BIN = File.expand_path("../bin/herringbone", __dir__)
   ALLOWED_URLS = [Visualizer::HIGHLIGHT_JS, Visualizer::CREDIT_URL].freeze
 
-  def render(path, **opts)
-    File.open(path, "rb") { |io| Visualizer.new(io, **opts).to_html }
+  def render(path, checksums: false)
+    File.open(path, "rb") do |io|
+      inspector = Herringbone::Inspector.new(io)
+      inspector.verify_checksums if checksums
+      inspector.to_html
+    end
   end
 
   def embedded_data(html)
@@ -56,7 +60,7 @@ class VisualizerTest < Minitest::Test
         r = Herringbone::Reader.new(io)
         assert_equal r.num_rows, data["file"]["num_rows"], name
         assert_equal r.schema.columns.size, data["columns"].size, name
-        assert_equal r.num_row_groups, data["row_groups"].size, name
+        assert_equal r.row_groups.size, data["row_groups"].size, name
       end
       data["row_groups"].each do |rg|
         rg["chunks"].each do |ch|
@@ -104,7 +108,7 @@ class VisualizerTest < Minitest::Test
 
   def test_big_files_cap_page_detail
     path = File.join(FIXTURES_DIR, "parquet-testing", "overflow_i16_page_cnt.parquet")
-    inspector = File.open(path, "rb") { |io| Herringbone.inspect_file(io) }
+    inspector = File.open(path, "rb") { |io| Herringbone::Inspector.new(io).load_all }
     full = embedded_data(Visualizer.new(inspector).to_html)
     refute full["file"]["pages_truncated"]
     assert_equal 40_000, full["row_groups"][0]["chunks"][0]["pages"].size
@@ -120,7 +124,7 @@ class VisualizerTest < Minitest::Test
     io = StringIO.new("".b)
     schema = Herringbone::Schema.define { string :"</script><script>alert(1)</script>" }
     Herringbone::Writer.open(io, schema) { |w| w << ["</script><!--"] }
-    html = Visualizer.new(StringIO.new(io.string), title: "<b>%%DATA%%</b>").to_html
+    html = Visualizer.new(Herringbone::Inspector.new(StringIO.new(io.string)), title: "<b>%%DATA%%</b>").to_html
     check_html(html, "hostile")
     assert_includes html, "<title>&lt;b&gt;%%DATA%%&lt;/b&gt; · Parquet layout</title>"
     assert_equal "</script><script>alert(1)</script>", embedded_data(html)["columns"][0]["path"]
@@ -139,14 +143,13 @@ class VisualizerTest < Minitest::Test
     Herringbone::Compression.instance_variable_set(:@libraries, {})
   end
 
-  def test_visualize_writes_or_returns_html
+  def test_to_html_is_titled_with_the_file_name
     path = File.join(FIXTURES_DIR, "generated", "nested_map_string_int.parquet")
-    html = File.open(path, "rb") { |io| Herringbone.visualize(io) }
-    check_html(html, "visualize")
-    out = StringIO.new
-    File.open(path, "rb") { |io| assert_same out, Herringbone.visualize(io, out) }
-    assert_equal html, out.string
-    assert_equal html, Visualizer.new(StringIO.new(File.binread(path)), title: "nested_map_string_int.parquet").to_html
+    html = render(path)
+    check_html(html, "to_html")
+    assert_includes html, "<title>nested_map_string_int.parquet · Parquet layout</title>"
+    from_string = Herringbone::Inspector.new(StringIO.new(File.binread(path)))
+    assert_equal html, Visualizer.new(from_string, title: "nested_map_string_int.parquet").to_html
     assert_raises(ArgumentError) { Visualizer.new(path) }
   end
 
@@ -162,31 +165,34 @@ class VisualizerTest < Minitest::Test
     end
   end
 
-  def test_cli_inspect
+  def test_cli
     path = File.join(FIXTURES_DIR, "parquet-testing", "data_index_bloom_encoding_stats.parquet")
     ruby = RbConfig.ruby
-    html, status = Open3.capture2(ruby, BIN, "inspect", path)
-    assert status.success?
-    check_html(html, "cli stdout")
-    Dir.mktmpdir do |dir|
-      out = File.join(dir, "layout.html")
-      _, err, status = Open3.capture3(ruby, BIN, "inspect", path, out)
-      assert status.success?, err
-      assert_equal html, File.read(out)
-    end
-    text, status = Open3.capture2(ruby, BIN, "inspect", path, "--text")
+    text, status = Open3.capture2(ruby, BIN, "inspect", path)
     assert status.success?
     assert_match(/rows: 14, row groups: 1/, text)
     assert_match(/bloom filters: yes/, text)
-    pages, = Open3.capture2(ruby, BIN, "inspect", path, "--text", "--pages")
+    assert_match(/^schema:/, text)
+    refute_match(/0: DATA_PAGE @4/, text)
+    pages, = Open3.capture2(ruby, BIN, "inspect", path, "--pages")
     assert_match(/0: DATA_PAGE @4/, pages)
     json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json")
     assert status.success?
     assert_equal 14, JSON.parse(json)["summary"]["num_rows"]
-    _, _, status = Open3.capture3(ruby, BIN, "inspect", path, "--text", "--json")
+    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--html")
+    assert status.success?
+    check_html(html, "cli stdout")
+    lines, status = Open3.capture2(ruby, BIN, "cat", path, "2")
+    assert status.success?
+    assert_equal 2, lines.lines.size
+    assert_equal %w[String], JSON.parse(lines.lines.first).keys
+    [%w[inspect --json --html], %w[inspect --text], %w[inspect], %w[schema], %w[meta], %w[cat --json], %w[cat x]].each do |args|
+      _, _, status = Open3.capture3(ruby, BIN, args[0], *(args[0] == "inspect" && args.size == 1 ? [] : [path]), *args.drop(1))
+      refute status.success?, args.join(" ")
+    end
+    _, err, status = Open3.capture3(ruby, BIN, "inspect", "/nonexistent.parquet")
     refute status.success?
-    _, _, status = Open3.capture3(ruby, BIN, "html", path)
-    refute status.success?, "the old html command is gone"
+    assert_match(/\Aherringbone: /, err)
   end
 
   def test_checksums_are_verified_on_request
@@ -214,16 +220,16 @@ class VisualizerTest < Minitest::Test
     assert_nil data["arrow_error"]
     io = StringIO.new("".b)
     Herringbone::Writer.open(io, Herringbone::Schema.define { int64 :id }, metadata: { "ARROW:schema" => "/////w==" }) { |w| w << [1] }
-    broken = embedded_data(Visualizer.new(StringIO.new(io.string)).to_html)
+    broken = embedded_data(Herringbone::Inspector.new(StringIO.new(io.string)).to_html)
     assert_match(/could not decode ARROW:schema/, broken["arrow_error"])
     assert_match(/could not decode/, broken["kv"][0]["arrow_error"])
   end
 
   def test_index_mismatches_are_embedded
     path = File.join(FIXTURES_DIR, "parquet-testing", "repeated_primitive_no_list.parquet")
-    i = File.open(path, "rb") { |io| Herringbone.inspect_file(io) }
+    i = File.open(path, "rb") { |io| Herringbone::Inspector.new(io).load_all }
     assert_equal 0, embedded_data(Visualizer.new(i).to_html)["file"]["index_mismatches"]
-    c = i.chunk(0, "Int32_list")
+    c = i.row_groups[0].column("Int32_list")
     ci = c.column_index.dup
     ci.min_values = [3]
     c.instance_variable_set(:@column_index, ci)
@@ -248,7 +254,7 @@ class VisualizerTest < Minitest::Test
   def test_cli_inspect_verify_checksums
     path = File.join(FIXTURES_DIR, "parquet-testing", "datapage_v1-corrupt-checksum.parquet")
     ruby = RbConfig.ruby
-    text, status = Open3.capture2(ruby, BIN, "inspect", path, "--text", "--verify-checksums")
+    text, status = Open3.capture2(ruby, BIN, "inspect", path, "--verify-checksums")
     assert status.success?
     assert_match(/page CRCs: 2 ok, 2 mismatched/, text)
     json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json", "--verify-checksums")
@@ -256,17 +262,9 @@ class VisualizerTest < Minitest::Test
     assert_equal 2, JSON.parse(json)["summary"]["checksums"]["mismatch"]
     plain, = Open3.capture2(ruby, BIN, "inspect", path, "--json")
     assert_nil JSON.parse(plain)["summary"]["checksums"]
-    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--verify-checksums")
+    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--html", "--verify-checksums")
     assert status.success?
     assert_equal 2, embedded_data(html)["file"]["checksums"]["mismatch"]
-    Dir.mktmpdir do |dir|
-      out = File.join(dir, "layout.html")
-      _, err, status = Open3.capture3(ruby, BIN, "inspect", path, out, "--verify-checksums")
-      assert status.success?, err
-      assert_equal 2, embedded_data(File.read(out))["file"]["checksums"]["ok"]
-    end
-    _, _, status = Open3.capture3(ruby, BIN, "inspect", path, "--pages")
-    refute status.success?, "--pages needs --text"
   end
 
 end

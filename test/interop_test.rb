@@ -47,7 +47,7 @@ class InteropTest < Minitest::Test
         cases.each_value do |c|
           c.path = File.join(dir, "#{c.name}.parquet")
           begin
-            File.open(c.path, "wb") { |f| Herringbone::Writer.open(f, c.schema, **c.options) { |w| w.write_rows(c.rows) } }
+            File.open(c.path, "wb") { |f| Herringbone::Writer.open(f, c.schema, **c.options) { |w| c.rows.each { |r| w << r } } }
           rescue StandardError => e
             c.path = nil
             c.options = c.options.merge(write_error: "#{e.class}: #{e.message}")
@@ -65,7 +65,6 @@ class InteropTest < Minitest::Test
       all_rows = WriterHelpers.all_types_rows(30, seed: 11)
       nested_rows = WriterHelpers.nested_rows(30, seed: 12)
       WriterHelpers::CODECS.each do |codec|
-        next unless WriterHelpers.codec_available?(codec)
         [1, 2].each do |v|
           [true, false].each do |dict|
             opts = { compression: codec, data_page_version: v, dictionary: dict }
@@ -78,16 +77,16 @@ class InteropTest < Minitest::Test
       enc_rows = WriterTestSchemas.encoding_rows(200)
       [1, 2].each do |v|
         [nil, 50].each do |ps|
-          opts = { data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: Herringbone::Compression.available?(:zstd) ? :zstd : :gzip }
-          opts[:page_size] = ps if ps
+          opts = { data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: Herringbone.codecs.include?(:zstd) ? :zstd : :gzip }
+          opts[:page_bytes] = ps if ps
           list << Case.new(name: "encodings_v#{v}_#{ps || "default"}", schema: enc_schema, rows: enc_rows, options: opts)
         end
       end
       [1, 2].each do |v|
         list << Case.new(name: "pages_all_v#{v}", schema: ALL_TYPES_SCHEMA, rows: all_rows,
-          options: { page_size: 30, row_group_size: 11, data_page_version: v })
+          options: { page_bytes: 30, row_group_rows: 11, data_page_version: v })
         list << Case.new(name: "pages_nested_v#{v}", schema: NESTED_SCHEMA, rows: nested_rows,
-          options: { page_size: 30, row_group_size: 11, data_page_version: v, compression: :gzip })
+          options: { page_bytes: 30, row_group_rows: 11, data_page_version: v, compression: :gzip })
       end
       list << Case.new(name: "zero_rows_all", schema: ALL_TYPES_SCHEMA, rows: [], options: {})
       list << Case.new(name: "zero_rows_nested", schema: NESTED_SCHEMA, rows: [], options: { data_page_version: 2 })
@@ -186,7 +185,7 @@ class InteropTest < Minitest::Test
     from_pyarrow = r["rows"].map { |row| Canonical.dump(row) }
     file = File.open(c.path, "rb")
     reader = Herringbone::Reader.new(file)
-    from_herringbone = canonical_lines(reader.schema, reader.rows)
+    from_herringbone = canonical_lines(reader.schema, reader.read)
 
     expected.each_with_index do |e, i|
       assert_equal expected_pyarrow[i], from_pyarrow[i], "#{c.name}: pyarrow row #{i}"
@@ -196,7 +195,7 @@ class InteropTest < Minitest::Test
     assert_equal expected.size, from_herringbone.size
 
     assert_equal [], r["stats_errors"], "#{c.name}: statistics disagree with data"
-    check_null_counts(c, reader, r)
+    check_null_counts(c, file, reader, r)
     check_codecs(c, r)
   ensure
     file&.close
@@ -214,14 +213,14 @@ class InteropTest < Minitest::Test
     end
   end
 
-  def check_null_counts(c, reader, r)
+  def check_null_counts(c, io, reader, r)
     reader.row_groups.each_index do |g|
       reader.schema.columns.each do |col|
         info = r["columns"][g][col.index]
-        defs, = reader.read_column_chunk(g, col)
+        defs, _, values = Herringbone::Reader::ColumnChunkReader.new(io, reader.row_groups[g].columns[col.index], col).read
         nulls = defs ? defs.count { |d| d < col.max_definition_level } : 0
         assert_equal nulls, info["null_count"], "#{c.name}: null_count of #{col.dotted_path} in row group #{g}"
-        assert_equal (defs || reader.read_column_chunk(g, col)[2]).size, info["num_values"], "#{c.name}: num_values"
+        assert_equal (defs || values).size, info["num_values"], "#{c.name}: num_values"
       end
     end
   end
@@ -263,13 +262,13 @@ class InteropTest < Minitest::Test
       decl = method(:declare)
       schema = Herringbone::Schema.define { specs.each { |s| decl.call(self, s) } }
       rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], s[:name] == "row_id" ? i : value(s)] } }
-      codecs = WriterHelpers::CODECS.select { |c| WriterHelpers.codec_available?(c) }
+      codecs = WriterHelpers::CODECS
       opts = {
         compression: codecs.sample(random: @rng), data_page_version: [1, 2].sample(random: @rng),
         dictionary: [true, false].sample(random: @rng)
       }
-      opts[:page_size] = [16, 100].sample(random: @rng) if @rng.rand(2).zero?
-      opts[:row_group_size] = @rng.rand(1..10) if @rng.rand(3).zero?
+      opts[:page_bytes] = [16, 100].sample(random: @rng) if @rng.rand(2).zero?
+      opts[:row_group_rows] = @rng.rand(1..10) if @rng.rand(3).zero?
       encodings = {}
       schema.columns.each do |col|
         next unless @rng.rand(3).zero?

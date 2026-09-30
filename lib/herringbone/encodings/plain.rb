@@ -21,26 +21,26 @@ module Herringbone
         when Format::Type::BOOLEAN
           nbytes = (count + 7) / 8
           bits = data.byteslice(pos, nbytes).unpack1("b*")
-          raise DecodeError, "Truncated BOOLEAN data" if bits.bytesize < count
+          raise FormatError, "Truncated BOOLEAN data" if bits.bytesize < count
           [Array.new(count) { |i| bits.getbyte(i) == 49 }, pos + nbytes]
         when Format::Type::INT32, Format::Type::INT64, Format::Type::FLOAT, Format::Type::DOUBLE
           fmt, width = FORMATS[type]
           nbytes = count * width
-          raise DecodeError, "Truncated PLAIN data" if pos + nbytes > data.bytesize
+          raise FormatError, "Truncated PLAIN data" if pos + nbytes > data.bytesize
           [data.byteslice(pos, nbytes).unpack("#{fmt}#{count}"), pos + nbytes]
         when Format::Type::INT96
           nbytes = count * 12
-          raise DecodeError, "Truncated INT96 data" if pos + nbytes > data.bytesize
+          raise FormatError, "Truncated INT96 data" if pos + nbytes > data.bytesize
           vals = data.byteslice(pos, nbytes).unpack("Q<L<" * count).each_slice(2).map { |nanos, day| [nanos, day] }
           [vals, pos + nbytes]
         when Format::Type::BYTE_ARRAY
           decode_byte_arrays(data, pos, count)
         when Format::Type::FIXED_LEN_BYTE_ARRAY
           nbytes = count * type_length
-          raise DecodeError, "Truncated FIXED_LEN_BYTE_ARRAY data" if pos + nbytes > data.bytesize
+          raise FormatError, "Truncated FIXED_LEN_BYTE_ARRAY data" if pos + nbytes > data.bytesize
           [Array.new(count) { |i| data.byteslice(pos + i * type_length, type_length) }, pos + nbytes]
         else
-          raise DecodeError, "Unknown physical type #{type}"
+          raise FormatError, "Unknown physical type #{type}"
         end
       end
 
@@ -49,10 +49,10 @@ module Herringbone
         size = data.bytesize
         i = 0
         while i < count
-          raise DecodeError, "Truncated BYTE_ARRAY data" if pos + 4 > size
+          raise FormatError, "Truncated BYTE_ARRAY data" if pos + 4 > size
           len = data.getbyte(pos) | (data.getbyte(pos + 1) << 8) | (data.getbyte(pos + 2) << 16) | (data.getbyte(pos + 3) << 24)
           pos += 4
-          raise DecodeError, "BYTE_ARRAY value overruns page" if pos + len > size
+          raise FormatError, "BYTE_ARRAY value overruns page" if pos + len > size
           out[i] = data.byteslice(pos, len)
           pos += len
           i += 1

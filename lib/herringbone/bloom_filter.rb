@@ -11,12 +11,7 @@ module Herringbone
   # returns false for a value that was inserted. Values are given as Ruby values and converted
   # like the writer converts them (the column's encoder), so a Date, Time, BigDecimal or UUID
   # String hashes the same bytes as the stored value. Nulls are never in a bloom filter.
-  #
-  #   File.open("events.parquet", "rb") do |f|
-  #     reader = Herringbone::Reader.new(f)
-  #     reader.bloom_filter(0, "user_id")&.might_contain?(42)
-  #     reader.row_groups_that_may_contain("user_id", 42) # => [0, 3]
-  #   end
+  # The writer builds them (bloom_filters: option) and reads with where: consult them.
   class BloomFilter
     SALT = [0x47b6137b, 0x44974d91, 0x8824ad5b, 0xa2b7289d, 0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31].freeze
     S0, S1, S2, S3, S4, S5, S6, S7 = SALT
@@ -130,12 +125,10 @@ module Herringbone
       insert_hash(hash_of(value))
       self
     end
-    alias_method :<<, :insert
 
     def might_contain?(value)
       might_contain_hash?(hash_of(value))
     end
-    alias_method :include?, :might_contain?
 
     # XXH64 hash the filter uses for a Ruby +value+
     def hash_of(value)
@@ -216,6 +209,17 @@ module Herringbone
     # The raw bitset (little-endian 32-bit words)
     def bitset = @words.pack("V*")
 
+    # Header and bitset, as stored in a Parquet file
+    def encode
+      header.encode << bitset
+    end
+
+    def inspect
+      "#<#{self.class.name} #{num_bytes} bytes#{" for #{@column.dotted_path}" if @column}>"
+    end
+
+    private
+
     def header
       Format::BloomFilterHeader.new(
         num_bytes: num_bytes,
@@ -224,25 +228,12 @@ module Herringbone
         compression: Format::BloomFilterCompression.new(uncompressed: Format::BloomFilterUncompressed.new)
       )
     end
-
-    # Header and bitset, as stored in a Parquet file
-    def encode
-      header.encode << bitset
-    end
-
-    # Fraction of bits set, a rough indication of how full the filter is
-    def saturation
-      @words.sum { |w| w.to_s(2).count("1") } / (@words.size * 32.0)
-    end
-
-    def inspect
-      "#<#{self.class.name} #{num_bytes} bytes#{" for #{@column.dotted_path}" if @column}>"
-    end
   end
 
   class Reader
-    # Reads the bloom filter of a column chunk: +column+ is a dotted path ("a.b") or an Array
-    # path. Returns a BloomFilter, or nil when the chunk has none (or one of an unknown kind).
+    # Internal (used by reads with where:): the bloom filter of a column chunk. +column+ is a
+    # dotted path ("a.b"), an Array path or a Schema::Column. Returns a BloomFilter, or nil when
+    # the chunk has none (or one of an unknown kind).
     def bloom_filter(row_group_index, column)
       col = bloom_filter_column(column)
       rg = row_groups.fetch(row_group_index) { raise IndexError, "No row group #{row_group_index}" }
@@ -265,18 +256,6 @@ module Herringbone
       bitset = @io.read(header.num_bytes)
       raise FormatError, "Truncated bloom filter" if bitset.nil? || bitset.bytesize != header.num_bytes
       BloomFilter.new(bitset: bitset, column: col)
-    end
-
-    # Indexes of the row groups that may hold +value+ in +column+, according to their bloom
-    # filters. Row groups without a bloom filter for the column are always included.
-    def row_groups_that_may_contain(column, value)
-      col = bloom_filter_column(column)
-      probe = BloomFilter.new(column: col)
-      hash = probe.hash_of(value)
-      (0...row_groups.size).select do |i|
-        filter = bloom_filter(i, col.path)
-        filter.nil? || filter.might_contain_hash?(hash)
-      end
     end
 
     private

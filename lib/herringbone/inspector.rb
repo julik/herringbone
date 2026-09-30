@@ -9,19 +9,17 @@ module Herringbone
   # stays fast for big files (it seeks from page header to page header).
   #
   #   File.open("data.parquet", "rb") do |io|
-  #     inspector = Herringbone::Inspector.new(io)   # or a Reader
-  #     ...
+  #     inspector = Herringbone::Inspector.new(io)
+  #     inspector.summary                        # => { file_size:, num_rows:, codecs:, ... }
+  #     inspector.row_groups[0].column("name").pages
+  #     inspector.to_h                           # everything, JSON-serializable
+  #     puts inspector.report                    # readable text (bin/herringbone inspect)
+  #     html = inspector.to_html                 # self-contained HTML page (see Visualizer)
   #   end
   #
-  #   inspector.summary                      # => { size:, num_rows:, created_by:, ... }
-  #   inspector.row_groups[0].columns[1].pages
-  #   inspector.pages(0, "name")             # page headers of one column chunk
-  #   inspector.column_totals                # per-column sums across row groups
-  #   inspector.to_h                         # everything, JSON-serializable
-  #   puts inspector.report                  # readable text summary (bin/herringbone inspect --text)
-  #
-  # Page headers and indexes are read lazily; Herringbone.inspect_file(io) (or #load_all) reads
-  # them all up front, after which the inspector no longer needs the IO. The IO is never closed.
+  # Page headers and indexes are read lazily; #load_all reads them all up front, after which the
+  # inspector no longer needs the IO. The IO is never closed. After #verify_checksums, page CRC
+  # results are included in every output.
   class Inspector
     T = Format::Type
     MAGIC = "PAR1"
@@ -213,8 +211,8 @@ module Herringbone
         @index_mismatches ||= @inspector.compare_page_index(self)
       end
 
-      def to_h(pages: true, page_indexes: true)
-        h = {
+      def to_h
+        Inspector.jsonable({
           path: path,
           column: @column.index,
           type: Inspector.type_name(@column),
@@ -243,17 +241,14 @@ module Herringbone
           offset_index_offset: offset_index_range&.first,
           offset_index_length: offset_index_range&.last,
           external_file: external_file,
-          num_pages: self.pages.size,
+          num_pages: pages.size,
           num_data_pages: data_pages.size,
           index_mismatches: index_mismatches.empty? ? nil : index_mismatches,
-          error: error
-        }
-        h[:pages] = self.pages.map(&:to_h) if pages
-        if page_indexes
-          h[:column_index] = column_index&.to_h
-          h[:offset_index] = offset_index&.to_h
-        end
-        Inspector.jsonable(h.compact)
+          error: error,
+          pages: pages.map(&:to_h),
+          column_index: column_index&.to_h,
+          offset_index: offset_index&.to_h
+        }.compact)
       end
 
       def inspect
@@ -306,7 +301,7 @@ module Herringbone
         end
       end
 
-      def to_h(pages: true, page_indexes: true)
+      def to_h
         Inspector.jsonable({
           index: index,
           ordinal: @row_group.ordinal,
@@ -319,7 +314,7 @@ module Herringbone
           start_offset: start_offset,
           end_offset: end_offset,
           sorting_columns: sorting_columns,
-          columns: @columns.map { |c| c.to_h(pages: pages, page_indexes: page_indexes) }
+          columns: @columns.map(&:to_h)
         }.compact)
       end
 
@@ -333,20 +328,18 @@ module Herringbone
     # A label for the file (the basename of the IO's path, when it has one)
     attr_reader :name
 
-    # +source+ is a random-access IO (responds to #seek and #read, e.g. File.open(path, "rb")) or a
-    # Reader. The IO is left open.
-    def initialize(source)
-      @io = source.is_a?(Reader) ? source.io : source
+    # +io+ is a random-access IO (responds to #seek and #read, e.g. File.open(path, "rb")). It is
+    # left open.
+    def initialize(io)
+      @io = io
       unless @io.respond_to?(:read) && @io.respond_to?(:seek)
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
-          "(e.g. File.open(path, \"rb\")) or a Herringbone::Reader, got #{source.class}"
+          "(e.g. File.open(path, \"rb\")), got #{io.class}"
       end
       @name = @io.respond_to?(:path) && @io.path ? File.basename(@io.path.to_s) : nil
       read_footer
       @schema = Schema.from_elements(@metadata.schema)
     end
-
-    def self.from_string(bytes) = new(StringIO.new(bytes.b))
 
     def num_rows = @metadata.num_rows
     def created_by = @metadata.created_by
@@ -366,18 +359,6 @@ module Herringbone
     end
 
     def column_chunks = row_groups.flat_map(&:columns)
-
-    # Page headers of one column chunk; +column+ is a leaf index, a dotted path or a path Array
-    def pages(row_group, column) = chunk(row_group, column).pages
-
-    def chunk(row_group, column)
-      rg = row_groups.fetch(row_group)
-      if column.is_a?(Integer)
-        rg.columns.fetch(column)
-      else
-        rg.column(column.is_a?(Array) ? column.join(".") : column) or raise ArgumentError, "No such column #{column.inspect}"
-      end
-    end
 
     # Walks every page header and page index now (e.g. before closing the file)
     def load_all
@@ -586,14 +567,12 @@ module Herringbone
       out
     end
 
-    # With checksums: true, verifies page CRCs first (see #verify_checksums)
-    def to_h(pages: true, page_indexes: true, checksums: false)
-      verify_checksums if checksums && !checksums_verified?
+    def to_h
       Inspector.jsonable({
         summary: summary,
         key_value_metadata: key_value_metadata,
         schema: schema_tree,
-        row_groups: row_groups.map { |rg| rg.to_h(pages: pages, page_indexes: page_indexes) },
+        row_groups: row_groups.map(&:to_h),
         column_totals: column_totals,
         checksum_mismatches: checksum_summary&.fetch(:mismatches),
         index_mismatches: index_mismatches
@@ -602,10 +581,11 @@ module Herringbone
 
     def to_json(*args) = to_h.to_json(*args)
 
-    # Readable text summary. With pages: true, lists every page header too; with checksums: true,
-    # verifies page CRCs first (see #verify_checksums).
-    def report(pages: false, checksums: false)
-      verify_checksums if checksums && !checksums_verified?
+    # A self-contained HTML page showing the file's layout, see Visualizer
+    def to_html = Visualizer.new(self).to_html
+
+    # Readable text summary. With pages: true, lists every page header too.
+    def report(pages: false)
       s = summary
       out = []
       out << "file: #{@name || "(IO)"}"
@@ -1404,19 +1384,5 @@ module Herringbone
     rescue ArgumentError
       nil
     end
-  end
-
-  class Reader
-    # An Inspector for this reader's file (footer, page headers and page indexes; no values)
-    def inspector = Inspector.new(self)
-  end
-
-  module_function
-
-  # Inspects a Parquet file's layout without decoding values; see Inspector. +io+ is a
-  # random-access IO (or a Reader). Reads all page headers and page indexes up front, so the
-  # returned Inspector no longer needs the IO; the IO is not closed.
-  def inspect_file(io)
-    Inspector.new(io).load_all
   end
 end

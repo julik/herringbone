@@ -21,7 +21,6 @@ class WriterTest < Minitest::Test
     [1, 2].each do |version|
       [true, false].each do |dict|
         define_method("test_matrix_#{codec}_v#{version}_#{dict ? "dict" : "nodict"}") do
-          skip "#{codec} gem not available" unless WriterHelpers.codec_available?(codec)
           opts = { compression: codec, data_page_version: version, dictionary: dict }
           bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, **opts)
           assert_roundtrip(ALL_TYPES_SCHEMA, ALL_ROWS, bytes, opts.inspect)
@@ -68,11 +67,11 @@ class WriterTest < Minitest::Test
 
   [1, 2].each do |version|
     [true, false].each do |dict|
-      [nil, 3].each do |page_size|
-        define_method("test_explicit_encodings_v#{version}_#{dict}_#{page_size || "default"}") do
+      [nil, 3].each do |page_bytes|
+        define_method("test_explicit_encodings_v#{version}_#{dict}_#{page_bytes || "default"}") do
           rows = encoding_rows(300)
           opts = { data_page_version: version, dictionary: dict, encodings: ENCODINGS, compression: :snappy }
-          opts[:page_size] = page_size if page_size
+          opts[:page_bytes] = page_bytes if page_bytes
           bytes = write_to_string(ENCODING_SCHEMA, rows, **opts)
           assert_roundtrip(ENCODING_SCHEMA, rows, bytes, opts.inspect)
           reader = reader_for(bytes)
@@ -127,7 +126,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     end
     rows = [{ "d" => 0.0, "f" => 0.0 }, { "d" => -0.0, "f" => -0.0 }, { "d" => Float::NAN, "f" => 1.0 }]
     bytes = write_to_string(schema, rows, dictionary: %w[d f])
-    signs = reader_for(bytes).rows.first(2).map { |r| [r["d"], r["f"]].map { |v| (1.0 / v).positive? } }
+    signs = reader_for(bytes).read.first(2).map { |r| [r["d"], r["f"]].map { |v| (1.0 / v).positive? } }
     assert_equal [[true, true], [false, false]], signs
   end
   
@@ -162,28 +161,27 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_multiple_row_groups
     [1, 3, 7, 40].each do |rgs|
-      bytes = write_to_string(NESTED_SCHEMA, NESTED_ROWS, row_group_size: rgs)
-      assert_roundtrip(NESTED_SCHEMA, NESTED_ROWS, bytes, "row_group_size=#{rgs}")
+      bytes = write_to_string(NESTED_SCHEMA, NESTED_ROWS, row_group_rows: rgs)
+      assert_roundtrip(NESTED_SCHEMA, NESTED_ROWS, bytes, "row_group_rows=#{rgs}")
       reader = reader_for(bytes)
-      assert_equal (40.0 / rgs).ceil, reader.num_row_groups
+      assert_equal (40.0 / rgs).ceil, reader.row_groups.size
       assert_equal [rgs] * (40 / rgs) + (40 % rgs).nonzero?.then { |r| r ? [r] : [] }, reader.row_groups.map(&:num_rows)
       reader.row_groups.each_with_index { |rg, i| assert_equal i, rg.ordinal }
-      # read_row_group
-      first = reader.read_row_group(0)
+      first = reader.read(as: :columns, columns: ["id"], limit: rgs)
       assert_equal NESTED_ROWS.first(rgs).map { |r| r["id"] }, first["id"]
     end
   end
 
   def test_multiple_row_groups_all_types
-    bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, row_group_size: 6, dictionary: true)
+    bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, row_group_rows: 6, dictionary: true)
     assert_roundtrip(ALL_TYPES_SCHEMA, ALL_ROWS, bytes)
-    assert_equal 7, reader_for(bytes).num_row_groups
+    assert_equal 7, reader_for(bytes).row_groups.size
   end
 
   def test_row_group_flush_boundary_exact
     schema = Herringbone::Schema.define { int32 :a }
     rows = Array.new(10) { |i| { "a" => i } }
-    bytes = write_to_string(schema, rows, row_group_size: 5)
+    bytes = write_to_string(schema, rows, row_group_rows: 5)
     assert_equal [5, 5], reader_for(bytes).row_groups.map(&:num_rows)
     assert_roundtrip(schema, rows, bytes)
   end
@@ -192,8 +190,8 @@ def test_dictionary_encoded_floats_keep_negative_zero
     [true, false].each do |dict|
       define_method("test_many_pages_v#{version}_#{dict}") do
         [ALL_TYPES_SCHEMA, NESTED_SCHEMA].zip([ALL_ROWS, NESTED_ROWS]).each do |schema, rows|
-          bytes = write_to_string(schema, rows, page_size: 40, data_page_version: version, dictionary: dict)
-          assert_roundtrip(schema, rows, bytes, "page_size=40 v#{version}")
+          bytes = write_to_string(schema, rows, page_bytes: 40, data_page_version: version, dictionary: dict)
+          assert_roundtrip(schema, rows, bytes, "page_bytes=40 v#{version}")
           reader = reader_for(bytes)
           reader.schema.columns.each do |col|
             chunk = reader.row_groups[0].columns[col.index]
@@ -230,7 +228,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     schema = Herringbone::Schema.define { list :l, :int64 }
     rows = [{ "l" => (1..500).to_a }, { "l" => [] }, { "l" => (1..300).to_a }, { "l" => nil }]
     [1, 2].each do |v|
-      bytes = write_to_string(schema, rows, page_size: 16, data_page_version: v)
+      bytes = write_to_string(schema, rows, page_bytes: 16, data_page_version: v)
       assert_roundtrip(schema, rows, bytes)
       reader = reader_for(bytes)
       counts = []
@@ -249,7 +247,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
         bytes = write_to_string(schema, [], data_page_version: v)
         reader = reader_for(bytes)
         assert_equal 0, reader.num_rows
-        assert_equal [], reader.rows
+        assert_equal [], reader.read
         assert_equal schema.columns.map(&:path), reader.schema.columns.map(&:path)
       end
     end
@@ -292,13 +290,13 @@ def test_dictionary_encoded_floats_keep_negative_zero
       end
     end
     bytes = write_to_string(schema, [{ a: 1, s: { b: "x" } }, {}, { "s" => {} }])
-    assert_equal [{ "a" => 1, "s" => { "b" => "x" } }, { "a" => nil, "s" => nil }, { "a" => nil, "s" => { "b" => nil } }], reader_for(bytes).rows
+    assert_equal [{ "a" => 1, "s" => { "b" => "x" } }, { "a" => nil, "s" => nil }, { "a" => nil, "s" => { "b" => nil } }], reader_for(bytes).read
   end
 
   def test_map_accepts_array_of_pairs
     schema = Herringbone::Schema.define { map :m, :string, :int32 }
     bytes = write_to_string(schema, [{ "m" => [["a", 1], ["b", nil]] }])
-    assert_equal [{ "m" => { "a" => 1, "b" => nil } }], reader_for(bytes).rows
+    assert_equal [{ "m" => { "a" => 1, "b" => nil } }], reader_for(bytes).read
   end
 
   def test_string_encoding_of_read_values
@@ -309,7 +307,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       enum :e
     end
     bytes = write_to_string(schema, [{ "s" => "é", "b" => "é", "j" => "{}", "e" => "A" }])
-    row = reader_for(bytes).rows.first
+    row = reader_for(bytes).read.first
     assert_equal Encoding::UTF_8, row["s"].encoding
     assert_equal "é", row["s"]
     assert_equal Encoding::BINARY, row["b"].encoding
@@ -320,7 +318,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_special_values_directly
     bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS.first(12))
-    rows = reader_for(bytes).rows
+    rows = reader_for(bytes).read
     assert_equal 2**64 - 1, rows[1]["u64"]
     assert_equal 2**63, rows[2]["u64"]
     assert_equal 2**32 - 1, rows[1]["u32"]
@@ -347,7 +345,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   def test_date_before_gregorian_reform_with_default_calendar
     schema = Herringbone::Schema.define { date :d }
     bytes = write_to_string(schema, [{ "d" => Date.new(1, 1, 1) }, { "d" => Date.new(1500, 3, 1) }])
-    assert_equal %w[0001-01-01 1500-03-01], reader_for(bytes).rows.map { |r| r["d"].iso8601 }
+    assert_equal %w[0001-01-01 1500-03-01], reader_for(bytes).read.map { |r| r["d"].iso8601 }
   end
 
   def test_float16_rounding
@@ -355,7 +353,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     # exactly representable
     vals = [0.5, 1.0, 2.0**-24, 65_504.0, -1000.5, 0.333251953125]
     bytes = write_to_string(schema, vals.map { |v| { "h" => v } })
-    assert_equal vals, reader_for(bytes).rows.map { |r| r["h"] }
+    assert_equal vals, reader_for(bytes).read.map { |r| r["h"] }
     # rounding: nearest-even, overflow to infinity, underflow to zero
     assert_equal 0x3C00, Herringbone::Types.float_to_half(1.0 + 2.0**-11) # tie -> even
     assert_equal 0x3C02, Herringbone::Types.float_to_half(1.0 + 3 * 2.0**-11) # tie -> even (up)
@@ -449,7 +447,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     assert_raises(Herringbone::EncodeError) { w << { "a" => 3, "b" => nil } }
     w << { "a" => 5, "b" => 6 }
     w.close
-    rows = reader_for(io.string).rows
+    rows = reader_for(io.string).read
     assert_equal [{ "a" => 1, "b" => 2 }, { "a" => 5, "b" => 6 }], rows
   end
 
@@ -476,9 +474,9 @@ def test_dictionary_encoded_floats_keep_negative_zero
     meta = { "k" => "v", "unicode" => "漢字", "empty" => "", :sym => "s", "big" => "x" * 10_000 }
     bytes = write_to_string(schema, [{ "a" => 1 }], metadata: meta)
     reader = reader_for(bytes)
-    assert_equal meta.transform_keys(&:to_s), reader.key_value_metadata
-    assert_match(/herringbone/, reader.created_by)
-    assert_nil reader_for(write_to_string(schema, [])).metadata.key_value_metadata
+    assert_equal meta.transform_keys(&:to_s), reader.metadata
+    assert_match(/herringbone/, reader.file_metadata.created_by)
+    assert_nil reader_for(write_to_string(schema, [])).file_metadata.key_value_metadata
   end
 
   def test_file_structure
@@ -486,7 +484,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     assert_equal "PAR1", bytes.byteslice(0, 4)
     assert_equal "PAR1", bytes.byteslice(-4, 4)
     reader = reader_for(bytes)
-    md = reader.metadata
+    md = reader.file_metadata
     assert_equal 40, md.num_rows
     offset = 4
     md.row_groups.each do |rg|
@@ -513,7 +511,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_statistics
-    bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, row_group_size: 13)
+    bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, row_group_rows: 13)
     reader = reader_for(bytes)
     reader.row_groups.each_with_index do |rg, g|
       rows = ALL_ROWS[g * 13, 13]
@@ -578,11 +576,6 @@ def test_dictionary_encoded_floats_keep_negative_zero
     end
   end
 
-  def test_statistics_disabled
-    bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, statistics: false)
-    assert reader_for(bytes).row_groups[0].columns.all? { |c| c.meta_data.statistics.nil? }
-  end
-
   # -- schema inference and convenience API --
 
   def test_schema_infer_roundtrip
@@ -603,9 +596,10 @@ def test_dictionary_encoded_floats_keep_negative_zero
     assert_equal :BOOLEAN, types["bool"]
     assert_equal :FIXED_LEN_BYTE_ARRAY, types["dec"]
     io = StringIO.new("".b)
-    Herringbone.write(io, rows)
+    assert_equal 3, Herringbone.write(io, rows)
     begin
-      read = Herringbone.read(StringIO.new(io.string))
+      reader = Herringbone::Reader.new(StringIO.new(io.string))
+      read = reader.read
       assert_equal 1, read[0]["i"]
       assert_equal 2.0, read[1]["f"]
       assert_equal "é", read[0]["s"]
@@ -622,8 +616,8 @@ def test_dictionary_encoded_floats_keep_negative_zero
       assert_equal [nil, { "k" => nil }], read[2]["lh"]
       assert_equal [], read[1]["lh"]
       assert_equal(-5, read[2]["i"])
-      assert_equal 3, Herringbone.open(StringIO.new(io.string), &:num_rows)
-      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], Herringbone.read(StringIO.new(io.string), columns: ["i"])
+      assert_equal 3, reader.num_rows
+      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], reader.read(columns: ["i"])
     end
   end
 
@@ -637,7 +631,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     Dir.mktmpdir do |dir|
       path = File.join(dir, "a.parquet")
       File.open(path, "wb") do |f|
-        Herringbone::Writer.open(f, NESTED_SCHEMA, compression: :gzip) { |w| w.write_rows(NESTED_ROWS) }
+        Herringbone::Writer.open(f, NESTED_SCHEMA, compression: :gzip) { |w| NESTED_ROWS.each { |r| w << r } }
       end
       assert_roundtrip(NESTED_SCHEMA, NESTED_ROWS, File.binread(path))
     end
@@ -649,9 +643,9 @@ def test_dictionary_encoded_floats_keep_negative_zero
       int64 :n, null: false
     end
     rows = Array.new(5000) { |i| { "big" => i % 1000 == 0 ? "x" * 100_000 : "v#{i % 50}", "n" => i } }
-    bytes = write_to_string(schema, rows, page_size: 8192, row_group_size: 2000)
+    bytes = write_to_string(schema, rows, page_bytes: 8192, row_group_rows: 2000)
     reader = reader_for(bytes)
-    assert_equal rows, reader.rows
-    assert_equal (0...5000).to_a, reader.column("n")
+    assert_equal rows, reader.read
+    assert_equal (0...5000).to_a, reader.read(as: :columns, columns: ["n"])["n"]
   end
 end

@@ -7,14 +7,7 @@ require_relative "canonical"
 # Shared schemas, data generators and helpers for the writer and interop tests
 module WriterHelpers
   # zstd and brotli only when their optional gems are installed (CI also runs without them)
-  CODECS = %i[none snappy gzip lz4 lz4_hadoop zstd brotli].select { |c| Herringbone::Compression.available?(c) }.freeze
-
-  def self.codec_available?(codec)
-    Herringbone::Compression.compress(Herringbone::Compression.codec_id(codec), "x".b)
-    true
-  rescue Herringbone::UnsupportedError
-    false
-  end
+  CODECS = Herringbone.codecs.freeze
 
   ALL_TYPES_SCHEMA = Herringbone::Schema.define do
     int64 :id, null: false
@@ -227,6 +220,21 @@ module WriterHelpers
     rows
   end
 
+  # The same file with its page index (ColumnIndex/OffsetIndex) unreferenced, as written by
+  # writers that have none
+  def self.strip_page_index(bytes)
+    footer_len = bytes.byteslice(-8, 4).unpack1("V")
+    body = bytes.byteslice(0, bytes.bytesize - 8 - footer_len)
+    meta = Herringbone::Format::FileMetaData.decode(bytes.byteslice(-8 - footer_len, footer_len)).first
+    meta.row_groups.each do |rg|
+      rg.columns.each do |c|
+        c.column_index_offset = c.column_index_length = c.offset_index_offset = c.offset_index_length = nil
+      end
+    end
+    footer = meta.encode
+    body + footer + [footer.bytesize].pack("V") + "PAR1"
+  end
+
   def write_to_string(schema, rows, **options)
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, schema, **options)
@@ -246,7 +254,7 @@ module WriterHelpers
   # Asserts that +rows+ read back from +bytes+ equal +expected+, compared in canonical form
   def assert_roundtrip(schema, expected, bytes, msg = nil)
     reader = reader_for(bytes)
-    actual = reader.rows
+    actual = reader.read
     assert_equal expected.size, reader.num_rows, "num_rows #{msg}"
     exp = canonical_lines(schema, expected)
     act = canonical_lines(reader.schema, actual)

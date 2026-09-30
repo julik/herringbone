@@ -186,14 +186,13 @@ class ActiveRecordTest < Minitest::Test
     w << { "id" => 1, "status" => "shipped", "kind" => "a" }
     w << { "id" => 2, "status" => 0 }
     w.close
-    assert_equal %w[shipped pending], Herringbone::Reader.new(StringIO.new(io.string)).rows.map { |r| r["status"] }
+    assert_equal %w[shipped pending], Herringbone::Reader.new(StringIO.new(io.string)).read.map { |r| r["status"] }
     bad = Herringbone::Writer.new(StringIO.new("".b), s)
     assert_raises(Herringbone::Error) { bad << { "id" => 3, "status" => "lost" } }
 
-    s = Herringbone::Schema.from_active_record(model, enums: :enum)
+    s = Herringbone::Schema.from_active_record(model, parquet_enum: true)
     assert_equal [:enum], kind(node(s, "status"))
     assert_equal [:enum], kind(node(s, "kind"))
-    assert_raises(ArgumentError) { Herringbone::Schema.from_active_record(model, enums: :integer) }
   end
 
   def test_model_without_defined_enums
@@ -244,7 +243,7 @@ class ActiveRecordTest < Minitest::Test
     w = Herringbone::Writer.new(io, schema)
     rows.each { |r| w << r }
     w.close
-    read = Herringbone::Reader.new(StringIO.new(io.string)).rows
+    read = Herringbone::Reader.new(StringIO.new(io.string)).read
     # TIME reads back as microseconds since midnight, JSON as text
     expected = rows.map(&:dup)
     expected[0]["clock"] = ((12 * 60 + 34) * 60 + 56) * 1_000_000 + 789_000
@@ -314,7 +313,7 @@ class ActiveRecordTest < Minitest::Test
       order.find_each { |o| w << o.attributes }
       w.close
 
-      read = Herringbone::Reader.new(StringIO.new(io.string)).rows
+      read = Herringbone::Reader.new(StringIO.new(io.string)).read
       expected = order.order(:id).map do |o|
         # JSON is read back as text, TIME as microseconds since midnight
         o.attributes.merge("payload" => o.payload&.to_json, "created_at" => o.created_at.utc,
@@ -331,7 +330,7 @@ class ActiveRecordTest < Minitest::Test
     end
   end
 
-  def test_export
+  def test_write_models_and_relations
     with_active_record do
       ActiveRecord::Schema.define do
         create_table :herringbone_exports, force: true do |t|
@@ -349,23 +348,28 @@ class ActiveRecordTest < Minitest::Test
       25.times { |i| model.create!(name: "n#{i}", kind: i.even? ? :free : :pro, amount: BigDecimal(i) / 4) }
 
       io = StringIO.new("".b)
-      assert_equal 25, Herringbone.export(model, io, batch_size: 7)
-      rows = Herringbone::Reader.new(StringIO.new(io.string)).rows
+      assert_equal 25, Herringbone.write(io, model)
+      rows = Herringbone::Reader.new(StringIO.new(io.string)).read
       assert_equal model.order(:id).pluck(:name), rows.map { |r| r["name"] }
       assert_equal %w[free pro free], rows.first(3).map { |r| r["kind"] }
       assert_equal BigDecimal("0.25"), rows[1]["amount"]
 
       io = StringIO.new("".b)
-      assert_equal 12, Herringbone.export(model.where(kind: :pro), io, only: %w[id name], compression: :gzip)
+      schema = Herringbone::Schema.from_active_record(model, only: %w[id name])
+      assert_equal 12, Herringbone.write(io, model.where(kind: :pro), schema: schema, compression: :gzip)
       reader = Herringbone::Reader.new(StringIO.new(io.string))
       assert_equal %w[id name], reader.schema.fields.map(&:name)
-      assert_equal [:gzip], reader.codecs
       assert_equal 12, reader.num_rows
+
+      # An Array of records has no columns to read: the schema is inferred from the attributes
+      io = StringIO.new("".b)
+      assert_equal 3, Herringbone.write(io, model.order(:id).first(3))
+      assert_equal %w[n0 n1 n2], Herringbone::Reader.new(StringIO.new(io.string)).read.map { |r| r["name"] }
 
       Dir.mktmpdir do |dir|
         path = File.join(dir, "export.parquet")
-        File.open(path, "wb") { |f| Herringbone.export(model.all, f) }
-        assert_equal 25, File.open(path, "rb") { |f| Herringbone::Reader.open(f, &:num_rows) }
+        File.open(path, "wb") { |f| Herringbone.write(f, model.all) }
+        assert_equal 25, File.open(path, "rb") { |f| Herringbone::Reader.new(f).num_rows }
       end
     end
   end

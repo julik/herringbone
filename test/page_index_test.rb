@@ -11,7 +11,7 @@ class PageIndexTest < Minitest::Test
 
   def write(schema, rows, **opts)
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, schema, **opts) { |w| w.write_rows(rows) }
+    Herringbone::Writer.open(io, schema, **opts) { |w| rows.each { |r| w << r } }
     io.string
   end
 
@@ -37,7 +37,7 @@ class PageIndexTest < Minitest::Test
   def test_offset_index_locates_every_data_page
     rows = Array.new(10_000) { |i| { id: i, name: "n#{i % 50}", tags: Array.new(i % 4) { |k| "t#{k}" } } }
     [1, 2].each do |version|
-      bytes = write({ id: :int64, name: :string, tags: [:string] }, rows, page_row_limit: 700, data_page_version: version)
+      bytes = write(Herringbone::Schema.define { int64 :id; string :name; list :tags, :string }, rows, page_rows: 700, data_page_version: version)
       indexes(bytes).each do |chunk, _, oi|
         headers = page_headers(bytes, oi)
         assert headers.all? { |h| [F::PageType::DATA_PAGE, F::PageType::DATA_PAGE_V2].include?(h.type) }
@@ -58,8 +58,8 @@ class PageIndexTest < Minitest::Test
     rows = Array.new(1000) do |i|
       { asc: i, desc: -i, mixed: (i * 7919) % 1000, maybe: i < 200 || i.odd? ? nil : i.to_f, s: format("k%04d", i) }
     end
-    schema = { asc: :int64, desc: :int32, mixed: :int64, maybe: :double, s: :string }
-    bytes = write(schema, rows, page_row_limit: 100)
+    schema = Herringbone::Schema.define { int64 :asc; int32 :desc; int64 :mixed; double :maybe; string :s }
+    bytes = write(schema, rows, page_rows: 100)
     by_name = indexes(bytes).to_h { |chunk, ci, oi| [chunk.meta_data.path_in_schema.first, [ci, oi]] }
 
     ci, oi = by_name.fetch("asc")
@@ -111,7 +111,7 @@ class PageIndexTest < Minitest::Test
   def test_long_strings_are_truncated
     long_min = "a" * 100
     long_max = "b" * 64 + "\xFF".b * 10
-    bytes = write({ s: :binary }, [{ s: long_min }, { s: long_max }])
+    bytes = write(Herringbone::Schema.define { binary :s }, [{ s: long_min }, { s: long_max }])
     chunk, ci, = indexes(bytes).first
     assert_equal "a" * 64, ci.min_values[0]
     assert_equal "b" * 63 + "c", ci.max_values[0]
@@ -131,24 +131,16 @@ class PageIndexTest < Minitest::Test
   end
 
   def test_nan_only_page_has_no_column_index
-    _, ci, oi = indexes(write({ f: :double }, [{ f: Float::NAN }, { f: Float::NAN }])).first
+    _, ci, oi = indexes(write(Herringbone::Schema.define { double :f }, [{ f: Float::NAN }, { f: Float::NAN }])).first
     assert_nil ci
     refute_nil oi
   end
 
-  def test_page_index_can_be_disabled
-    bytes = write({ a: :int32 }, [{ a: 1 }], page_index: false)
-    chunk, ci, oi = indexes(bytes).first
-    assert_nil ci
-    assert_nil oi
-    assert_nil chunk.offset_index_offset
-  end
-
   def test_indexes_for_every_row_group
     rows = Array.new(3000) { |i| { a: i } }
-    bytes = write({ a: :int64 }, rows, row_group_size: 1000, page_row_limit: 250)
+    bytes = write(Herringbone::Schema.define { int64 :a }, rows, row_group_rows: 1000, page_rows: 250)
     reader = Herringbone::Reader.new(StringIO.new(bytes))
-    assert_equal 3, reader.num_row_groups
+    assert_equal 3, reader.row_groups.size
     3.times do |g|
       _, ci, oi = indexes(bytes, g).first
       assert_equal 4, oi.page_locations.size
@@ -167,7 +159,7 @@ class PageIndexTest < Minitest::Test
       path = File.join(dir, "pruning.parquet")
       rows = Array.new(50_000) { |i| { id: i, v: (i % 97) * 1.5 } }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: { id: { type: :int64, null: false }, v: :double }, page_row_limit: 5000)
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { int64 :id, null: false; double :v }, page_rows: 5000)
       end
       script = File.join(__dir__, "support", "datafusion_prune.py")
       out, err, st = Open3.capture3(python, script, path, "select count(*) as c from t where id between 12000 and 12999")

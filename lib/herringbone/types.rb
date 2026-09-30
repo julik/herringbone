@@ -53,7 +53,7 @@ module Herringbone
     # Physical attributes (type, logical type etc.) for a DSL type name
     def physical_attributes(type, **opts)
       case type.to_sym
-      when :boolean, :bool then { type: T::BOOLEAN }
+      when :boolean then { type: T::BOOLEAN }
       when :int8 then int_type(8, true)
       when :int16 then int_type(16, true)
       when :int32 then { type: T::INT32 }
@@ -65,8 +65,8 @@ module Herringbone
       when :float then { type: T::FLOAT }
       when :double then { type: T::DOUBLE }
       when :float16 then { type: T::FIXED_LEN_BYTE_ARRAY, type_length: 2, logical_type: lt(float16: Format::Float16Type.new) }
-      when :string, :utf8 then { type: T::BYTE_ARRAY, converted_type: C::UTF8, logical_type: lt(string: Format::StringType.new) }
-      when :binary, :bytes then { type: T::BYTE_ARRAY }
+      when :string then { type: T::BYTE_ARRAY, converted_type: C::UTF8, logical_type: lt(string: Format::StringType.new) }
+      when :binary then { type: T::BYTE_ARRAY }
       when :json then { type: T::BYTE_ARRAY, converted_type: C::JSON, logical_type: lt(json: Format::JsonType.new) }
       when :bson then { type: T::BYTE_ARRAY, converted_type: C::BSON, logical_type: lt(bson: Format::BsonType.new) }
       when :enum
@@ -287,7 +287,7 @@ module Herringbone
         if !b && (type == T::INT32 || type == T::INT64)
           bits = type == T::INT32 ? 32 : 64
           check = int_checker(0, (1 << a) - 1)
-          return ->(v) { Delta.wrap(check.call(v), bits) }
+          return ->(v) { Encodings::Delta.wrap(check.call(v), bits) }
         elsif type == T::INT32 || type == T::INT64
           return int_checker(-(1 << (a - 1)), (1 << (a - 1)) - 1)
         end

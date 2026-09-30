@@ -11,6 +11,20 @@ class BloomFilterTest < Minitest::Test
   include WriterHelpers
 
   BF = Herringbone::BloomFilter
+
+  # Row groups whose bloom filter for +column+ may hold +value+ (row groups without one included)
+  def may_contain(reader, column, value)
+    (0...reader.row_groups.size).select do |g|
+      filter = reader.bloom_filter(g, column)
+      filter.nil? || filter.might_contain?(value)
+    end
+  end
+
+  # One row group's values, column by column
+  def row_group_data(reader, g, columns: nil)
+    first = reader.row_groups.first(g).sum(&:num_rows)
+    reader.read(as: :columns, columns: columns, from: first, limit: reader.row_groups[g].num_rows)
+  end
   XX = Herringbone::XXHash
   PARQUET_TESTING = File.join(FIXTURES_DIR, "parquet-testing")
   ARROW_FIXTURE = File.join(FIXTURES_DIR, "generated", "bloom_filters_arrow.parquet")
@@ -90,10 +104,6 @@ class BloomFilterTest < Minitest::Test
 
   def test_backend_selection
     with_xxhash_backend(:ruby) { assert_equal :ruby, XX.backend }
-    previous = ENV["HERRINGBONE_PURE_RUBY_XXHASH"]
-    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = "1"
-    with_xxhash_backend(nil) { assert_equal :ruby, XX.backend }
-    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = nil
     with_xxhash_backend(nil) { assert_equal XX.native_available? ? :native : :ruby, XX.backend }
     if XX.native_available?
       with_xxhash_backend(:native) { assert_equal :native, XX.backend }
@@ -102,7 +112,6 @@ class BloomFilterTest < Minitest::Test
     end
     assert_raises(ArgumentError) { XX.backend = :fast }
   ensure
-    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = previous
     XX.backend = nil
   end
 
@@ -128,8 +137,8 @@ class BloomFilterTest < Minitest::Test
       assert_equal (type == t::DOUBLE ? 5 : 4), hashes.size
     end
     rows = [0.0, -0.0, 0.0, Float::NAN].map { |v| { d: v } }
-    reader = reader_for(write_to_string({ d: :double }, rows, bloom_filters: true))
-    [0.0, -0.0, Float::NAN].each { |v| assert_equal [0], reader.row_groups_that_may_contain("d", v), v.inspect }
+    reader = reader_for(write_to_string(Herringbone::Schema.define { double :d }, rows, bloom_filters: true))
+    [0.0, -0.0, Float::NAN].each { |v| assert_equal [0], may_contain(reader, "d", v), v.inspect }
   end
 
   def test_optimal_num_bytes
@@ -177,7 +186,7 @@ class BloomFilterTest < Minitest::Test
 
   def test_encode_decode
     filter = BF.new(64)
-    %w[a b c].each { |v| filter << v }
+    %w[a b c].each { |v| filter.insert(v) }
     bytes = filter.encode
     header, pos = Herringbone::Format::BloomFilterHeader.decode(bytes)
     assert_equal 64, header.num_bytes
@@ -211,14 +220,14 @@ class BloomFilterTest < Minitest::Test
     %w[data_index_bloom_encoding_stats data_index_bloom_encoding_with_length].each do |name|
       File.open(File.join(PARQUET_TESTING, "#{name}.parquet"), "rb") do |f|
         reader = Herringbone::Reader.new(f)
-        values = reader.column("String").compact
+        values = reader.read(as: :columns, columns: ["String"])["String"].compact
         assert_equal 14, values.size
         filter = reader.bloom_filter(0, "String")
         refute_nil filter, name
         values.each { |v| assert filter.might_contain?(v), "#{name}: #{v.inspect}" }
         %w[foo bar nope zzz Hello!].each { |v| refute filter.might_contain?(v), "#{name}: #{v.inspect}" }
-        assert_equal [0], reader.row_groups_that_may_contain("String", "Hello")
-        assert_equal [], reader.row_groups_that_may_contain("String", "nope")
+        assert_equal [0], may_contain(reader, "String", "Hello")
+        assert_equal [], may_contain(reader, "String", "nope")
       end
     end
   end
@@ -237,9 +246,9 @@ class BloomFilterTest < Minitest::Test
   def test_arrow_fixture
     File.open(ARROW_FIXTURE, "rb") do |f|
       reader = Herringbone::Reader.new(f)
-      assert_equal 2, reader.num_row_groups
-      reader.num_row_groups.times do |g|
-        data = reader.read_row_group(g)
+      assert_equal 2, reader.row_groups.size
+      reader.row_groups.size.times do |g|
+        data = row_group_data(reader, g)
         reader.schema.columns.each do |col|
           filter = reader.bloom_filter(g, col.dotted_path)
           refute_nil filter, col.dotted_path
@@ -248,31 +257,31 @@ class BloomFilterTest < Minitest::Test
           end
         end
       end
-      assert_equal [1], reader.row_groups_that_may_contain("str", "str-150")
-      assert_equal [0], reader.row_groups_that_may_contain("i64", -5_000_000_000)
-      assert_equal [1], reader.row_groups_that_may_contain("i32", 200)
-      assert_equal [0], reader.row_groups_that_may_contain("f32", -7.0)
-      assert_equal [1], reader.row_groups_that_may_contain("f64", 75)
-      assert_equal [0], reader.row_groups_that_may_contain("date", Date.new(2020, 1, 5))
-      assert_equal [1], reader.row_groups_that_may_contain("ts", Time.utc(2020, 1, 1, 1, 41, 40))
-      assert_equal [1], reader.row_groups_that_may_contain("dec_small", BigDecimal("101"))
-      assert_equal [0], reader.row_groups_that_may_contain("dec_big", BigDecimal("1234.567"))
-      assert_equal [0, 1], reader.row_groups_that_may_contain("dict_str", "cat-3")
+      assert_equal [1], may_contain(reader, "str", "str-150")
+      assert_equal [0], may_contain(reader, "i64", -5_000_000_000)
+      assert_equal [1], may_contain(reader, "i32", 200)
+      assert_equal [0], may_contain(reader, "f32", -7.0)
+      assert_equal [1], may_contain(reader, "f64", 75)
+      assert_equal [0], may_contain(reader, "date", Date.new(2020, 1, 5))
+      assert_equal [1], may_contain(reader, "ts", Time.utc(2020, 1, 1, 1, 41, 40))
+      assert_equal [1], may_contain(reader, "dec_small", BigDecimal("101"))
+      assert_equal [0], may_contain(reader, "dec_big", BigDecimal("1234.567"))
+      assert_equal [0, 1], may_contain(reader, "dict_str", "cat-3")
       absent = { "str" => "str-x", "i64" => 1, "i32" => 1, "f64" => 0.3, "date" => Date.new(1999, 1, 1),
                  "dec_big" => BigDecimal("0.001"), "dict_str" => "dog", "fixed" => "\xAA".b * 16 }
-      absent.each { |col, v| assert_equal [], reader.row_groups_that_may_contain(col, v), col }
+      absent.each { |col, v| assert_equal [], may_contain(reader, col, v), col }
     end
   end
 
   # --- Writer ---
 
   def test_round_trip_all_types
-    bytes = write_to_string(ALL_TYPES_SCHEMA, rows = WriterHelpers.all_types_rows(300), bloom_filters: true, row_group_size: 100)
+    bytes = write_to_string(ALL_TYPES_SCHEMA, rows = WriterHelpers.all_types_rows(300), bloom_filters: true, row_group_rows: 100)
     reader = reader_for(bytes)
-    assert_equal 3, reader.num_row_groups
+    assert_equal 3, reader.row_groups.size
     reader.schema.columns.each do |col|
       supported = col.type != Herringbone::Format::Type::BOOLEAN
-      reader.num_row_groups.times do |g|
+      reader.row_groups.size.times do |g|
         filter = reader.bloom_filter(g, col.dotted_path)
         unless supported
           assert_nil filter, col.dotted_path
@@ -280,7 +289,7 @@ class BloomFilterTest < Minitest::Test
         end
         refute_nil filter, col.dotted_path
         # Values as read back, and as originally written (Dates, Times, BigDecimals, UUID Strings...)
-        read_back = reader.read_row_group(g, columns: [col.dotted_path]).fetch(col.dotted_path).compact
+        read_back = row_group_data(reader, g, columns: [col.dotted_path]).fetch(col.dotted_path).compact
         written = rows[g * 100, 100].map { |r| r[col.dotted_path] }.compact
         (read_back + written).each do |v|
           assert filter.might_contain?(v), "row group #{g}, #{col.dotted_path}: #{v.inspect}"
@@ -322,17 +331,17 @@ class BloomFilterTest < Minitest::Test
     bytes = write_to_string(schema, rows, bloom_filters: true, dictionary: false)
     reader = reader_for(bytes)
     rows.first(200).each do |row|
-      row.each { |name, v| assert_equal [0], reader.row_groups_that_may_contain(name, v), "#{name}: #{v.inspect}" }
+      row.each { |name, v| assert_equal [0], may_contain(reader, name, v), "#{name}: #{v.inspect}" }
     end
     # 1000 distinct values at fpp 0.01: an absent value is rejected, except for a rare false positive
-    rejected = absent.count { |name, v| reader.row_groups_that_may_contain(name, v).empty? }
+    rejected = absent.count { |name, v| may_contain(reader, name, v).empty? }
     assert_operator rejected, :>=, absent.size - 1
-    assert_raises(ArgumentError) { reader.row_groups_that_may_contain("i32", "not a number") }
-    assert_raises(ArgumentError) { reader.row_groups_that_may_contain("nope", 1) }
+    assert_raises(ArgumentError) { may_contain(reader, "i32", "not a number") }
+    assert_raises(ArgumentError) { may_contain(reader, "nope", 1) }
   end
 
   def test_sizes_from_counted_distinct_values_or_ndv
-    schema = { id: { type: :int64, null: false }, cat: :string, s: :string }
+    schema = Herringbone::Schema.define { int64 :id, null: false; string :cat; string :s }
     rows = Array.new(5000) { |i| { id: i, cat: "c#{i % 10}", s: "s#{i}" } }
     bytes = write_to_string(schema, rows, bloom_filters: { "id" => { ndv: 100_000, fpp: 0.05 }, "cat" => true, "s" => { fpp: 0.1 } })
     reader = reader_for(bytes)
@@ -345,12 +354,12 @@ class BloomFilterTest < Minitest::Test
 
   def test_max_bytes_and_default_off
     rows = Array.new(2000) { |i| { id: i } }
-    bytes = write_to_string({ id: :int64 }, rows, bloom_filters: { id: { max_bytes: 256 } })
+    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, rows, bloom_filters: { id: { max_bytes: 256 } })
     assert_equal 256, reader_for(bytes).bloom_filter(0, "id").num_bytes
-    plain = reader_for(write_to_string({ id: :int64 }, rows))
+    plain = reader_for(write_to_string(Herringbone::Schema.define { int64 :id }, rows))
     assert_nil plain.bloom_filter(0, "id")
     assert_nil plain.row_groups[0].columns[0].meta_data.bloom_filter_offset
-    assert_equal [0], plain.row_groups_that_may_contain("id", -1) # no filter: may contain anything
+    assert_equal [0], may_contain(plain, "id", -1) # no filter: may contain anything
   end
 
   def test_nested_and_null_columns
@@ -363,15 +372,15 @@ class BloomFilterTest < Minitest::Test
     end
     rows = Array.new(50) { |i| { tags: ["t#{i}", "u#{i}"], s: { x: i }, empty: nil } }
     reader = reader_for(write_to_string(schema, rows, bloom_filters: ["tags.list.element", "s.x", "empty"]))
-    assert_equal [0], reader.row_groups_that_may_contain("tags.list.element", "u7")
-    assert_equal [0], reader.row_groups_that_may_contain(%w[s x], 49)
-    assert_equal [], reader.row_groups_that_may_contain("tags.list.element", "v7")
+    assert_equal [0], may_contain(reader, "tags.list.element", "u7")
+    assert_equal [0], may_contain(reader, %w[s x], 49)
+    assert_equal [], may_contain(reader, "tags.list.element", "v7")
     assert_equal 32, reader.bloom_filter(0, "empty").num_bytes
-    assert_equal [], reader.row_groups_that_may_contain("empty", "anything")
+    assert_equal [], may_contain(reader, "empty", "anything")
   end
 
   def test_options_are_validated
-    schema = { b: :boolean, i: :int32 }
+    schema = Herringbone::Schema.define { boolean :b; int32 :i }
     assert_raises(ArgumentError) { write_to_string(schema, [], bloom_filters: ["b"]) }
     assert_raises(ArgumentError) { write_to_string(schema, [], bloom_filters: ["nope"]) }
     assert_raises(ArgumentError) { write_to_string(schema, [], bloom_filters: { "i" => { ndv: 0 } }) }
@@ -389,8 +398,8 @@ class BloomFilterTest < Minitest::Test
   # Row group chunks stay contiguous; each row group's bloom filters follow its chunks in column
   # order; page indexes still sit right before the footer
   def test_file_layout
-    bytes = write_to_string(ALL_TYPES_SCHEMA, WriterHelpers.all_types_rows(40), bloom_filters: true, row_group_size: 13)
-    md = reader_for(bytes).metadata
+    bytes = write_to_string(ALL_TYPES_SCHEMA, WriterHelpers.all_types_rows(40), bloom_filters: true, row_group_rows: 13)
+    md = reader_for(bytes).file_metadata
     assert_equal 4, md.row_groups.size
     offset = 4
     md.row_groups.each do |rg|
@@ -434,7 +443,7 @@ class BloomFilterTest < Minitest::Test
       path = File.join(dir, "bloom.parquet")
       rows = Array.new(3000) { |i| { id: i, s: "value-#{i}" } }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: { id: :int64, s: :string }, bloom_filters: true, row_group_size: 1000)
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { int64 :id; string :s }, bloom_filters: true, row_group_rows: 1000)
       end
       script = <<~PY
         import json, sys
@@ -467,7 +476,7 @@ class BloomFilterTest < Minitest::Test
       # Values are spread so every row group's min/max covers the probe: only the bloom filter can prune
       rows = Array.new(30_000) { |i| { id: (i * 7919) % 30_000, s: "key-#{(i * 7919) % 30_000}" } }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: { id: :int64, s: :string }, bloom_filters: true, row_group_size: 10_000)
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { int64 :id; string :s }, bloom_filters: true, row_group_rows: 10_000)
       end
       script = File.join(__dir__, "support", "datafusion_bloom_prune.py")
       out, err, st = Open3.capture3(python, script, path, "select count(*) as c from t where s = 'key-15000x'")

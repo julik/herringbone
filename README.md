@@ -12,121 +12,69 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 
 ```ruby
 gem "herringbone"
+gem "zstd-ruby" # optional: ZSTD (faster writes and smaller files than the default Snappy)
+gem "brotli"    # optional: Brotli
+gem "xxhash"    # optional: faster bloom filters
 ```
 
-The only dependency is `bigdecimal`. Compression support:
-
-| codec | provided by |
-|---|---|
-| none, Snappy, LZ4 (raw and Hadoop-framed) | Herringbone itself (pure Ruby) |
-| GZIP | `zlib` (part of Ruby) |
-| ZSTD | the `zstd-ruby` gem, if installed |
-| Brotli | the `brotli` gem, if installed |
-| LZO | not supported |
-
-To read or write ZSTD or Brotli, add the gem next to Herringbone:
-
-```ruby
-gem "herringbone"
-gem "zstd-ruby" # ZSTD: faster writes and smaller files than the default Snappy
-gem "brotli"
-```
-
-Herringbone requires these on first use. Without them, asking a writer for `compression: :zstd`
-raises `Herringbone::MissingCodecError` straight away (before any file is created), and reading
-a ZSTD-compressed file raises it when the first such page is reached, naming the missing gem and
-the column. The file's metadata and schema can still be read. To check upfront:
-
-```ruby
-File.open("data.parquet", "rb") do |file|
-  reader = Herringbone::Reader.new(file)
-  reader.codecs          # => [:zstd]
-  reader.missing_codecs  # => [:zstd] when zstd-ruby is not installed
-  reader.ensure_codecs_available! # raises MissingCodecError now instead of mid-read
-end
-Herringbone::Compression.available?(:zstd) # => true / false
-```
+The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. `Herringbone.codecs` lists
+the codecs this process can use, e.g. `[:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd]`. Using
+a missing one raises `Herringbone::MissingCodecError` naming the gem to add: a writer raises it
+before writing anything, a reader when it reaches the first such page (the schema and metadata
+are still readable). LZO is not supported.
 
 ## Reading
 
-Readers take a random-access IO (a `File` opened with `"rb"`, `StringIO`, `Tempfile`...);
-Herringbone does not open files by path. The IO belongs to the caller and is not closed by the reader.
+Herringbone never opens files by path: readers take a random-access IO (a `File` opened with
+`"rb"`, `StringIO`, `Tempfile`...), which stays open and belongs to the caller.
 
 ```ruby
 require "herringbone"
 
 File.open("data.parquet", "rb") do |file|
   reader = Herringbone::Reader.new(file)
-  reader.schema             # => #<Herringbone::Schema ...>
+  reader.schema
   reader.num_rows
 
-  reader.each_row do |row|  # Hash with String keys, nested values as Hash/Array
-    p row
-  end
-
-  reader.each_batch(1000) { |rows| ... }                 # Arrays of up to 1000 row Hashes
-  reader.each_row(columns: ["id", "name"]) { |row| ... } # projection
-  reader.column("name")     # => all values of one top-level field
-  reader.read_row_group(0)  # => { "id" => [...], "name" => [...] }
+  reader.each_row { |row| p row }             # Hashes with String keys, nested values as Hash/Array
+  reader.each_batch(1000) { |rows| ... }      # Arrays of up to 1000 rows
+  reader.each_batch(10_000, as: :columns) { |batch| batch["amount"].sum } # { "id" => [...], ... }
+  reader.read                                 # all rows at once; read(as: :columns) for column Arrays
 end
-
-File.open("data.parquet", "rb") { |f| Herringbone::Reader.new(f, keys: :symbol, time_zone: "+02:00").rows }
-Herringbone::Reader.from_string(bytes).rows # Parquet bytes in a String
 ```
 
-`each_row`, `each_batch` and `rows` stream: pages are read from the file and decoded one at a
-time per column, and rows are assembled in batches (1024 by default, `each_batch(size)` or
-`each_row(batch_size:)`), so memory depends on the batch and page sizes rather than on the
-row group size. Reading 1M rows stored in a single row group (as parquet-rs writes them) peaks at
-about 60–160 MB RSS growth instead of 660 MB. `column` and `read_row_group` return whole
-columns, so they hold them in memory.
+Reads stream: pages are read and decoded one at a time per column and rows are assembled in
+batches, so memory depends on the batch and page sizes rather than on the row group size (1M
+rows in a single row group peak at about 60–160 MB RSS growth instead of 660 MB). Column-order
+batches (`as: :columns`) skip building a Hash per row and are 25–30% faster.
 
-`each_batch(size, as: :columns)` yields `{ "id" => [...], "name" => [...] }` per batch instead
-of row Hashes, which is 25–30% faster when you process data column by column.
-`reader.read_columns` and `Herringbone.read(io, as: :columns)` return a whole file that way.
+`Reader.new` takes `keys: :symbol` for Symbol keys (in rows and in structs; map keys stay as
+stored) and `time_zone:` to return timestamps in a zone instead of UTC: a UTC offset (`"+02:00"`,
+or seconds), `"UTC"`, a `TZInfo::Timezone`, or anything responding to `#at` such as `Time.zone`
+in Rails (which yields `ActiveSupport::TimeWithZone`). Zone names like `"Europe/Amsterdam"` work
+when ActiveSupport or TZInfo is loaded. Timestamps stored with `isAdjustedToUTC=false` are
+wall-clock values and stay as they are.
 
-### Selecting rows: `where:`, `from:`, `limit:`
+### Selecting rows
 
-`each_row`, `each_batch`, `rows`, `read_columns` and `Herringbone.read` take filters:
+`each_row`, `each_batch` and `read` take `columns:`, `where:`, `from:` and `limit:`:
 
 ```ruby
-reader.rows(where: { user_id: 42 })
-reader.rows(where: { status: %w[paid shipped], created_at: 1.week.ago.. })  # IN, Ranges
-reader.rows(where: { "address.city" => "Amsterdam", deleted_at: nil })     # struct members, IS NULL
-reader.rows(where: { amount: ->(v) { v && v > 100 } })                      # any callable
-reader.rows(from: 1_000_000, limit: 100)                                     # rows 1,000,000..1,000,099
-reader.each_batch(10_000, as: :columns, columns: %w[id amount], where: { day: Date.today }) { |b| ... }
+reader.read(columns: %w[id name])                                          # projection
+reader.read(where: { user_id: 42 })
+reader.read(where: { status: %w[paid shipped], created_at: 1.week.ago.. })  # IN, Ranges
+reader.read(where: { "address.city" => "Amsterdam", deleted_at: nil })     # struct members, IS NULL
+reader.read(where: { amount: ->(v) { v && v > 100 } })                      # any callable
+reader.read(from: 1_000_000, limit: 100)                                    # rows 1,000,000..1,000,099
 ```
 
-All conditions must hold; filtered columns need not be among `columns:`. Conditions work on any
-column that is not inside a list or map. The file is used to avoid reading data wherever it can:
-
-- row groups whose min/max statistics or null counts rule a condition out are skipped, as are
-  row groups whose bloom filter says an equality value is absent;
-- within the remaining row groups, the page index (written by Herringbone, parquet-mr, Arrow and
-  others) rules out pages, and the offset index lets each column jump straight to the pages it
-  needs; `from:` uses it to jump to a row without reading the pages before it;
-- every row that is read is then checked, so results are exact.
-
-On a 1M-row file with 20k-row pages, a lookup of one `id` takes 0.1 s instead of 6.3 s for a
-full scan. Filters help most on columns the data is sorted or clustered by; sort rows by the
-columns you filter on when writing. `reader.scan_plan(where: ..., from: ...)` shows which row
-groups and row ranges a read would touch, without reading anything.
-
-Options, for `Reader.new` and `Reader.open`, and per call for `each_row`, `each_batch` and `rows`:
-
-| option | default | |
-|---|---|---|
-| `keys` | `:string` | `:symbol` for Symbol keys in rows and in Hashes built from structs (map keys stay as stored) |
-| `time_zone` | none (UTC) | return timestamps in this zone, see below |
-
-`time_zone:` accepts a UTC offset (`"+02:00"`, `"-0500"`, or seconds as an Integer), `"UTC"`, a
-timezone object that `Time#getlocal` accepts (e.g. `TZInfo::Timezone.get("Europe/Amsterdam")`),
-or anything responding to `#at`, such as `Time.zone` or `ActiveSupport::TimeZone["Amsterdam"]`
-in Rails (timestamps then come back as `ActiveSupport::TimeWithZone`). Zone names such as
-`"Europe/Amsterdam"` work when ActiveSupport or TZInfo is loaded. All of these work on Ruby 3.0.
-It applies to UTC-adjusted timestamps and INT96; timestamps stored with `isAdjustedToUTC=false`
-are wall-clock values and stay as they are.
+All conditions must hold; filtered columns need not be among `columns:`, and any column not inside
+a list or map can be filtered on. Row groups are skipped using min/max statistics, null counts and
+bloom filters, pages using the page index (written by Herringbone, parquet-mr, Arrow and others),
+and `from:` jumps to its row through the offset index; every row read is then checked, so results
+are exact. On a 1M-row file with 20k-row pages, looking up one `id` takes 0.1 s instead of 6.3 s.
+Filters help most on columns the data is sorted or clustered by. `reader.scan_plan(where: ...)`
+shows which row groups and row ranges a read would touch, without reading them.
 
 ## Writing
 
@@ -156,30 +104,23 @@ File.open("out.parquet", "wb") do |file|
     w << order                         # anything with #attributes (ActiveRecord) or #to_h (Struct, Data)
   end
 end
-
-# Or with an inferred schema, optionally overriding some columns
-Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows, types: { payload: :json }))
 ```
 
-Schemas can also be given as a Hash, anywhere a schema is accepted:
+`Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
+first 1000 rows unless `schema:` is given; fields declared in a block replace inferred ones:
+`Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows) { json :payload })`.
 
-```ruby
-Herringbone::Schema.define(
-  id: { type: :int64, null: false },
-  name: :string,
-  tags: [:string],                                   # list of strings
-  address: { city: :string, zip: :string },          # struct
-  price: { type: :decimal, precision: 12, scale: 2 },
-  scores: { type: :map, key: :string, value: :double }
-)
-Herringbone::Writer.open(io, { id: :int64, name: :string }) { |w| w << [1, "x"] }
-```
+The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
+pipe), sequentially, and never seeks, rewinds or closes it. If the `Writer.open` block raises (or
+`#abort` is called), no footer is written and what was written so far is left for you to discard.
+To replace a file only once it is complete, write to a temporary file and rename it.
 
-Column types in the DSL: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double
-float16 string binary json bson enum uuid date int96 time timestamp decimal fixed`, plus
-`struct`, `list` and `map`. Fields are nullable unless `null: false` is given.
-List elements are nullable unless `element_null: false`; map values unless `value_null: false`.
-Nested lists: `list :matrix do list :element, :double end`.
+Column types: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
+string binary json bson enum uuid date int96 time timestamp decimal fixed`, plus `struct`, `list`
+and `map`; `column :name, :int32` declares one by name. Fields are nullable unless `null: false`
+is given; list elements unless `element_null: false`, map values unless `value_null: false`.
+Nested lists: `list :matrix do list :element, :double end`. `time` and `timestamp` take `unit:`
+(`:millis`, `:micros`, `:nanos`) and `utc:`.
 
 `enum` is a string column. `values:` restricts what may be written, and also takes a Rails-style
 Hash (`values: Order.statuses`), in which case both labels and stored integers are accepted and
@@ -203,126 +144,53 @@ Columns accept the values Ruby and Rails code usually has at hand:
 Values that don't fit raise `Herringbone::EncodeError` naming the row number and column path; the
 failed row is discarded and the writer can carry on.
 
-The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
-pipe); it writes sequentially and never seeks, rewinds or closes it. If the `Writer.open` block
-raises (or `#abort` is called), no footer is written and whatever was written so far is left in
-the IO for you to discard. To replace a file only once it is complete, write to a temporary file
-and rename it yourself:
-
-```ruby
-tmp = "orders.parquet.tmp"
-File.open(tmp, "wb") { |f| Herringbone.export(Order, f) }
-File.rename(tmp, "orders.parquet")
-```
-
 Writer options:
 
 | option | default | |
 |---|---|---|
-| `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd` (needs `zstd-ruby`), `:brotli` (needs `brotli`) |
-| `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory; bounds memory use. Low-cardinality string columns are dictionary-encoded as rows arrive and other strings are packed into byte buffers, so a 15-column table exported in 16MB groups peaks around 290 MB RSS (420 MB with 64MB groups) |
-| `row_group_size` | none | also flush after this many rows |
-| `page_size` | 1MB | approximate data page size |
-| `page_row_limit` | `20_000` | at most this many rows per data page |
-| `page_index` | `true` | write page indexes (see below) |
+| `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
+| `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory, which bounds memory use (a 15-column table peaks around 290 MB RSS) |
+| `row_group_rows` | none | also flush after this many rows |
+| `page_bytes` | 1MB | approximate data page size |
+| `page_rows` | `20_000` | at most this many rows per data page |
 | `data_page_version` | `1` | `1` or `2` |
 | `dictionary` | `true` | `false`, or an Array of column paths to dictionary-encode |
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
-| `statistics` | `true` | write min/max/null_count |
-| `metadata` | `{}` | footer key/value metadata |
-| `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => true \| { ndv:, fpp:, max_bytes: } }` (see below) |
+| `metadata` | `{}` | footer key/value metadata, read back with `reader.metadata` |
+| `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => { ndv:, fpp:, max_bytes: } }` |
 
-### Page indexes and statistics
+### Statistics, page indexes and bloom filters
 
-Every column chunk gets min/max/null-count statistics, and the writer adds the Parquet page index:
-an OffsetIndex (where each data page starts and which row it begins with) for every column, and a
-ColumnIndex (per-page min/max, null counts, all-null pages, and whether pages are sorted) for every
-column with a defined sort order (all types except INT96). Query engines such as DuckDB, Spark,
-Trino, Arrow and DataFusion use these to skip whole pages: with the default 20,000 rows per page,
-a lookup like `WHERE id BETWEEN ...` on a sorted column reads a handful of pages instead of the
-whole row group. Sort your rows by the columns you filter on to get the most out of it.
+Every column chunk gets min/max/null-count statistics and the Parquet page index (per-page min/max
+and row offsets), which Herringbone, DuckDB, Spark, Trino, Arrow and DataFusion use to skip pages.
+With 20,000 rows per page, `WHERE id BETWEEN ...` on a sorted column reads a handful of pages
+instead of the whole row group, so sort rows by the columns you filter on.
 
-Unsigned integers, decimals and float16 use their proper sort orders; NaNs are left out of float
-bounds; byte-array bounds longer than 64 bytes are truncated (flagged as inexact in statistics).
+Min/max cannot rule out a value inside a row group's range, the usual case for unsorted IDs,
+emails or UUIDs; a bloom filter can. They are off by default. `bloom_filters: ["user_id", "email"]`
+(or `true` for every non-boolean column) writes Parquet's split block bloom filters, sized from
+each row group's distinct values at a false positive probability of 1% (`fpp:`, up to `max_bytes:`,
+default 1MB) unless `ndv:` gives the number of distinct values. Nested leaves are named by their
+dotted path (`"tags.list.element"`). Hashing is pure Ruby unless the `xxhash` gem is installed:
+a million rows take about 1.2 s longer to write with a filter on an INT64 column and 2.8 s longer
+with one on a ~22-byte string column, and about 0.5 s longer with `xxhash`.
 
-### Bloom filters
+## ActiveRecord
 
-Min/max statistics cannot rule out a value that falls inside a row group's range, which is the
-usual case for IDs, emails or UUIDs that are not sorted. A bloom filter can: it answers "definitely
-not here" or "maybe" for an equality lookup, so readers skip every row group that cannot hold the
-value. Herringbone writes and reads Parquet's split block bloom filters (XXH64, as parquet-mr,
-Arrow, DuckDB, Spark and DataFusion use) in pure Ruby. They are off by default:
-
-```ruby
-Herringbone::Writer.open(file, schema, bloom_filters: ["user_id", "email"]) { |w| ... }
-Herringbone::Writer.open(file, schema, bloom_filters: true) { |w| ... }  # every non-boolean column
-Herringbone::Writer.open(file, schema, bloom_filters: {
-  "email" => true,                          # sized from the distinct values of each row group
-  "user_id" => { ndv: 1_000_000, fpp: 0.05 } # fixed size per row group
-}) { |w| ... }
-```
-
-Without `ndv`, the writer counts the distinct values of each row group (the dictionary size for
-dictionary-encoded chunks) and sizes the filter with the spec's formula for the false positive
-probability `fpp` (default `0.01`), rounded up to a power of two between 32 bytes and `max_bytes`
-(default 1MB). Filters are written after each row group's column chunks. Nested leaves are named
-by their dotted path (`"tags.list.element"`); nulls are not recorded; BOOLEAN columns have none.
-
-Reading takes Ruby values, converted like the writer converts them, so Dates, Times, BigDecimals
-and UUID Strings match what was stored:
-
-```ruby
-File.open("events.parquet", "rb") do |f|
-  reader = Herringbone::Reader.new(f)
-  reader.bloom_filter(0, "email")&.might_contain?("a@example.com")  # nil if the chunk has none
-  reader.row_groups_that_may_contain("user_id", 42)  # => [3] (groups without a filter included)
-  reader.row_groups_that_may_contain("day", Date.new(2024, 5, 1)).each do |i|
-    reader.read_row_group(i)
-  end
-end
-```
-
-`Herringbone::BloomFilter` and `Herringbone::XXHash.xxh64` can also be used on their own. The
-writer hashes each distinct value of a row group once. Hashing is pure Ruby unless the optional
-`xxhash` gem (a C extension) is installed, which Herringbone then picks up on its own:
-
-```ruby
-gem "herringbone"
-gem "xxhash" # faster bloom filters
-```
-
-On an M-series Mac, writing a million rows takes about 1.2 s longer with a filter on an INT64
-column and 2.8 s longer with one on a ~22-byte string column in pure Ruby, and about 0.5 s longer
-with `xxhash`. Both give the same hashes; set `HERRINGBONE_PURE_RUBY_XXHASH=1` (or
-`Herringbone::XXHash.backend = :ruby`) to skip the gem.
-
-## Exporting ActiveRecord models
-
-`Herringbone::Schema.from_active_record` builds a schema from a model's columns, so that
-`record.attributes` can be written as-is. Rails is not a dependency: it only calls
-`columns`, `primary_key` and `defined_enums` on the model.
-
-```ruby
-schema = Herringbone::Schema.from_active_record(Order)
-File.open("orders.parquet", "wb") do |file|
-  Herringbone::Writer.open(file, schema) do |w|
-    Order.find_each { |order| w << order.attributes }
-  end
-end
-```
-
-Or in one go, which loads records with `find_each` and returns the number of rows written:
+`Herringbone.write` also takes a model or relation, which it reads with `find_each`, using a schema
+built from the model's columns. It returns the number of rows written:
 
 ```ruby
 File.open("orders.parquet", "wb") do |file|
-  Herringbone.export(Order.where(created_at: 1.year.ago..), file, compression: :zstd)
+  Herringbone.write(file, Order.where(created_at: 1.year.ago..), compression: :zstd)
 end
-Herringbone.export(Order, io, only: %w[id status total], batch_size: 5000)
+schema = Herringbone::Schema.from_active_record(Order, only: %w[id status total])
+Herringbone.write(io, Order, schema: schema)
 ```
 
-Options: `only:` and `except:` take attribute names; `enums: :enum` writes enum attributes with
-the Parquet ENUM annotation instead of as plain strings (the default, `enums: :string`). Enum
-attributes are written as their labels, and the writer rejects values outside the enum.
+`from_active_record` takes `only:`, `except:` and `parquet_enum: true`. Rails is not a dependency:
+it only calls `columns`, `primary_key` and `defined_enums` on the model. Enum attributes are
+written as their labels, and the writer rejects values outside the enum.
 
 | Column | Parquet |
 |---|---|
@@ -338,8 +206,8 @@ attributes are written as their labels, and the writer rejects values outside th
 | `string`, `text`, `citext`, anything else | `string` |
 | Postgres array columns | `list` of the element type |
 
-Columns declared `NOT NULL` (and primary keys) are required, all others nullable.
-Column order follows `Model.columns`.
+Columns declared `NOT NULL` (and primary keys) are required, all others nullable. Column order
+follows `Model.columns`.
 
 ## Type mapping
 
@@ -357,15 +225,6 @@ Column order follows `Model.columns`.
 | UUID | `String` like `"0f1e2d3c-..."` |
 | struct / list / map | `Hash` / `Array` / `Hash` |
 
-## Supported format features
-
-- Encodings (read and write): PLAIN, PLAIN_DICTIONARY/RLE_DICTIONARY, RLE, DELTA_BINARY_PACKED,
-  DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY, BYTE_STREAM_SPLIT; legacy BIT_PACKED levels (read)
-- Data page v1 and v2, dictionary pages, page CRCs (written)
-- Legacy list and map layouts per the Parquet backward-compatibility rules
-- Split block bloom filters (read and written, see above)
-- Not supported: encryption, column chunks in external files, page indexes when reading
-
 ## Inspecting files
 
 > The inspector and its HTML view are modelled on
@@ -373,75 +232,42 @@ Column order follows `Model.columns`.
 > the design and the idea are theirs. Go check it out.
 
 `Herringbone::Inspector` examines a file using only its footer, page headers, page indexes and
-bloom filter headers. No values are decompressed or decoded, so it is fast on big files and works
-for ZSTD/Brotli files even without the codec gems.
+bloom filter headers. Nothing is decompressed, so it is fast on big files and works for ZSTD and
+Brotli files without the codec gems.
 
 ```ruby
 File.open("data.parquet", "rb") do |file|
-  i = Herringbone::Inspector.new(file)   # also takes a Reader
-  i.summary        # size, footer size, rows, row groups, created_by, codecs, page index / bloom presence
-  i.schema_tree    # physical + logical types, repetition, max definition/repetition levels, Arrow type
-  i.key_value_metadata # ARROW:schema decoded, JSON values (pandas, Spark) parsed
-  i.arrow_schema   # ARROW:schema as Arrow fields and types (pyarrow's names), nested children,
-                   # dictionary encoding, extension names, field metadata; nil + i.arrow_schema_error if undecodable
-  rg = i.row_groups[0]
-  rg.sorting_columns
-  chunk = rg.column("name")
-  chunk.codec, chunk.encodings, chunk.encoding_stats, chunk.compression_ratio
-  chunk.statistics # min/max decoded to Ruby values (Date, Time, BigDecimal...), with caveats for legacy stats
-  chunk.pages      # every page header: type, offset, sizes, values, nulls, rows, encoding, page statistics, CRC
-  chunk.column_index # per-page min/max/null counts; chunk.offset_index: page locations and first rows
-  chunk.index_mismatches # page header statistics that disagree with the column index
-  i.pages(0, "name") # same as above
-  i.column_totals  # per column, summed over row groups
-  i.layout         # byte ranges of everything in the file, in order
-  i.to_h           # all of it, JSON-serializable
-  puts i.report    # readable text summary
+  inspector = Herringbone::Inspector.new(file)
+  inspector.summary      # size, rows, row groups, codecs, page index / bloom filter presence...
+  inspector.row_groups[0].column("name").pages # page headers; also statistics, column_index...
+  puts inspector.report  # the schema, every column chunk, key/value metadata (Arrow schema decoded)
+  inspector.to_h         # all of it, JSON-serializable
+  inspector.to_html      # one self-contained HTML page with a to-scale byte map of the file
 end
 ```
 
-Page CRCs are only verified when asked, because that reads every page body (still without
-decompressing: the CRC32 covers the page bytes as stored):
-
-```ruby
-File.open("data.parquet", "rb") do |file|
-  i = Herringbone::Inspector.new(file) # or reader.inspector for an open Herringbone::Reader
-  i.verify_checksums # => { ok: 10, mismatch: 1, absent: 0, mismatches: [{ row_group:, column:, page:, ... }] }
-  i.pages(0, "name").map(&:checksum)   # => [:ok, :mismatch, ...] (:absent when a page has no CRC)
-  i.to_h(checksums: true)              # or report(checksums: true), Visualizer.new(file, checksums: true)
-end
-```
-
-`Herringbone::Visualizer` renders the same information as one self-contained HTML page: a byte map
-of the file drawn to scale (row groups, column chunks, dictionary and data pages, page indexes,
-bloom filters, footer) that zooms into a row group and a column chunk, the schema, a column table
-with codecs, encodings, sizes, compression ratios and statistics, per-page tables, page indexes and
-key/value metadata. Everything is inline; highlight.js is loaded from cdnjs to colour JSON, and the
-page works without it. The design and idea come from
-[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1.
-
-```ruby
-File.open("data.parquet", "rb") do |file|
-  html = Herringbone.visualize(file)                          # the page as a String
-  File.open("layout.html", "w") { |out| Herringbone.visualize(file, out) } # or into an IO
-end
-```
-
-```
-bin/herringbone inspect FILE [OUT.html]   # HTML page to OUT.html, or to stdout
-bin/herringbone inspect FILE --text       # text summary (add --pages to list every page header)
-bin/herringbone inspect FILE --json       # everything as JSON
-bin/herringbone inspect FILE --text --verify-checksums  # also check page CRCs (any output form)
-```
+`inspector.verify_checksums` reads every page body (still without decompressing) to check the page
+CRCs; the results then appear in `summary`, `report`, `to_h` and `to_html`.
 
 ## Command line
 
 ```
-bin/herringbone schema FILE
-bin/herringbone meta FILE
-bin/herringbone cat FILE [N]
-bin/herringbone inspect FILE [OUT.html | --text [--pages] | --json] [--verify-checksums]
+bin/herringbone cat FILE [N]                    # rows as JSON lines
+bin/herringbone inspect FILE [--pages]          # text report (--pages lists every page header)
+bin/herringbone inspect FILE --json             # everything as JSON
+bin/herringbone inspect FILE --html > out.html  # the HTML page
 ```
+
+Add `--verify-checksums` to any `inspect` form to check page CRCs.
+
+## Supported format features
+
+- Encodings (read and write): PLAIN, PLAIN_DICTIONARY/RLE_DICTIONARY, RLE, DELTA_BINARY_PACKED,
+  DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY, BYTE_STREAM_SPLIT; legacy BIT_PACKED levels (read)
+- Data page v1 and v2, dictionary pages, page CRCs (written)
+- Page indexes and split block bloom filters (read and written)
+- Legacy list and map layouts per the Parquet backward-compatibility rules
+- Not supported: encryption, column chunks in external files
 
 ## Development
 

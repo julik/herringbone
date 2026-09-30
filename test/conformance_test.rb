@@ -37,7 +37,7 @@ class ConformanceTest < Minitest::Test
 
   def check_reader(reader, expected)
     assert_equal expected["num_rows"], reader.num_rows, "num_rows"
-    assert_equal expected["num_row_groups"], reader.num_row_groups, "num_row_groups"
+    assert_equal expected["num_row_groups"], reader.row_groups.size, "num_row_groups"
     expected_schema = expected["schema"].map do |c|
       [c["path"], c["physical_type"], c["max_definition_level"], c["max_repetition_level"]]
     end

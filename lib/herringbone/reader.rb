@@ -6,16 +6,15 @@ module Herringbone
   #
   #   File.open("data.parquet", "rb") do |file|
   #     reader = Herringbone::Reader.new(file)
-  #     reader.each_row { |row| p row }            # rows as Hashes with String keys
-  #     reader.each_batch(1000) { |rows| ... }     # Arrays of row Hashes
-  #     reader.column("name")                      # all values of a top-level field
-  #     reader.each_row(columns: ["id"]) { ... }   # projection
+  #     reader.each_row { |row| p row }                       # rows as Hashes with String keys
+  #     reader.each_batch(1000, as: :columns) { |batch| ... }  # { "id" => [...], ... } per batch
+  #     reader.read(columns: ["id"], where: { id: 1..10 })     # everything at once
   #   end
   #
   # Rows are read in batches: pages are read and decoded one at a time per column, so memory use
   # depends on the batch size and the page size, not on the size of the row groups.
   #
-  # Options (for Reader.new / Reader.open, and per call for each_row, each_batch and rows):
+  # Options:
   #   keys:      :string (default) or :symbol, for row Hashes and Hashes built from structs.
   #              Map keys are always the stored values.
   #   time_zone: return timestamps in this zone instead of UTC. A UTC offset ("+02:00", or
@@ -23,70 +22,35 @@ module Herringbone
   #              TZInfo::Timezone), or anything responding to #at such as an
   #              ActiveSupport::TimeZone (Time.zone), which yields ActiveSupport::TimeWithZone.
   class Reader
-    include Enumerable
-
     MAGIC = "PAR1"
     DEFAULT_BATCH_SIZE = 1024
     KEY_MODES = %i[string symbol].freeze
 
-    attr_reader :metadata, :schema, :io
+    # The schema, and the file's FileMetaData (the decoded Thrift footer)
+    attr_reader :schema, :file_metadata
 
-    # Yields a Reader for +io+ and returns the block's value (or returns the Reader without a
-    # block). The IO is not closed: it belongs to the caller.
-    def self.open(io, **options)
-      reader = new(io, **options)
-      return reader unless block_given?
-      yield reader
-    end
-
-    # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...).
-    # Use Reader.from_string for a String of Parquet bytes.
+    # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...)
     def initialize(io, keys: :string, time_zone: nil)
       unless io.respond_to?(:seek) && io.respond_to?(:read)
         raise ArgumentError, "Herringbone::Reader expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class == String ? "a String" : io.class}" \
-          "#{" (use Reader.from_string for Parquet bytes)" if io.is_a?(String)}"
+          "#{" (wrap Parquet bytes in a StringIO)" if io.is_a?(String)}"
       end
-      @keys = check_keys(keys)
-      @time_zone = time_zone
+      keys = keys.to_sym if keys.is_a?(String)
+      raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}" unless KEY_MODES.include?(keys)
+      @symbolize = keys == :symbol
       @zone_converter = zone_converter(time_zone)
       @io = io
-      @metadata = read_footer
-      @schema = Schema.from_elements(@metadata.schema)
+      @file_metadata = read_footer
+      @schema = Schema.from_elements(@file_metadata.schema)
     end
 
-    def self.from_string(bytes, **options)
-      new(StringIO.new(bytes.b), **options)
-    end
+    def num_rows = @file_metadata.num_rows
+    def row_groups = @file_metadata.row_groups
 
-    # Does nothing: the IO belongs to the caller, who closes it. Kept for compatibility.
-    def close
-      nil
-    end
-
-    def num_rows = @metadata.num_rows
-    def row_groups = @metadata.row_groups
-    def num_row_groups = @metadata.row_groups.size
-    def created_by = @metadata.created_by
-
-    def key_value_metadata
-      (@metadata.key_value_metadata || []).to_h { |kv| [kv.key, kv.value] }
-    end
-
-    # Compression codecs used by the file's column chunks, e.g. [:snappy, :zstd]
-    def codecs
-      codec_ids.map { |id| Compression::NAMES.fetch(id, id) }
-    end
-
-    # Codecs this file uses that cannot be decoded here (e.g. [:zstd] without the zstd-ruby gem)
-    def missing_codecs
-      codec_ids.reject { |id| Compression.available?(id) }.map { |id| Compression::NAMES.fetch(id, id) }
-    end
-
-    # Raises MissingCodecError / UnsupportedError now, rather than partway through reading
-    def ensure_codecs_available!
-      codec_ids.each { |id| Compression.ensure_available!(id) }
-      self
+    # The footer's key/value metadata as a Hash (what the writer's metadata: option stores)
+    def metadata
+      (@file_metadata.key_value_metadata || []).to_h { |kv| [kv.key, kv.value] }
     end
 
     # Yields batches of up to +size+ rows (all batches are full except the last one; batches span
@@ -101,25 +65,21 @@ module Herringbone
     # remaining rows are checked one by one. Filtered columns need not be in +columns+.
     # from: skips the first rows of the file (jumping over pages with the page index), and
     # limit: stops after yielding that many rows.
-    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, keys: @keys, time_zone: @time_zone, as: :rows,
-      where: nil, from: nil, limit: nil)
-      unless block_given?
-        return enum_for(:each_batch, size, columns: columns, keys: keys, time_zone: time_zone, as: as,
-          where: where, from: from, limit: limit)
-      end
+    def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, as: :rows, where: nil, from: nil, limit: nil)
+      return enum_for(:each_batch, size, columns: columns, as: as, where: where, from: from, limit: limit) unless block_given?
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
       raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
       raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
       return self if limit&.zero?
       columnar = as == :columns
-      symbolize = check_keys(keys) == :symbol
+      symbolize = @symbolize
       out_fields = select_fields(columns)
       filter = where && !where.empty? ? Filter.new(@schema, where) : nil
       fields = filter ? out_fields | filter.fields : out_fields
       names = row_keys(out_fields, symbolize)
       nout = out_fields.size
-      converters = converters_for(time_zone)
+      converters = @schema.columns.map { |col| converter_for(col) }
       assemblers = fields.map { |f| Assembler.new(f, symbolize) }
       left_to_yield = limit
       pending = pending_rows = nil
@@ -204,7 +164,31 @@ module Herringbone
       end
     end
 
-    # [ColumnIndex or nil, OffsetIndex or nil] of a leaf column in a row group
+    # Yields each row as a Hash of top-level field name => value. Takes the options of each_batch
+    # except as:.
+    def each_row(columns: nil, where: nil, from: nil, limit: nil, &block)
+      return enum_for(:each_row, columns: columns, where: where, from: from, limit: limit) unless block
+      each_batch(columns: columns, where: where, from: from, limit: limit) { |rows| rows.each(&block) }
+      self
+    end
+
+    # Reads the whole file (or the selected rows) at once: an Array of row Hashes, or with
+    # as: :columns a Hash of top-level field name => Array of values. Takes the options of each_batch.
+    def read(columns: nil, as: :rows, where: nil, from: nil, limit: nil)
+      if as == :columns
+        out = row_keys(select_fields(columns), @symbolize).to_h { |name| [name, []] }
+        each_batch(65_536, columns: columns, as: :columns, where: where, from: from, limit: limit) do |batch|
+          batch.each { |name, values| out[name].concat(values) }
+        end
+      else
+        out = []
+        each_batch(columns: columns, as: as, where: where, from: from, limit: limit) { |rows| out.concat(rows) }
+      end
+      out
+    end
+
+    # Internal (used by reads with where:/from:): [ColumnIndex or nil, OffsetIndex or nil] of a
+    # leaf column in a row group
     def page_index(row_group_index, column)
       column = @schema.column(column) unless column.is_a?(Schema::Column)
       raise ArgumentError, "No such leaf column" unless column
@@ -216,68 +200,8 @@ module Herringbone
       end
     end
 
-    # All rows in column order: a Hash of top-level field name => Array of values, read in
-    # batches (so only the resulting Arrays are held, not whole decoded row groups)
-    def read_columns(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: 65_536, where: nil, from: nil, limit: nil)
-      fields = select_fields(columns)
-      out = row_keys(fields, check_keys(keys) == :symbol).to_h { |name| [name, []] }
-      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone, as: :columns,
-        where: where, from: from, limit: limit) do |batch|
-        batch.each { |name, values| out[name].concat(values) }
-      end
-      out
-    end
-
-    # Yields each row as a Hash of top-level field name => value
-    def each_row(columns: nil, keys: @keys, time_zone: @time_zone, batch_size: DEFAULT_BATCH_SIZE,
-      where: nil, from: nil, limit: nil, &block)
-      unless block
-        return enum_for(:each_row, columns: columns, keys: keys, time_zone: time_zone, batch_size: batch_size,
-          where: where, from: from, limit: limit)
-      end
-      each_batch(batch_size, columns: columns, keys: keys, time_zone: time_zone,
-        where: where, from: from, limit: limit) { |rows| rows.each(&block) }
-      self
-    end
-    alias_method :each, :each_row
-
-    # Rows as an Array of Hashes
-    def rows(columns: nil, keys: @keys, time_zone: @time_zone, where: nil, from: nil, limit: nil)
-      out = []
-      each_batch(columns: columns, keys: keys, time_zone: time_zone, where: where, from: from, limit: limit) do |batch|
-        out.concat(batch)
-      end
-      out
-    end
-
-    # All values of a single top-level field, across all row groups
-    def column(name)
-      field = @schema.field(name) or raise ArgumentError, "No such column #{name.inspect}"
-      row_groups.each_index.flat_map { |rg| read_row_group_fields(rg, [field]).first }
-    end
-
-    # Hash of field name => Array of values, for the given row group
-    def read_row_group(index, columns: nil)
-      fields = select_fields(columns)
-      row_keys(fields, @keys == :symbol).zip(read_row_group_fields(index, fields)).to_h
-    end
-
-    # Raw column data for a leaf column: [definition_levels, repetition_levels, values].
-    # Levels are nil when the column's max level is 0.
-    def read_column_chunk(row_group_index, column)
-      column = @schema.column(column) unless column.is_a?(Schema::Column)
-      raise ArgumentError, "No such leaf column" unless column
-      chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
-      ColumnChunkReader.new(@io, chunk, column, converter: converter_for(column, @zone_converter)).read
-    end
-
-    def codec_ids
-      row_groups.flat_map { |rg| rg.columns.map { |c| c.meta_data&.codec } }.compact.uniq
-    end
-    private :codec_ids
-
     def inspect
-      "#<#{self.class.name} rows=#{num_rows} row_groups=#{num_row_groups} created_by=#{created_by.inspect}>"
+      "#<#{self.class.name} rows=#{num_rows} row_groups=#{row_groups.size} created_by=#{@file_metadata.created_by.inspect}>"
     end
 
     private
@@ -319,12 +243,6 @@ module Herringbone
       Array(columns).map { |c| @schema.field(c) or raise ArgumentError, "No such column #{c.inspect}" }
     end
 
-    def check_keys(keys)
-      keys = keys.to_sym if keys.is_a?(String)
-      return keys if KEY_MODES.include?(keys)
-      raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}"
-    end
-
     def row_keys(fields, symbolize)
       fields.map { |f| symbolize ? f.name.to_sym : -f.name }
     end
@@ -344,16 +262,12 @@ module Herringbone
       end
     end
 
-    # Converters per leaf column index, with the time zone applied to timestamps
-    def converters_for(time_zone)
-      zc = time_zone.equal?(@time_zone) ? @zone_converter : zone_converter(time_zone)
-      @schema.columns.map { |col| converter_for(col, zc) }
-    end
-
-    def converter_for(column, zone_converter)
+    # The column's value converter, with the time zone applied to timestamps
+    def converter_for(column)
       base = column.converter
-      return base unless zone_converter && base && instant_column?(column)
-      ->(v) { zone_converter.call(base.call(v)) }
+      zc = @zone_converter
+      return base unless zc && base && instant_column?(column)
+      ->(v) { zc.call(base.call(v)) }
     end
 
     # Timestamps that denote an instant (UTC-adjusted TIMESTAMP, INT96). Local timestamps
@@ -400,21 +314,6 @@ module Herringbone
     rescue ArgumentError => e
       raise if e.message.start_with?("Unknown time zone", "Unsupported time_zone", "Invalid time_zone")
       raise ArgumentError, "Invalid time_zone #{zone.inspect}: #{e.message}"
-    end
-
-    def read_row_group_fields(rg, fields)
-      rg_meta = row_groups.fetch(rg)
-      n = rg_meta.num_rows
-      symbolize = @keys == :symbol
-      fields.map do |field|
-        chunks = {}
-        field.leaves.each do |col|
-          reader = ColumnChunkReader.new(@io, rg_meta.columns.fetch(col.index), col,
-            converter: converter_for(col, @zone_converter))
-          chunks[col.index] = reader.read
-        end
-        Assembler.new(field, symbolize).read_rows(n, chunks)
-      end
     end
 
     def read_footer

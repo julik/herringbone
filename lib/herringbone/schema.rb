@@ -176,53 +176,34 @@ module Herringbone
       new(root)
     end
 
-    # Builds a schema with the DSL (see Schema::Builder), from a Hash, or both:
-    #
-    #   Schema.define(id: {type: :int64, null: false}, name: :string, tags: [:string],
-    #     address: {city: :string, zip: :string}, price: {type: :decimal, precision: 10, scale: 2})
-    #
-    # Hash values: a type Symbol; [element] for a list; a Hash with :type (plus DSL options such as
-    # null:, precision:, of: for lists, key:/value: for maps); or a Hash without :type for a struct.
-    def self.define(spec = nil, &block)
+    # Builds a schema with the DSL, see Schema::Builder
+    def self.define(&block)
       builder = Builder.new
-      builder.fields(spec) if spec
       builder.instance_eval(&block) if block
       raise ArgumentError, "A schema needs at least one field" if builder.nodes.empty?
       new(Node.new(name: "schema", repetition: :required, children: builder.nodes))
     end
 
-    # Accepts a Schema or a Hash spec for Schema.define
-    def self.coerce(schema)
-      case schema
-      when Schema then schema
-      when Hash then define(schema)
-      else raise ArgumentError, "Expected a Herringbone::Schema or a Hash, got #{schema.class}"
-      end
-    end
+    INFER_SAMPLE = 1000
 
-    # Infers a schema from sample rows (Hashes, or objects responding to #attributes or #to_h).
-    # All fields are nullable. Integer -> int64, Integer mixed with Float -> double,
+    # Infers a schema from the first 1000 rows (Hashes, or objects responding to #attributes or
+    # #to_h). All fields are nullable. Integer -> int64, Integer mixed with Float -> double,
     # String/Symbol -> string (binary if not valid UTF-8), true/false -> boolean,
     # Time/DateTime -> timestamp(micros), Date -> date, BigDecimal -> decimal(38, max scale seen),
     # Hash -> struct, Array -> list. Columns that are nil in every sampled row become strings.
-    # +types+ overrides inference for some columns, using the Hash spec of Schema.define:
-    #   Schema.infer(rows, types: { payload: :json, status: { type: :enum, values: %w[a b] } })
-    def self.infer(rows, sample: 1000, types: {})
-      sample_rows = rows.first(sample).map { |r| Inference.row_hash(r) }
+    # Fields declared in the block (Builder DSL) replace the inferred ones of the same name:
+    #   Schema.infer(rows) { json :payload }
+    def self.infer(rows, &block)
+      sample_rows = rows.first(INFER_SAMPLE).map { |r| Inference.row_hash(r) }
       raise ArgumentError, "Cannot infer a schema from zero rows" if sample_rows.empty?
-      overrides = types.to_h { |k, v| [k.to_s, v] }
+      overrides = Builder.new
+      overrides.instance_eval(&block) if block
+      declared = overrides.nodes.to_h { |n| [n.name, n] }
       names = sample_rows.flat_map { |r| r.keys.map(&:to_s) }.uniq
       nodes = names.map do |name|
-        if overrides.key?(name)
-          builder = Builder.new
-          builder.fields(name => overrides[name])
-          builder.nodes.first
-        else
-          values = sample_rows.map { |r| r.fetch(name) { r[name.to_sym] } }
-          Inference.node_for(name, values)
-        end
+        declared.delete(name) || Inference.node_for(name, sample_rows.map { |r| r.fetch(name) { r[name.to_sym] } })
       end
-      new(Node.new(name: "schema", repetition: :required, children: nodes))
+      new(Node.new(name: "schema", repetition: :required, children: nodes + declared.values))
     end
 
     module Inference
@@ -274,7 +255,7 @@ module Herringbone
         else
           classes = values.map(&:class).uniq
           raise ArgumentError, "Cannot infer a Parquet type for #{name} from #{classes.map(&:name).join(", ")}; " \
-            "pass types: { #{name}: ... }"
+            "declare it in a block: Schema.infer(rows) { string :#{name} }"
         end
       end
     end
@@ -473,47 +454,6 @@ module Herringbone
       # in which case both labels and stored values are accepted and the label is written.
       def enum(name, values: nil, parquet_enum: false, **opts)
         column(name, :enum, values: values, parquet_enum: parquet_enum, **opts)
-      end
-
-      # Declares fields from a Hash spec, see Schema.define
-      def fields(spec)
-        spec.each { |name, desc| declare(name, desc) }
-        self
-      end
-
-      # Declares one field from a Hash spec value
-      def declare(name, desc, null: true)
-        case desc
-        when Symbol, String
-          column(name, desc.to_sym, null: null)
-        when Array
-          raise ArgumentError, "List spec for #{name} must have exactly one element type" unless desc.size == 1
-          element = desc.first
-          list(name, null: null) { declare(:element, element) }
-        when Hash
-          opts = desc.to_h { |k, v| [k.to_sym, v] }
-          type = opts.delete(:type)
-          null = opts.delete(:null) { null }
-          # A Hash without :type is a struct; its keys (other than null:) are the fields
-          return struct(name, null: null) { fields(opts) } if type.nil?
-          case type.to_sym
-          when :list
-            of = opts.delete(:of) or raise ArgumentError, "list #{name} needs of:"
-            element_null = opts.delete(:element_null) { true }
-            list(name, null: null, **opts) { declare(:element, of, null: element_null) }
-          when :map
-            key = opts.delete(:key) { :string }
-            value = opts.delete(:value) or raise ArgumentError, "map #{name} needs value:"
-            value_null = opts.delete(:value_null) { true }
-            map(name, key, null: null, **opts) { declare(:value, value, null: value_null) }
-          when :struct
-            struct(name, null: null) { fields(opts.fetch(:fields)) }
-          else
-            column(name, type.to_sym, null: null, **opts)
-          end
-        else
-          raise ArgumentError, "Cannot declare #{name} from #{desc.inspect}"
-        end
       end
 
       private

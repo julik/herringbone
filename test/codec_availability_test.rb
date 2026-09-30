@@ -10,8 +10,16 @@ class CodecAvailabilityTest < Minitest::Test
   ZSTD_FILE = File.join(FIXTURES_DIR, "generated", "codec_zstd.parquet")
   BROTLI_FILE = File.join(FIXTURES_DIR, "generated", "codec_brotli.parquet")
 
-  def open_fixture(path, &block)
-    File.open(path, "rb") { |f| Herringbone::Reader.open(f, &block) }
+  A_SCHEMA = Herringbone::Schema.define { int32 :a }
+
+  def open_fixture(path)
+    File.open(path, "rb") { |f| yield Herringbone::Reader.new(f) }
+  end
+
+  # Codecs of a file's column chunks, as named by Herringbone.codecs
+  def file_codecs(bytes)
+    meta = Herringbone::Reader.new(StringIO.new(bytes)).file_metadata
+    meta.row_groups.flat_map { |rg| rg.columns.map { |c| Compression::NAMES[c.meta_data.codec] } }.uniq
   end
 
   # Runs the block as if the optional codec gems were not installed
@@ -26,7 +34,7 @@ class CodecAvailabilityTest < Minitest::Test
   def test_writer_fails_upfront_for_missing_codec
     without_codec_gems do
       error = assert_raises(Herringbone::MissingCodecError) do
-        Herringbone::Writer.new(StringIO.new, { a: :int32 }, compression: :zstd)
+        Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :zstd)
       end
       assert_equal "ZSTD", error.codec
       assert_equal "zstd-ruby", error.gem_name
@@ -35,7 +43,7 @@ class CodecAvailabilityTest < Minitest::Test
       assert_match(/Add `gem "zstd-ruby"` to your Gemfile/, error.message)
 
       error = assert_raises(Herringbone::MissingCodecError) do
-        Herringbone::Writer.new(StringIO.new, { a: :int32 }, compression: :brotli)
+        Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :brotli)
       end
       assert_equal "brotli", error.gem_name
     end
@@ -45,7 +53,7 @@ class CodecAvailabilityTest < Minitest::Test
     io = StringIO.new("".b)
     without_codec_gems do
       assert_raises(Herringbone::MissingCodecError) do
-        Herringbone::Writer.open(io, { a: :int32 }, compression: :zstd) { |w| w << [1] }
+        Herringbone::Writer.open(io, A_SCHEMA, compression: :zstd) { |w| w << [1] }
       end
     end
     assert_empty io.string, "the codec is checked before anything is written"
@@ -57,30 +65,26 @@ class CodecAvailabilityTest < Minitest::Test
 
   def test_pure_ruby_codecs_need_no_gems
     without_codec_gems do
-      %i[none snappy gzip lz4 lz4_raw lz4_hadoop].each do |codec|
-        assert Compression.available?(codec), codec.to_s
+      assert_equal %i[none snappy gzip lz4 lz4_hadoop], Herringbone.codecs
+      Herringbone.codecs.each do |codec|
         io = StringIO.new("".b)
-        Herringbone::Writer.open(io, { a: :int32 }, compression: codec) { |w| w << [1] }
-        assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).rows
+        Herringbone::Writer.open(io, A_SCHEMA, compression: codec) { |w| w << [1] }
+        assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).read
+        assert_equal [codec], file_codecs(io.string)
       end
-      refute Compression.available?(:zstd)
-      refute Compression.available?(:brotli)
     end
   end
 
   def test_reading_names_codec_gem_and_column
     without_codec_gems do
       open_fixture(ZSTD_FILE) do |reader|
-        assert_equal [:zstd], reader.codecs
-        assert_equal [:zstd], reader.missing_codecs
-        assert_raises(Herringbone::MissingCodecError) { reader.ensure_codecs_available! }
-        error = assert_raises(Herringbone::MissingCodecError) { reader.rows }
+        error = assert_raises(Herringbone::MissingCodecError) { reader.read }
         assert_match(/needs the "zstd-ruby" gem/, error.message)
         assert_match(/\(column \w+\)\z/, error.message)
         assert_equal "zstd-ruby", error.gem_name
       end
       open_fixture(BROTLI_FILE) do |reader|
-        assert_equal [:brotli], reader.missing_codecs
+        assert_equal "brotli", assert_raises(Herringbone::MissingCodecError) { reader.read }.gem_name
       end
     end
   end
@@ -96,25 +100,25 @@ class CodecAvailabilityTest < Minitest::Test
 
   def test_lzo_is_reported_as_unsupported
     error = assert_raises(Herringbone::UnsupportedError) do
-      Herringbone::Writer.new(StringIO.new, { a: :int32 }, compression: :lzo)
+      Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :lzo)
     end
     assert_equal "LZO compression is not supported", error.message
-    refute Compression.available?(:lzo)
+    refute_includes Herringbone.codecs, :lzo
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :lz4_raw) }
   end
 
   def test_default_codec_is_snappy
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, { a: :int32 }) { |w| w << [1] }
-    reader = Herringbone::Reader.new(StringIO.new(io.string))
-    assert_equal [:snappy], reader.codecs
+    Herringbone::Writer.open(io, A_SCHEMA) { |w| w << [1] }
+    assert_equal [:snappy], file_codecs(io.string)
   end
 
   def test_installed_codec_gems_are_used
     %i[zstd brotli].each do |codec|
-      skip "#{codec} gem not installed" unless Compression.available?(codec)
+      skip "#{codec} gem not installed" unless Herringbone.codecs.include?(codec)
       io = StringIO.new("".b)
-      Herringbone::Writer.open(io, { a: :int32 }, compression: codec) { |w| w << [1] }
-      assert_equal [codec], Herringbone::Reader.new(StringIO.new(io.string)).codecs
+      Herringbone::Writer.open(io, A_SCHEMA, compression: codec) { |w| w << [1] }
+      assert_equal [codec], file_codecs(io.string)
     end
   end
 end

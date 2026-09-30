@@ -26,11 +26,7 @@ class InspectorTest < Minitest::Test
   end
 
   def inspect_file(path)
-    File.open(path, "rb") { |io| Herringbone.inspect_file(io) }
-  end
-
-  def with_reader(path, &block)
-    File.open(path, "rb") { |io| block.call(Herringbone::Reader.new(io)) }
+    File.open(path, "rb") { |io| Herringbone::Inspector.new(io).load_all }
   end
 
   def test_fixtures_exist
@@ -164,8 +160,7 @@ class InspectorTest < Minitest::Test
     assert_equal "01/01/09", s.min
     assert_equal "12/31/10", s.max
     assert_equal Encoding::UTF_8, s.min.encoding
-    assert_equal i.pages(0, "id"), id.pages
-    assert_equal i.pages(0, 0), id.pages
+    assert_equal i.row_groups[0].columns[0].pages, id.pages
   end
 
   def test_statistics_match_the_values_read
@@ -179,14 +174,15 @@ class InspectorTest < Minitest::Test
       File.join(PT, "int32_decimal.parquet") => nil
     }.each do |path, only|
       i = inspect_file(path)
-      with_reader(path) do |r|
+      File.open(path, "rb") do |io|
+        r = Herringbone::Reader.new(io)
         r.schema.columns.each do |col|
           next if col.max_repetition_level.positive?
           next if only && !only.include?(col.dotted_path)
           r.row_groups.each_index do |rg|
             st = i.row_groups[rg].columns[col.index].statistics
             next unless st&.min
-            values = r.read_column_chunk(rg, col).last.compact
+            values = Herringbone::Reader::ColumnChunkReader.new(io, r.row_groups[rg].columns[col.index], col).read.last.compact
             values = values.reject { |v| v.is_a?(Float) && v.nan? }
             next if values.empty?
             assert_equal values.min, st.min, "#{File.basename(path)} #{col.dotted_path} rg#{rg} min"
@@ -297,12 +293,8 @@ class InspectorTest < Minitest::Test
       assert_equal expected, i.to_h[:row_groups]
       refute io.closed?, "the caller's IO is left open"
     end
-    with_reader(path) do |r|
-      assert_equal expected, Inspector.new(r).to_h[:row_groups]
-      assert_equal r.num_rows, r.each_row.count # reader still usable
-    end
-    assert_equal expected, Inspector.from_string(File.binread(path)).to_h[:row_groups]
-    assert_nil Inspector.from_string(File.binread(path)).name
+    assert_equal expected, Inspector.new(StringIO.new(File.binread(path))).to_h[:row_groups]
+    assert_nil Inspector.new(StringIO.new(File.binread(path))).name
   end
 
   def test_rejects_paths
@@ -312,7 +304,7 @@ class InspectorTest < Minitest::Test
     end
   end
 
-  def test_inspect_file_loads_everything_up_front
+  def test_load_all_reads_everything_up_front
     i = inspect_file(File.join(GEN, "multiple_row_groups.parquet"))
     # the IO is closed by now, so everything below must already be loaded
     assert i.instance_variable_get(:@io).closed?
@@ -322,18 +314,7 @@ class InspectorTest < Minitest::Test
   end
 
   def test_rejects_non_parquet
-    assert_raises(Herringbone::FormatError) { Inspector.from_string("not a parquet file at all") }
-  end
-
-  # ---- reader.inspector ----
-
-  def test_reader_inspector
-    path = File.join(GEN, "codec_snappy.parquet")
-    with_reader(path) do |r|
-      i = r.inspector
-      assert_kind_of Inspector, i
-      assert_equal inspect_file(path).to_h[:row_groups], i.to_h[:row_groups]
-    end
+    assert_raises(Herringbone::FormatError) { Inspector.new(StringIO.new("not a parquet file at all")) }
   end
 
   # ---- page CRCs ----
@@ -385,10 +366,10 @@ class InspectorTest < Minitest::Test
     [1, 2].each do |version|
       %i[none snappy gzip].each do |codec|
         io = StringIO.new("".b)
-        Herringbone::Writer.open(io, schema, compression: codec, data_page_version: version, page_row_limit: 100) do |w|
+        Herringbone::Writer.open(io, schema, compression: codec, data_page_version: version, page_rows: 100) do |w|
           500.times { |k| w << [k, k.even? ? nil : "name #{k % 7}", Array.new(k % 3) { |t| "t#{t}" }] }
         end
-        i = Inspector.from_string(io.string)
+        i = Inspector.new(StringIO.new(io.string))
         s = i.verify_checksums
         where = "v#{version} #{codec}"
         assert_equal 0, s[:mismatch], where
@@ -397,29 +378,29 @@ class InspectorTest < Minitest::Test
         assert_operator s[:ok], :>, 10, where
 
         # flip one byte in the body of the last data page of "name"
-        page = i.chunk(0, "name").data_pages.last
+        page = i.row_groups[0].column("name").data_pages.last
         bytes = io.string.dup
         at = page.body_offset + page.compressed_size - 1
         bytes.setbyte(at, bytes.getbyte(at) ^ 0x01)
-        broken = Inspector.from_string(bytes)
+        broken = Inspector.new(StringIO.new(bytes))
         s = broken.verify_checksums
         assert_equal 1, s[:mismatch], where
         assert_equal [{ row_group: 0, column: "name", page: page.index, type: page.type, offset: page.offset }],
           s[:mismatches].map { |m| m.slice(:row_group, :column, :page, :type, :offset) }, where
-        assert_equal :mismatch, broken.chunk(0, "name").pages[page.index].checksum
+        assert_equal :mismatch, broken.row_groups[0].column("name").pages[page.index].checksum
       end
     end
   end
 
   def test_checksums_in_to_h_and_report
     path = File.join(PT, "datapage_v1-corrupt-checksum.parquet")
-    h = File.open(path, "rb") { |io| Inspector.new(io).to_h(checksums: true) }
+    h = File.open(path, "rb") { |io| Inspector.new(io).tap(&:verify_checksums).to_h }
     assert_equal({ ok: 2, mismatch: 2, absent: 0 }, h[:summary][:checksums])
     assert_equal 2, h[:checksum_mismatches].size
     statuses = h[:row_groups][0][:columns].flat_map { |c| c[:pages].map { |p| p[:checksum] } }
     assert_equal %w[mismatch ok ok mismatch], statuses
     assert JSON.generate(h)
-    text = File.open(path, "rb") { |io| Inspector.new(io).report(pages: true, checksums: true) }
+    text = File.open(path, "rb") { |io| Inspector.new(io).tap(&:verify_checksums).report(pages: true) }
     assert_match(/page CRCs: 2 ok, 2 mismatched, 0 without a CRC/, text)
     assert_match(/CRC MISMATCH: row group 0 a page 0 \(DATA_PAGE @4\): header says \h{8}, data has \h{8}/, text)
     assert_match(/0: DATA_PAGE @4 .* CRC MISMATCH/, text)
@@ -580,7 +561,7 @@ class InspectorTest < Minitest::Test
       io = StringIO.new("".b)
       schema = Herringbone::Schema.define { int64 :id }
       Herringbone::Writer.open(io, schema, metadata: { "ARROW:schema" => v }) { |w| w << [1] }
-      i = Inspector.from_string(io.string)
+      i = Inspector.new(StringIO.new(io.string))
       assert_nil i.arrow_schema, label
       assert_match(/could not decode ARROW:schema/, i.arrow_schema_error, label)
       kv = i.key_value_metadata.first
@@ -607,7 +588,7 @@ class InspectorTest < Minitest::Test
 
   def test_page_statistics_disagreeing_with_the_column_index_are_flagged
     i = inspect_file(File.join(PT, "repeated_primitive_no_list.parquet"))
-    c = i.chunk(0, "Int32_list")
+    c = i.row_groups[0].column("Int32_list")
     page = c.data_pages.first
     assert_equal [0, 8, 1], [page.statistics.min, page.statistics.max, page.num_nulls]
     ci = c.column_index.dup
@@ -623,7 +604,7 @@ class InspectorTest < Minitest::Test
     assert_match(/page statistics vs column index: 2 disagreements/, i.report)
     assert_match(/row group 0 Int32_list page 1: min in page header 0, in column index 1/, i.report)
 
-    strings = i.chunk(0, "String_list")
+    strings = i.row_groups[0].column("String_list")
     ci = strings.column_index.dup
     ci.max_values = ["zer"]  # a truncated prefix: allowed
     strings.instance_variable_set(:@column_index, ci)

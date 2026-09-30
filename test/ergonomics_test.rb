@@ -4,26 +4,36 @@ require_relative "test_helper"
 require "tmpdir"
 require "pathname"
 
-# Writer conveniences: row shapes, Hash schemas, type coercions, error messages, file handling
+# Writer conveniences: row shapes, schemas, type coercions, error messages, file handling
 class ErgonomicsTest < Minitest::Test
+  A_SCHEMA = Herringbone::Schema.define { int32 :a }
+
   def roundtrip(schema, rows, **opts)
     io = StringIO.new("".b)
     Herringbone::Writer.open(io, schema, **opts) { |w| rows.each { |r| w << r } }
-    Herringbone::Reader.new(StringIO.new(io.string)).rows
+    Herringbone::Reader.new(StringIO.new(io.string)).read
   end
 
-  def test_hash_schema
-    schema = Herringbone::Schema.define(
-      id: { type: :int64, null: false },
-      name: :string,
-      tags: [:string],
-      address: { city: :string, zip: { type: :string, null: false } },
-      price: { type: :decimal, precision: 10, scale: 2 },
-      matrix: [[:int32]],
-      scores: { type: :map, key: :string, value: :double },
-      points: { type: :list, of: { x: :double, y: :double }, element_null: false },
-      "created_at" => { type: :timestamp, unit: :millis }
-    )
+  def test_nested_schema_dsl
+    schema = Herringbone::Schema.define do
+      int64 :id, null: false
+      string :name
+      list :tags, :string
+      struct :address do
+        string :city
+        string :zip, null: false
+      end
+      decimal :price, precision: 10, scale: 2
+      list :matrix do
+        list :element, :int32
+      end
+      map :scores, :string, :double
+      list :points, :struct, element_null: false do
+        double :x
+        double :y
+      end
+      timestamp "created_at", unit: :millis
+    end
     assert_equal %w[id name tags address price matrix scores points created_at], schema.fields.map(&:name)
     assert_equal :required, schema.field("id").node.repetition
     assert_equal :list, schema.field("tags").kind
@@ -40,17 +50,13 @@ class ErgonomicsTest < Minitest::Test
     assert_equal [row], roundtrip(schema, [row])
   end
 
-  def test_hash_schema_combined_with_block
-    schema = Herringbone::Schema.define(id: :int64) { string :name }
-    assert_equal %w[id name], schema.fields.map(&:name)
-  end
-
-  def test_writer_accepts_hash_schema
-    assert_equal [{ "a" => 1 }], roundtrip({ a: :int32 }, [{ a: 1 }])
+  def test_writer_needs_a_schema
+    error = assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, { a: :int32 }) }
+    assert_match(/Expected a Herringbone::Schema/, error.message)
   end
 
   def test_array_rows_in_schema_order
-    schema = Herringbone::Schema.define(id: :int64, name: :string, tags: [:string])
+    schema = Herringbone::Schema.define { int64 :id; string :name; list :tags, :string }
     rows = roundtrip(schema, [[1, "a", ["x"]], [2, nil, nil]])
     assert_equal [{ "id" => 1, "name" => "a", "tags" => ["x"] }, { "id" => 2, "name" => nil, "tags" => nil }], rows
     error = assert_raises(Herringbone::EncodeError) { roundtrip(schema, [[1, "a"]]) }
@@ -61,7 +67,7 @@ class ErgonomicsTest < Minitest::Test
   Record = Struct.new(:attributes)
 
   def test_struct_and_attributes_rows
-    schema = Herringbone::Schema.define(x: :int32, y: :int32)
+    schema = Herringbone::Schema.define { int32 :x; int32 :y }
     assert_equal [{ "x" => 1, "y" => 2 }], roundtrip(schema, [Point.new(1, 2)])
     assert_equal [{ "x" => 3, "y" => 4 }], roundtrip(schema, [Record.new({ "x" => 3, "y" => 4 })])
     if defined?(Data) && Data.respond_to?(:define)
@@ -71,7 +77,7 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_json_columns_serialize_objects
-    schema = Herringbone::Schema.define(payload: :json)
+    schema = Herringbone::Schema.define { json :payload }
     rows = roundtrip(schema, [{ payload: { "a" => [1, 2], "b" => nil } }, { payload: [1, "x"] }, { payload: '{"raw":true}' }])
     assert_equal ['{"a":[1,2],"b":null}', '[1,"x"]', '{"raw":true}'], rows.map { |r| r["payload"] }
   end
@@ -117,14 +123,14 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_boolean_coercions
-    schema = Herringbone::Schema.define(b: :boolean)
+    schema = Herringbone::Schema.define { boolean :b }
     input = [true, false, 1, 0, "t", "f", "true", "FALSE", "1", "0", "yes", "No", :true]
     assert_equal [true, false, true, false, true, false, true, false, true, false, true, false, true],
       roundtrip(schema, input.map { |v| { b: v } }).map { |r| r["b"] }
   end
 
   def test_numeric_coercions
-    schema = Herringbone::Schema.define(i: :int32, f: :double, d: { type: :decimal, precision: 8, scale: 3 })
+    schema = Herringbone::Schema.define { int32 :i; double :f; decimal :d, precision: 8, scale: 3 }
     rows = roundtrip(schema, [
       { i: "12", f: "1.5", d: "3.14159" },
       { i: 3.0, f: BigDecimal("2.25"), d: 2 },
@@ -138,7 +144,7 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_strings_accept_symbols_and_other_objects
-    schema = Herringbone::Schema.define(s: :string)
+    schema = Herringbone::Schema.define { string :s }
     assert_equal ["sym", "42"], roundtrip(schema, [{ s: :sym }, { s: 42 }]).map { |r| r["s"] }
   end
 
@@ -157,12 +163,15 @@ class ErgonomicsTest < Minitest::Test
     assert_equal %w[paid shipped pending], rows.map { |r| r["status"] }
     error = assert_raises(Herringbone::EncodeError) { roundtrip(schema, [{ status: "lost" }]) }
     assert_match(/not one of pending, paid, shipped/, error.message)
-    list = Herringbone::Schema.define(kind: { type: :enum, values: %w[a b] })
+    list = Herringbone::Schema.define { enum :kind, values: %w[a b] }
     assert_raises(Herringbone::EncodeError) { roundtrip(list, [{ kind: "c" }]) }
   end
 
   def test_error_messages_name_row_and_column_path
-    schema = Herringbone::Schema.define(id: :int64, address: { city: { type: :string, null: false } })
+    schema = Herringbone::Schema.define do
+      int64 :id
+      struct(:address) { string :city, null: false }
+    end
     error = assert_raises(Herringbone::EncodeError) do
       roundtrip(schema, [{ id: 1, address: { city: "x" } }, { id: 2, address: { city: nil } }])
     end
@@ -177,19 +186,22 @@ class ErgonomicsTest < Minitest::Test
       { "a" => 1, "b" => nil, "c" => 1.5, "d" => DateTime.new(2024, 1, 1), "e" => { "x" => 1 }, "f" => [1] },
       { "a" => 2, "b" => nil, "c" => 2, "d" => Time.now, "e" => nil, "f" => [] }
     ]
-    schema = Herringbone::Schema.infer(rows, types: { e: :json })
+    schema = Herringbone::Schema.infer(rows) { json :e; string :extra }
     kinds = schema.columns.to_h { |c| [c.dotted_path, Herringbone::Types.logical_of(c.node).first] }
     assert_equal :string, kinds["b"]
     assert_equal Herringbone::Format::Type::DOUBLE, schema.column("c").type
     assert_equal :timestamp, kinds["d"]
     assert_equal :json, kinds["e"]
     assert_equal :list, schema.field("f").kind
+    assert_equal %w[a b c d e f extra], schema.fields.map(&:name), "declared fields replace inferred ones in place"
+    error = assert_raises(ArgumentError) { Herringbone::Schema.infer([{ x: Object.new }]) }
+    assert_match(/Schema.infer\(rows\) \{ string :x \}/, error.message)
     assert_equal [1, 2], roundtrip(schema, rows).map { |r| r["a"] }
   end
 
   def test_writer_rejects_paths
     [String.new("out.parquet"), Pathname.new("out.parquet"), nil, 42].each do |target|
-      error = assert_raises(ArgumentError) { Herringbone::Writer.new(target, { a: :int32 }) }
+      error = assert_raises(ArgumentError) { Herringbone::Writer.new(target, A_SCHEMA) }
       assert_match(/expects an IO that responds to #write/, error.message)
     end
     assert_raises(ArgumentError) { Herringbone.write("out.parquet", [{ a: 1 }]) }
@@ -198,7 +210,7 @@ class ErgonomicsTest < Minitest::Test
   def test_failed_block_aborts_without_footer
     io = StringIO.new("".b)
     assert_raises(RuntimeError) do
-      Herringbone::Writer.open(io, { a: :int32 }) do |w|
+      Herringbone::Writer.open(io, A_SCHEMA) do |w|
         w << { a: 1 }
         raise "boom"
       end
@@ -209,52 +221,52 @@ class ErgonomicsTest < Minitest::Test
 
   def test_open_returns_block_value_and_leaves_io_open
     io = StringIO.new("".b)
-    assert_equal :done, Herringbone::Writer.open(io, { a: :int32 }) { |w| w << [7]; :done }
+    assert_equal :done, Herringbone::Writer.open(io, A_SCHEMA) { |w| w << [7]; :done }
     refute io.closed?
-    assert_equal [{ "a" => 7 }], Herringbone.read(StringIO.new(io.string))
+    assert_equal [{ "a" => 7 }], Herringbone::Reader.new(StringIO.new(io.string)).read
   end
 
   def test_open_without_block
     io = StringIO.new("".b)
-    w = Herringbone::Writer.open(io, { a: :int32 })
+    w = Herringbone::Writer.open(io, A_SCHEMA)
     w << [1]
     w.close
-    assert_equal [{ "a" => 1 }], Herringbone.read(StringIO.new(io.string))
+    assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).read
   end
 
   def test_writes_to_a_file_opened_by_the_caller
     Dir.mktmpdir do |dir|
       path = File.join(dir, "out.parquet")
-      File.open(path, "wb") { |f| Herringbone.write(f, [{ a: 1 }, { a: 2 }]) }
-      assert_equal [1, 2], File.open(path, "rb") { |f| Herringbone.read(f) }.map { |r| r["a"] }
+      assert_equal 2, File.open(path, "wb") { |f| Herringbone.write(f, [{ a: 1 }, { a: 2 }]) }
+      assert_equal [1, 2], File.open(path, "rb") { |f| Herringbone::Reader.new(f).read }.map { |r| r["a"] }
     end
   end
 
   def test_open_with_io
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, { a: :int32 }) { |w| w << [1] }
-    assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).rows
+    Herringbone::Writer.open(io, A_SCHEMA) { |w| w << [1] }
+    assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).read
   end
 
   def test_row_group_bytes_bounds_row_groups
-    schema = Herringbone::Schema.define(id: :int64, s: :string)
+    schema = Herringbone::Schema.define { int64 :id; string :s }
     rows = Array.new(20_000) { |i| { id: i, s: format("%090d", i) } } # ~110 bytes per row, all distinct
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, schema, row_group_bytes: 500_000) { |w| w.write_rows(rows) }
+    Herringbone::Writer.open(io, schema, row_group_bytes: 500_000) { |w| rows.each { |r| w << r } }
     reader = Herringbone::Reader.new(StringIO.new(io.string))
     sizes = reader.row_groups.map(&:num_rows)
     assert_equal 20_000, sizes.sum
     assert sizes.size.between?(3, 10), "expected row groups of roughly 500KB, got #{sizes.inspect}"
-    assert_equal rows.last[:id], reader.column("id").last
+    assert_equal rows.last[:id], reader.read(as: :columns, columns: ["id"])["id"].last
 
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, schema, row_group_size: 3000) { |w| w.write_rows(rows) }
+    Herringbone::Writer.open(io, schema, row_group_rows: 3000) { |w| rows.each { |r| w << r } }
     assert_equal [3000] * 6 + [2000], Herringbone::Reader.new(StringIO.new(io.string)).row_groups.map(&:num_rows)
   end
 
   def test_created_by
     io = StringIO.new("".b)
     Herringbone.write(io, [{ a: 1 }])
-    assert_equal "herringbone-ruby #{Herringbone::VERSION}", Herringbone::Reader.new(StringIO.new(io.string)).created_by
+    assert_equal "herringbone-ruby #{Herringbone::VERSION}", Herringbone::Reader.new(StringIO.new(io.string)).file_metadata.created_by
   end
 end

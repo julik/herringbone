@@ -25,9 +25,9 @@ module Herringbone
         miniblocks, pos = RLE.read_uleb(data, pos)
         total, pos = RLE.read_uleb(data, pos)
         first, pos = RLE.read_uleb(data, pos)
-        raise DecodeError, "Invalid DELTA_BINARY_PACKED header" if miniblocks.zero? || block_size % miniblocks != 0
+        raise FormatError, "Invalid DELTA_BINARY_PACKED header" if miniblocks.zero? || block_size % miniblocks != 0
         per_mini = block_size / miniblocks
-        raise DecodeError, "Invalid miniblock size #{per_mini}" if per_mini % 8 != 0
+        raise FormatError, "Invalid miniblock size #{per_mini}" if per_mini % 8 != 0
         total = count if count && count < total
         values = []
         return [values, pos] if total.zero?
@@ -42,7 +42,7 @@ module Herringbone
           pos += miniblocks
           widths.each do |w|
             break if values.size >= total
-            raise DecodeError, "Invalid delta bit width #{w}" if w > bits
+            raise FormatError, "Invalid delta bit width #{w}" if w > bits
             deltas = RLE.unpack_bits(data, pos, per_mini, w)
             pos += per_mini * w / 8
             take = total - values.size
@@ -84,11 +84,11 @@ module Herringbone
 
       def decode_length_byte_array(data, pos, count)
         lengths, pos = decode_binary_packed(data, pos, 32, count)
-        raise DecodeError, "DELTA_LENGTH_BYTE_ARRAY has #{lengths.size} lengths, need #{count}" if lengths.size < count
+        raise FormatError, "DELTA_LENGTH_BYTE_ARRAY has #{lengths.size} lengths, need #{count}" if lengths.size < count
         out = Array.new(count)
         size = data.bytesize
         lengths.each_with_index do |len, i|
-          raise DecodeError, "DELTA_LENGTH_BYTE_ARRAY value overruns page" if len.negative? || pos + len > size
+          raise FormatError, "DELTA_LENGTH_BYTE_ARRAY value overruns page" if len.negative? || pos + len > size
           out[i] = data.byteslice(pos, len)
           pos += len
         end
@@ -105,7 +105,7 @@ module Herringbone
         prev = "".b
         out = Array.new(count) do |i|
           prefix = prefixes[i]
-          raise DecodeError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
+          raise FormatError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
           prev = prefix.zero? ? suffixes[i] : prev.byteslice(0, prefix) + suffixes[i]
         end
         [out, pos]
@@ -134,7 +134,7 @@ module Herringbone
       # Returns the value bytes re-interleaved into PLAIN layout
       def decode(data, pos, count, width)
         nbytes = count * width
-        raise DecodeError, "Truncated BYTE_STREAM_SPLIT data" if pos + nbytes > data.bytesize
+        raise FormatError, "Truncated BYTE_STREAM_SPLIT data" if pos + nbytes > data.bytesize
         streams = Array.new(width) { |k| data.byteslice(pos + k * count, count).unpack("C*") }
         [streams[0].zip(*streams[1..]).flatten.pack("C*"), pos + nbytes]
       end

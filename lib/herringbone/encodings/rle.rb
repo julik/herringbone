@@ -98,7 +98,7 @@ module Herringbone
         shift = 0
         while true
           b = data.getbyte(pos)
-          raise DecodeError, "Truncated varint" unless b
+          raise FormatError, "Truncated varint" unless b
           pos += 1
           result |= (b & 0x7F) << shift
           return [result, pos] if b < 0x80
@@ -120,7 +120,7 @@ module Herringbone
         out = []
         value_bytes = (width + 7) / 8
         while out.size < count
-          raise DecodeError, "RLE data exhausted (#{out.size}/#{count} values)" if pos >= limit
+          raise FormatError, "RLE data exhausted (#{out.size}/#{count} values)" if pos >= limit
           header, pos = read_uleb(data, pos)
           if header & 1 == 1
             groups = header >> 1

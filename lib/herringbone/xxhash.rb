@@ -5,7 +5,7 @@ module Herringbone
   #
   # When the optional "xxhash" gem (a C extension) can be loaded it is used, which is 20-40x
   # faster; otherwise hashing is pure Ruby. The gem is only a speedup, so nothing fails without
-  # it. Set HERRINGBONE_PURE_RUBY_XXHASH=1, or +XXHash.backend = :ruby+, to force pure Ruby.
+  # it. +XXHash.backend = :ruby+ forces pure Ruby (for tests and benchmarks).
   #
   # The pure-Ruby version keeps every 64-bit value as two 32-bit halves, and multiplies by the
   # XXH64 primes split into 16-bit pieces, so that no intermediate result leaves the Fixnum range.
@@ -24,9 +24,8 @@ module Herringbone
     M32 = 0xFFFF_FFFF
     WORDS = "V*" # frozen, unlike a literal in the generated code
 
-    # Gem providing the native implementation, and the environment variable that disables it
+    # Gem providing the native implementation
     NATIVE_GEM = "xxhash"
-    PURE_RUBY_ENV = "HERRINGBONE_PURE_RUBY_XXHASH"
 
     # Code generators for the pure-Ruby hash: each returns Ruby source operating on a 64-bit
     # value held in two local variables (+hi+ and +lo+, 32 bits each), using t0/t1 as scratch
@@ -234,7 +233,6 @@ module Herringbone
         return native.xxh64([lane].pack("Q<"), 0) if native
         ruby_xxh64_lane((lane >> 32) & M32, lane & M32)
       end
-      alias_method :xxh64_i64, :xxh64_u64
 
       # XXH64 of 4 bytes given as a little-endian 32-bit Integer (INT32, FLOAT), signed or unsigned
       def xxh64_u32(word)
@@ -283,15 +281,14 @@ module Herringbone
       end
 
       # :ruby forces pure Ruby, :native requires the xxhash gem (UnsupportedError if it cannot be
-      # loaded), nil (or :auto) goes back to the default: native when available, unless
-      # HERRINGBONE_PURE_RUBY_XXHASH is set
+      # loaded), nil goes back to the default: native when available
       def backend=(name)
         @native = case name
-        when :ruby, "ruby" then false
-        when :native, "native"
+        when :ruby then false
+        when :native
           native_library || raise(UnsupportedError, "The \"#{NATIVE_GEM}\" gem could not be loaded")
-        when nil, :auto, "auto" then nil
-        else raise ArgumentError, "Unknown XXHash backend #{name.inspect} (expected :ruby, :native or :auto)"
+        when nil then nil
+        else raise ArgumentError, "Unknown XXHash backend #{name.inspect} (expected :ruby, :native or nil)"
         end
       end
 
@@ -303,8 +300,7 @@ module Herringbone
       private
 
       def resolve_backend
-        pure = ENV[PURE_RUBY_ENV]
-        @native = pure && !pure.empty? && pure != "0" ? false : (native_library || false)
+        @native = native_library || false
       end
 
       def native_library

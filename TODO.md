@@ -13,7 +13,7 @@ Buffering: levels are byte Strings, string/fixed columns are dictionary-encoded 
 packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB row groups,
 660 → 416 MB at 64MB.
 
-`Herringbone.export(relation, target, **options)` combines `from_active_record` and `find_each`.
+`Herringbone.write(io, relation)` combines `from_active_record` and `find_each`.
 
 ## 2. Reading ergonomics — done
 
@@ -24,7 +24,7 @@ converted to Ruby objects per batch. 1M rows in one row group: 662 → ~160 MB p
 
 Pages are decoded incrementally (levels run by run, values by per-encoding decoders), so only
 the batch being assembled becomes Ruby objects: 1M rows in 1M-row pages 599 → 210 MB.
-Column-order batches (`each_batch(as: :columns)`, `read_columns`) are 25–30% faster than rows.
+Column-order batches (`each_batch(as: :columns)`, `read(as: :columns)`) are 25–30% faster than rows.
 `where:` / `from:` / `limit:` select rows using statistics, bloom filters and the page index
 (see section 4); `scan_plan` shows what would be read.
 
@@ -36,12 +36,12 @@ statistics and caveats, every page header, ColumnIndex/OffsetIndex, per-column t
 `layout` of the whole file, `to_h` (JSON) and a text `report`. `Herringbone::Visualizer` renders it
 as a self-contained HTML page (design and idea from
 [Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1):
-`bin/herringbone inspect FILE [OUT]`, `--text`, `--json`.
+`bin/herringbone inspect FILE`, `--json`, `--html`.
 
 Follow-ups — done:
-- `reader.inspector`
-- Opt-in page CRC verification: `Inspector#verify_checksums`, `to_h(checksums: true)`,
-  `report(checksums: true)`, `Visualizer.new(io, checksums: true)`, CLI `--verify-checksums`
+- `Inspector#to_html` (the Visualizer is internal)
+- Opt-in page CRC verification: `Inspector#verify_checksums`, after which `summary`, `to_h`,
+  `report` and `to_html` include the results; CLI `--verify-checksums`
   (per page ok/mismatch/absent, a summary badge and a per-page column in the HTML)
 - ARROW:schema decoded in pure Ruby (`Inspector::ArrowSchema`, a small flatbuffer reader):
   Arrow field names and types (pyarrow's spelling), nested children, timestamp time zones,
@@ -60,7 +60,7 @@ Possible follow-ups:
 ### Page indexes — done (writing)
 
 ColumnIndex + OffsetIndex for every column chunk (column index where a sort order is defined),
-`page_row_limit:` (20k rows per page), sort orders for unsigned/decimal/float16, 64-byte
+`page_rows:` (20k rows per page), sort orders for unsigned/decimal/float16, 64-byte
 truncation of byte-array bounds. Verified against DataFusion's page pruning in CI.
 Reading uses them: `where:` rules out pages with the ColumnIndex and columns jump to the needed
 pages with the OffsetIndex (also for `from:`), reading exactly the page bytes.
@@ -74,14 +74,13 @@ optional `xxhash` gem when it can be required (Gemfile group `:speedups`; ~7M/s 
 pieces so nothing leaves the Fixnum range, generated from small code templates (~1.3M/s, ~0.6M/s).
 Masked Bignum arithmetic looked fast in microbenchmarks but allocates ~25 Bignums per hash, and
 with a writer's large live heap the resulting GCs made it up to 10x slower. Shifts are written as
-`*`/`/` (YARV has no specialized instruction for Integer `<<`/`>>`). `HERRINGBONE_PURE_RUBY_XXHASH=1`
-or `XXHash.backend = :ruby` forces pure Ruby. The writer hashes each distinct value once (floats by
+`*`/`/` (YARV has no specialized instruction for Integer `<<`/`>>`). `XXHash.backend = :ruby`
+forces pure Ruby (tests and benchmarks). The writer hashes each distinct value once (floats by
 their bytes) and inserts in bulk (`insert_hashes`); `benchmark/bloom_filters.rb` measures it.
 Writer option `bloom_filters:` (`true`, paths, or `{ path => { ndv:, fpp:, max_bytes: } }`;
 sized from counted distinct values when ndv is not given), written after each row group's chunks
-with `bloom_filter_offset`/`bloom_filter_length`. Reader: `bloom_filter(rg, path)`,
-`row_groups_that_may_contain(path, value)` (values go through the column encoder). Verified against
+with `bloom_filter_offset`/`bloom_filter_length`. Reads with `where:` consult them
+(`Reader#bloom_filter(rg, path)`; values go through the column encoder). Verified against
 the parquet-testing fixtures (parquet-mr without length, parquet-rs with length), a pyarrow-written
 fixture covering every physical type, pyarrow reading our files, and DataFusion pruning row groups.
-Possible follow-ups: let the Inspector reuse `Format::BloomFilterHeader`; a row-level
-`where:`-style API that combines statistics and bloom filters to pick row groups.
+Possible follow-up: let the Inspector reuse `Format::BloomFilterHeader`.
