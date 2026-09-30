@@ -198,6 +198,7 @@ Writer options:
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
 | `statistics` | `true` | write min/max/null_count |
 | `metadata` | `{}` | footer key/value metadata |
+| `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => true \| { ndv:, fpp:, max_bytes: } }` (see below) |
 
 ### Page indexes and statistics
 
@@ -211,6 +212,48 @@ whole row group. Sort your rows by the columns you filter on to get the most out
 
 Unsigned integers, decimals and float16 use their proper sort orders; NaNs are left out of float
 bounds; byte-array bounds longer than 64 bytes are truncated (flagged as inexact in statistics).
+
+### Bloom filters
+
+Min/max statistics cannot rule out a value that falls inside a row group's range, which is the
+usual case for IDs, emails or UUIDs that are not sorted. A bloom filter can: it answers "definitely
+not here" or "maybe" for an equality lookup, so readers skip every row group that cannot hold the
+value. Herringbone writes and reads Parquet's split block bloom filters (XXH64, as parquet-mr,
+Arrow, DuckDB, Spark and DataFusion use) in pure Ruby. They are off by default:
+
+```ruby
+Herringbone::Writer.open(file, schema, bloom_filters: ["user_id", "email"]) { |w| ... }
+Herringbone::Writer.open(file, schema, bloom_filters: true) { |w| ... }  # every non-boolean column
+Herringbone::Writer.open(file, schema, bloom_filters: {
+  "email" => true,                          # sized from the distinct values of each row group
+  "user_id" => { ndv: 1_000_000, fpp: 0.05 } # fixed size per row group
+}) { |w| ... }
+```
+
+Without `ndv`, the writer counts the distinct values of each row group (the dictionary size for
+dictionary-encoded chunks) and sizes the filter with the spec's formula for the false positive
+probability `fpp` (default `0.01`), rounded up to a power of two between 32 bytes and `max_bytes`
+(default 1MB). Filters are written after each row group's column chunks. Nested leaves are named
+by their dotted path (`"tags.list.element"`); nulls are not recorded; BOOLEAN columns have none.
+
+Reading takes Ruby values, converted like the writer converts them, so Dates, Times, BigDecimals
+and UUID Strings match what was stored:
+
+```ruby
+File.open("events.parquet", "rb") do |f|
+  reader = Herringbone::Reader.new(f)
+  reader.bloom_filter(0, "email")&.might_contain?("a@example.com")  # nil if the chunk has none
+  reader.row_groups_that_may_contain("user_id", 42)  # => [3] (groups without a filter included)
+  reader.row_groups_that_may_contain("day", Date.new(2024, 5, 1)).each do |i|
+    reader.read_row_group(i)
+  end
+end
+```
+
+`Herringbone::BloomFilter` and `Herringbone::XXHash.xxh64` can also be used on their own. Hashing
+is pure Ruby, so bloom filters make writing noticeably slower: on an M-series Mac a filter adds
+about 3.5 s per million rows on an INT64 column and about 17 s per million ~22-byte strings
+(dictionary-encoded columns only hash their distinct values).
 
 ## Exporting ActiveRecord models
 
@@ -279,8 +322,8 @@ Column order follows `Model.columns`.
   DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY, BYTE_STREAM_SPLIT; legacy BIT_PACKED levels (read)
 - Data page v1 and v2, dictionary pages, page CRCs (written)
 - Legacy list and map layouts per the Parquet backward-compatibility rules
-- Not supported: encryption, column chunks in external files, bloom filters and page indexes
-  (ignored when reading, not written)
+- Split block bloom filters (read and written, see above)
+- Not supported: encryption, column chunks in external files, page indexes when reading
 
 ## Inspecting files
 

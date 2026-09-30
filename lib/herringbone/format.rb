@@ -334,5 +334,29 @@ module Herringbone
       field 6, :created_by, :string
       field 7, :column_orders, [:list, ColumnOrder]
     end
+
+    # Bloom filters (BloomFilter.md). Each union has a single member, an empty struct.
+    class SplitBlockAlgorithm < S; end
+    class XxHash < S; end
+    class BloomFilterUncompressed < S; end
+
+    class BloomFilterAlgorithm < S
+      field 1, :block, SplitBlockAlgorithm
+    end
+
+    class BloomFilterHash < S
+      field 1, :xxhash, XxHash
+    end
+
+    class BloomFilterCompression < S
+      field 1, :uncompressed, BloomFilterUncompressed
+    end
+
+    class BloomFilterHeader < S
+      field 1, :num_bytes, :i32
+      field 2, :algorithm, BloomFilterAlgorithm
+      field 3, :hash_function, BloomFilterHash # "hash" in parquet.thrift; renamed to keep Object#hash
+      field 4, :compression, BloomFilterCompression
+    end
   end
 end

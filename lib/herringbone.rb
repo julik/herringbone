@@ -28,6 +28,8 @@ require_relative "herringbone/active_record"
 require_relative "herringbone/reader"
 require_relative "herringbone/byte_values"
 require_relative "herringbone/writer"
+require_relative "herringbone/xxhash"
+require_relative "herringbone/bloom_filter"
 require_relative "herringbone/inspector"
 require_relative "herringbone/visualizer"
 

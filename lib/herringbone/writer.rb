@@ -36,6 +36,10 @@ module Herringbone
   #   encodings:       { "path.to.column" => :delta_binary_packed, ... } for non-dictionary pages
   #   statistics:      write min/max/null_count statistics (default true)
   #   metadata:        Hash of String => String key/value metadata for the footer
+  #   bloom_filters:   write split block bloom filters: true (every column that supports them),
+  #                    an Array of column paths, or { "path" => true | { ndv:, fpp:, max_bytes: } }.
+  #                    Without ndv: the distinct values of each row group are counted. fpp defaults
+  #                    to 0.01 and max_bytes to 1MB. Filters are written after each row group.
   class Writer
     MAGIC = "PAR1"
     T = Format::Type
@@ -81,7 +85,8 @@ module Herringbone
     end
 
     def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
-      page_size: 1024 * 1024, page_row_limit: 20_000, page_index: true, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
+      page_size: 1024 * 1024, page_row_limit: 20_000, page_index: true, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {},
+      bloom_filters: nil)
       @schema = Schema.coerce(schema)
       schema = @schema
       @codec = Compression.codec_id(compression)
@@ -103,6 +108,8 @@ module Herringbone
       raise ArgumentError, "encodings: no such column #{unknown.join(", ")}" unless unknown.empty?
       @statistics = statistics
       @metadata = metadata
+      @bloom_filters = bloom_filter_config(bloom_filters)
+      @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter] for the row group being written
       @row_groups = []
       @total_rows = 0
       @pos = 0
@@ -170,6 +177,7 @@ module Herringbone
         total_compressed_size: @pos - start,
         ordinal: @row_groups.size
       )
+      write_bloom_filters
       @total_rows += @buffered_rows
       reset_buffers
     end
@@ -478,6 +486,9 @@ module Herringbone
         statistics: @statistics ? statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }, order) : nil
       )
       chunk = Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
+      if (bloom = @bloom_filters[path])
+        @pending_bloom_filters << [meta, build_bloom_filter(col, bloom, dict_values, values)]
+      end
       @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)] if @page_index
       chunk
     end
@@ -532,6 +543,61 @@ module Herringbone
         write_raw(bytes)
       end
       @page_indexes.clear
+    end
+
+    BLOOM_FILTER_OPTIONS = %i[ndv fpp max_bytes].freeze
+
+    # { dotted_path => { ndv:, fpp:, max_bytes: } } from the bloom_filters: option
+    def bloom_filter_config(option)
+      return {} if option.nil? || option == false
+      columns = @schema.columns.to_h { |c| [c.dotted_path, c] }
+      if option == true
+        return columns.select { |_, c| BloomFilter::TYPES.include?(c.type) }.transform_values { bloom_filter_settings({}) }
+      end
+      option = Array(option).to_h { |path| [path, true] } unless option.is_a?(Hash)
+      option.each_with_object({}) do |(path, settings), config|
+        path = path.is_a?(Array) ? path.join(".") : path.to_s
+        col = columns[path] or raise ArgumentError, "bloom_filters: no such column #{path}"
+        next if settings.nil? || settings == false
+        unless BloomFilter::TYPES.include?(col.type)
+          raise ArgumentError, "bloom_filters: not supported for #{T::NAMES[col.type]} column #{path}"
+        end
+        settings = {} if settings == true
+        raise ArgumentError, "bloom_filters: expected true or a Hash for #{path}, got #{settings.inspect}" unless settings.is_a?(Hash)
+        config[path] = bloom_filter_settings(settings.transform_keys(&:to_sym), path)
+      end
+    end
+
+    def bloom_filter_settings(settings, path = nil)
+      unknown = settings.keys - BLOOM_FILTER_OPTIONS
+      raise ArgumentError, "bloom_filters: unknown option #{unknown.join(", ")} for #{path}" unless unknown.empty?
+      ndv = settings[:ndv] && Integer(settings[:ndv])
+      raise ArgumentError, "bloom_filters: ndv must be positive for #{path}" if ndv && !ndv.positive?
+      fpp = Float(settings.fetch(:fpp, BloomFilter::DEFAULT_FPP))
+      raise ArgumentError, "bloom_filters: fpp must be between 0 and 1 for #{path}" unless fpp > 0 && fpp < 1
+      { ndv: ndv, fpp: fpp, max_bytes: Integer(settings.fetch(:max_bytes, BloomFilter::DEFAULT_MAX_BYTES)) }
+    end
+
+    # A filter holding the chunk's values: +dict_values+ (already distinct) for dictionary-encoded
+    # chunks, +values+ otherwise. Sized from the configured ndv, or from the distinct values.
+    def build_bloom_filter(col, settings, dict_values, values)
+      hashes = BloomFilter.hash_physical_all(dict_values || values, col.type)
+      hashes.uniq! unless dict_values
+      size = BloomFilter.optimal_num_bytes(settings[:ndv] || hashes.size, settings[:fpp], max_bytes: settings[:max_bytes])
+      filter = BloomFilter.new(size, column: col)
+      hashes.each { |h| filter.insert_hash(h) }
+      filter
+    end
+
+    # Bloom filters go right after the row group's column chunks, in column order
+    def write_bloom_filters
+      @pending_bloom_filters.each do |meta, filter|
+        bytes = filter.encode
+        meta.bloom_filter_offset = @pos
+        meta.bloom_filter_length = bytes.bytesize
+        write_raw(bytes)
+      end
+      @pending_bloom_filters.clear
     end
 
     def use_dictionary?(col)

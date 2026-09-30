@@ -351,6 +351,29 @@ def structure():
                        pa.timestamp("ms"))), version="1.0")
 
 
+def bloom_filters():
+    """Bloom filters written by Arrow C++ for most physical types, in two row groups."""
+    n = 200
+    t = pa.table({
+        "i32": pa.array([None if i % 17 == 0 else i * 3 - 100 for i in range(n)], pa.int32()),
+        "i64": pa.array([i * 1_000_003 - 5_000_000_000 for i in range(n)], pa.int64()),
+        "f32": pa.array([i * 0.5 - 7 for i in range(n)], pa.float32()),
+        "f64": pa.array([i * 1.25 - 50 for i in range(n)], pa.float64()),
+        "str": pa.array(["str-%d" % i for i in range(n)], pa.string()),
+        "bin": pa.array([bytes([i % 256, 0, 255]) + b"bin" for i in range(n)], pa.binary()),
+        "fixed": pa.array([uuid.UUID(int=i * 7919 + 1).bytes for i in range(n)], pa.binary(16)),
+        "date": pa.array([dt.date(2020, 1, 1) + dt.timedelta(days=i) for i in range(n)], pa.date32()),
+        "ts": pa.array([dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=i * 61)
+                        for i in range(n)], pa.timestamp("us", tz="UTC")),
+        "dec_small": pa.array([Decimal(i * 101) / 100 for i in range(n)], pa.decimal128(9, 2)),
+        "dec_big": pa.array([Decimal(i * 1234567) / 1000 for i in range(n)], pa.decimal128(30, 3)),
+        "dict_str": pa.array(["cat-%d" % (i % 10) for i in range(n)], pa.string()),
+    })
+    options = {name: {"ndv": 100, "fpp": 0.01} for name in t.column_names}
+    write("bloom_filters_arrow", t, row_group_size=100, bloom_filter_options=options,
+          use_dictionary=["dict_str"], store_decimal_as_integer=True)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name in os.listdir(OUT):
@@ -363,6 +386,7 @@ def main():
     logical_types()
     nested()
     structure()
+    bloom_filters()
     generate_expectations.main([OUT])
 
 
