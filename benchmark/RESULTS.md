@@ -64,3 +64,33 @@ Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-paraki
 Done in 374.0s (53480 rows/s), file 883.9 MB, peak sampled RSS 486 MB
 Verified 200 row groups, 20000000 rows; sampled rows match the source
 ```
+
+## 20M-row export with the current defaults (zstd, row_group_bytes: 16MB)
+
+```
+Exporting 20000000 rows to /private/tmp/claude-501/-Users-julik-Code-libs-parakiet/2d9676f4-e126-46c5-ab82-0da5b4975abe/scratchpad/export20m.parquet (default options)
+        rows   elapsed     rows/s    RSS MB     GC runs
+     1000000      9.8s     102247       283         318
+     2000000     19.8s     101018       323         493
+     3000000     29.7s     101152       350         654
+     4000000     39.0s     102560       382         796
+     5000000     48.8s     102459       396         941
+     6000000     58.7s     102140       397        1077
+     7000000     68.1s     102749       292        1193
+     8000000     77.9s     102694       345        1308
+     9000000     87.7s     102595       363        1422
+    10000000     97.6s     102495       393        1536
+    11000000    106.9s     102931       409        1655
+    12000000    116.7s     102832       409        1769
+    13000000    126.4s     102829       416        1877
+    14000000    135.8s     103095       424        1986
+    15000000    145.5s     103077       418        2098
+    16000000    155.2s     103082       427        2210
+    17000000    164.5s     103352       303        2320
+    18000000    173.9s     103483       405        2428
+    19000000    183.8s     103356       442        2540
+    20000000    193.5s     103338       389        2651
+Done in 193.6s (103307 rows/s), file 512.3 MB, peak sampled RSS 442 MB
+Row groups hold 3728..115704 rows
+Verified 175 row groups, 20000000 rows; sampled rows match the source
+```
