@@ -397,8 +397,11 @@ def test_dictionary_encoded_floats_keep_negative_zero
       proc { int32 :a } => ["x", Object.new, [1], "12abc"],
       proc { int64 :a } => ["nope", {}],
       proc { double :a } => ["x", [1.0]],
-      proc { date :a } => ["2020-01-01", 5.5],
-      proc { timestamp :a } => ["2020-01-01"],
+      proc { date :a } => ["2020-13-45", "yesterday", 5.5],
+      proc { timestamp :a } => ["not a time", 5.5],
+      proc { time :a } => ["25:00", "noon", 5.5],
+      proc { boolean :a } => ["maybe", 2],
+      proc { enum :a, values: %w[x y] } => ["z", :w],
       proc { decimal :a, precision: 10, scale: 2 } => ["abc", Object.new],
       proc { list :a, :int32 } => [5, "str"],
       proc { map :a, :string, :int32 } => [5, "str"],
@@ -600,7 +603,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_schema_infer_errors
     assert_raises(ArgumentError) { Parakiet::Schema.infer([]) }
-    assert_raises(ArgumentError) { Parakiet::Schema.infer([{ "a" => nil }]) }
+    assert_equal :string, Parakiet::Types.logical_of(Parakiet::Schema.infer([{ "a" => nil }]).columns.first.node).first
     assert_raises(ArgumentError) { Parakiet::Schema.infer([{ "a" => 1 }, { "a" => "x" }]) }
   end
 

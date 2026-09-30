@@ -44,6 +44,7 @@ Parakiet.read("data.parquet") # => Array of row Hashes
 schema = Parakiet::Schema.define do
   int64 :id, null: false
   string :name
+  enum :status, values: %w[pending paid shipped]
   list :tags, :string
   map :scores, :string, :double
   struct :address do
@@ -51,18 +52,35 @@ schema = Parakiet::Schema.define do
     string :zip
   end
   decimal :price, precision: 12, scale: 2
-  timestamp :created_at, unit: :micros
+  json :payload
+  timestamp :created_at
 end
 
-Parakiet::Writer.open("out.parquet", schema, compression: :snappy) do |w|
-  w << { "id" => 1, "name" => "Anna", "tags" => ["a", "b"], "scores" => { "x" => 1.5 },
-         "address" => { "city" => "Amsterdam" }, "price" => BigDecimal("9.99"),
-         "created_at" => Time.now }
-  w << { id: 2 } # Symbol keys work too; missing keys are nulls
+Parakiet::Writer.open("out.parquet", schema) do |w|
+  w << { "id" => 1, "name" => "Anna", "status" => "paid", "tags" => ["a", "b"],
+         "scores" => { "x" => 1.5 }, "address" => { "city" => "Amsterdam" },
+         "price" => BigDecimal("9.99"), "payload" => { "any" => ["json"] }, "created_at" => Time.now }
+  w << { id: 2, status: :pending }  # Symbol keys and values work; missing keys are nulls
+  w << [3, "Bo", nil, nil, nil, nil, nil, nil, nil, nil] # Arrays in schema order
+  w << order                         # anything with #attributes (ActiveRecord) or #to_h (Struct, Data)
 end
 
-# Or with an inferred schema
-Parakiet.write("out.parquet", [{ "id" => 1, "name" => "x" }])
+# Or with an inferred schema, optionally overriding some columns
+Parakiet.write("out.parquet", rows, schema: Parakiet::Schema.infer(rows, types: { payload: :json }))
+```
+
+Schemas can also be given as a Hash, anywhere a schema is accepted:
+
+```ruby
+Parakiet::Schema.define(
+  id: { type: :int64, null: false },
+  name: :string,
+  tags: [:string],                                   # list of strings
+  address: { city: :string, zip: :string },          # struct
+  price: { type: :decimal, precision: 12, scale: 2 },
+  scores: { type: :map, key: :string, value: :double }
+)
+Parakiet::Writer.open("out.parquet", { id: :int64, name: :string }) { |w| w << [1, "x"] }
 ```
 
 Column types in the DSL: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double
@@ -71,18 +89,80 @@ float16 string binary json bson enum uuid date int96 time timestamp decimal fixe
 List elements are nullable unless `element_null: false`; map values unless `value_null: false`.
 Nested lists: `list :matrix do list :element, :double end`.
 
+`enum` is a string column. `values:` restricts what may be written, and also takes a Rails-style
+Hash (`values: Order.statuses`), in which case both labels and stored integers are accepted and
+the label is written. `parquet_enum: true` adds the Parquet ENUM annotation (pyarrow and pandas
+read such columns as binary, which is why it is off by default).
+
+Columns accept the values Ruby and Rails code usually has at hand:
+
+| column | accepts |
+|---|---|
+| `date` | `Date`, `Time`/`DateTime` (their date), `"2024-05-01"` |
+| `timestamp` | `Time`, `DateTime`, `ActiveSupport::TimeWithZone`, `Date` (midnight UTC), ISO-8601 strings, Integers in the column's unit |
+| `time` | `Time` (its time of day, as Rails returns for `time` columns), `"13:45:30.25"`, Integers |
+| `json` | Strings as-is, anything else through `JSON.generate` |
+| `string`, `enum` | Strings, Symbols, anything with `to_s` |
+| `boolean` | `true`/`false`, `1`/`0`, `"t"`/`"f"`, `"true"`/`"false"`, `"yes"`/`"no"` |
+| integers | Integers, whole-number Floats/BigDecimals/Rationals, numeric Strings; out-of-range values raise |
+| `decimal` | `BigDecimal`, Integer, Rational, Float, numeric Strings |
+| `uuid` | Strings with or without dashes, or 16 raw bytes |
+
+Values that don't fit raise `Parakiet::EncodeError` naming the row number and column path; the
+failed row is discarded and the writer can carry on.
+
+When given a path, the writer writes to a temporary file next to it and renames it into place on
+close. If the block raises (or `#abort` is called), the temporary file is removed and any
+existing file at the path is left untouched. An IO (`File`, `StringIO`, a socket...) can be
+given instead of a path.
+
 Writer options:
 
 | option | default | |
 |---|---|---|
-| `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
-| `row_group_size` | `100_000` | rows per row group |
+| `compression` | `:zstd` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
+| `row_group_bytes` | 16MB | flush a row group after about this many bytes of raw values; bounds memory use (expect 10-20x this in RSS, since values are buffered as Ruby objects) |
+| `row_group_size` | none | also flush after this many rows |
 | `page_size` | 1MB | approximate data page size |
 | `data_page_version` | `1` | `1` or `2` |
 | `dictionary` | `true` | `false`, or an Array of column paths to dictionary-encode |
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
 | `statistics` | `true` | write min/max/null_count |
 | `metadata` | `{}` | footer key/value metadata |
+
+## Exporting ActiveRecord models
+
+`Parakiet::Schema.from_active_record` builds a schema from a model's columns, so that
+`record.attributes` can be written as-is. Rails is not a dependency: it only calls
+`columns`, `primary_key` and `defined_enums` on the model.
+
+```ruby
+schema = Parakiet::Schema.from_active_record(Order)
+Parakiet::Writer.open("orders.parquet", schema) do |w|
+  Order.find_each { |order| w << order.attributes }
+end
+```
+
+Options: `only:` and `except:` take attribute names; `enums: :enum` writes enum attributes with
+the Parquet ENUM annotation instead of as plain strings (the default, `enums: :string`). Enum
+attributes are written as their labels, and the writer rejects values outside the enum.
+
+| Column | Parquet |
+|---|---|
+| `integer` | `int16`/`int32`/`int64` by SQL type (`smallint`, `integer`, `bigint`...) or limit; `uintN` for `unsigned`; primary keys are always `int64` |
+| `float` | `double` (`float` for Postgres `float4`) |
+| `decimal` | `decimal(precision, scale)`; `decimal(38, 9)` when the column has no precision |
+| `boolean`, `date`, `binary`, `uuid` | same |
+| `json`, `jsonb` | `json` |
+| `datetime`, `timestamp`, `timestamptz` | `timestamp` (microseconds, UTC) |
+| `time` | `time` (microseconds) |
+| `hstore` | `map` of `string` to `string` |
+| enum attributes | `string` (or `enum`) |
+| `string`, `text`, `citext`, anything else | `string` |
+| Postgres array columns | `list` of the element type |
+
+Columns declared `NOT NULL` (and primary keys) are required, all others nullable.
+Column order follows `Model.columns`.
 
 ## Type mapping
 

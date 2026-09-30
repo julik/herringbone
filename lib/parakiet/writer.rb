@@ -8,13 +8,22 @@ module Parakiet
   #     string :name
   #     list :tags, :string
   #   end
-  #   Parakiet::Writer.open("out.parquet", schema, compression: :snappy) do |w|
+  #   Parakiet::Writer.open("out.parquet", schema) do |w|
   #     w << { "id" => 1, "name" => "one", "tags" => ["a", "b"] }
+  #     w << [2, "two", []]           # Arrays are taken in schema order
+  #     w << order                    # objects responding to #attributes (ActiveRecord) or #to_h
   #   end
   #
+  # +schema+ is a Parakiet::Schema or a Hash spec (see Schema.define). The target is a path or an IO;
+  # paths are written to a temporary file next to the target and renamed into place on close, so a
+  # failed write never leaves a truncated file behind.
+  #
   # Options:
-  #   compression:     :snappy (default), :gzip, :lz4 (LZ4_RAW), :zstd, :brotli, :none
-  #   row_group_size:  rows per row group (default 100_000)
+  #   compression:     :zstd (default), :snappy, :gzip, :lz4 (LZ4_RAW), :brotli, :none
+  #   row_group_bytes: flush a row group once roughly this many bytes of (unencoded) values are
+  #                    buffered (default 16MB). This bounds memory use while writing: Ruby
+  #                    holds the buffered values as objects, so expect roughly 10-20x that in RSS.
+  #   row_group_size:  also flush after this many rows (default: no row limit)
   #   page_size:       approximate uncompressed data page size in bytes (default 1MB)
   #   data_page_version: 1 (default) or 2
   #   dictionary:      true/false, or an Array of column paths to dictionary-encode
@@ -42,27 +51,34 @@ module Parakiet
     }.freeze
 
     MAX_DICTIONARY_BYTES = 1024 * 1024
+    # The row group byte size is first estimated after this many rows, then after every row group
+    ESTIMATE_AFTER_ROWS = 1000
 
     attr_reader :schema
 
-    def self.open(path, schema, **options)
-      io = File.open(path, "wb")
-      writer = new(io, schema, **options)
+    # Opens a writer on a path or an IO. With a block, the file is finished when the block returns
+    # (or discarded if it raises) and the block's value is returned; without one, call #close.
+    def self.open(target, schema, **options)
+      writer = new(target, schema, **options)
       return writer unless block_given?
       begin
-        yield writer
-        writer.close
-      ensure
-        io.close unless io.closed?
+        result = yield writer
+      rescue Exception # rubocop:disable Lint/RescueException -- also discard on Interrupt
+        writer.abort
+        raise
       end
+      writer.close
+      result
     end
 
-    def initialize(io, schema, compression: :snappy, row_group_size: 100_000, page_size: 1024 * 1024,
-      data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
-      @io = io
-      @schema = schema
+    def initialize(target, schema, compression: :zstd, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
+      page_size: 1024 * 1024, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
+      @schema = Schema.coerce(schema)
+      schema = @schema
       @codec = Compression.codec_id(compression)
-      @row_group_size = Integer(row_group_size)
+      @row_group_bytes = Integer(row_group_bytes)
+      @row_group_size = row_group_size && Integer(row_group_size)
+      @row_limit = @row_group_size || ESTIMATE_AFTER_ROWS
       @page_size = Integer(page_size)
       @data_page_version = Integer(data_page_version)
       raise ArgumentError, "data_page_version must be 1 or 2" unless [1, 2].include?(@data_page_version)
@@ -76,14 +92,17 @@ module Parakiet
       @total_rows = 0
       @pos = 0
       @closed = false
+      @bytes_per_row = nil
+      open_target(target)
       write_raw(MAGIC)
       reset_buffers
     end
 
-    # Appends a row (a Hash keyed by top-level field names, as Strings or Symbols)
+    # Appends a row: a Hash keyed by top-level field names (Strings or Symbols), an Array of values
+    # in schema order, or an object responding to #attributes (ActiveRecord) or #to_h (Struct, Data)
     def <<(row)
       raise Error, "Writer is closed" if @closed
-      row = as_hash(row, "row")
+      row = row_hash(row)
       marks = @nested_buffers.empty? ? nil : @nested_buffers.map { |b| [b.defs.size, b.reps&.size, b.values.size] }
       begin
         @plan.each do |field, name, sym, buf, encoder|
@@ -102,12 +121,15 @@ module Parakiet
             buf.defs << field.def_level
           end
         end
+      rescue EncodeError => e
+        rollback_row(marks)
+        raise EncodeError, "Row #{@total_rows + @buffered_rows}: #{e.message}"
       rescue StandardError
         rollback_row(marks)
         raise
       end
       @buffered_rows += 1
-      flush_row_group if @buffered_rows >= @row_group_size
+      check_row_group_size if @buffered_rows >= @row_limit
       self
     end
     alias_method :write, :<<
@@ -116,6 +138,9 @@ module Parakiet
       rows.each { |row| self << row }
       self
     end
+
+    # Number of rows written so far, including buffered ones
+    def rows_written = @total_rows + @buffered_rows
 
     # Writes any buffered rows as a row group
     def flush_row_group
@@ -152,6 +177,16 @@ module Parakiet
       write_raw(MAGIC)
       @io.flush if @io.respond_to?(:flush)
       @closed = true
+      finish_target
+    end
+
+    # Stops writing without producing a file: a temporary file is deleted, an IO is left as is
+    def abort
+      return if @closed
+      @closed = true
+      return unless @temp_path
+      @io.close unless @io.closed?
+      File.unlink(@temp_path) if File.exist?(@temp_path)
     end
 
     private
@@ -171,6 +206,52 @@ module Parakiet
       @buffered_rows = 0
     end
 
+    def open_target(target)
+      if target.respond_to?(:write)
+        @io = target
+      else
+        @path = target.to_s
+        dir = File.dirname(@path)
+        @temp_path = File.join(dir, ".#{File.basename(@path)}.#{Process.pid}.#{rand(1 << 32).to_s(36)}.tmp")
+        @io = File.open(@temp_path, "wb")
+      end
+    end
+
+    def finish_target
+      return unless @temp_path
+      @io.close
+      File.rename(@temp_path, @path)
+    end
+
+    # Flushes when the buffered values reach row_group_bytes (or row_group_size rows). The bytes per
+    # row are estimated from the buffered values after the first rows, then refreshed per row group.
+    def check_row_group_size
+      @bytes_per_row ||= estimate_bytes_per_row
+      limit = row_limit_for(@bytes_per_row)
+      if @buffered_rows >= limit
+        @bytes_per_row = estimate_bytes_per_row
+        flush_row_group
+        @row_limit = row_limit_for(@bytes_per_row)
+      else
+        @row_limit = limit
+      end
+    end
+
+    def row_limit_for(bytes_per_row)
+      by_bytes = [@row_group_bytes / [bytes_per_row, 1].max, ESTIMATE_AFTER_ROWS].max
+      @row_group_size ? [@row_group_size, by_bytes].min : by_bytes
+    end
+
+    def estimate_bytes_per_row
+      bytes = @schema.columns.sum do |col|
+        buf = @buffers[col.index]
+        width = value_width(col)
+        values = width ? buf.values.size * width : buf.values.sum { |v| v.bytesize + 4 }
+        values + buf.defs.size + (buf.reps ? buf.reps.size : 0)
+      end
+      bytes / [@buffered_rows, 1].max
+    end
+
     def write_raw(bytes)
       @io.write(bytes)
       @pos += bytes.bytesize
@@ -185,6 +266,20 @@ module Parakiet
       return nil if hash.nil?
       hash = as_hash(hash, name) unless hash.is_a?(Hash)
       hash.fetch(name) { hash[name.to_sym] }
+    end
+
+    def row_hash(row)
+      case row
+      when Hash then row
+      when Array
+        if row.size != @plan.size
+          raise EncodeError, "Row #{rows_written}: expected #{@plan.size} values in schema order, got #{row.size}"
+        end
+        @plan.each_with_index.to_h { |(_, name), i| [name, row[i]] }
+      else
+        return row.attributes if row.respond_to?(:attributes)
+        as_hash(row, "row #{rows_written}")
+      end
     end
 
     def as_hash(value, what)

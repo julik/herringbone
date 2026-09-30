@@ -18,10 +18,13 @@ module Parakiet
     class Node
       attr_accessor :name, :repetition, :type, :type_length, :converted_type, :logical_type,
         :scale, :precision, :field_id, :children, :parent
+      # Allowed values of a string/enum column (writer-side validation only, not stored in the file)
+      attr_accessor :enum_values
 
       def initialize(name:, repetition: :optional, type: nil, type_length: nil, converted_type: nil,
-        logical_type: nil, scale: nil, precision: nil, field_id: nil, children: nil)
+        logical_type: nil, scale: nil, precision: nil, field_id: nil, children: nil, enum_values: nil)
         @name = name.to_s
+        @enum_values = enum_values
         @repetition = repetition
         @type = type
         @type_length = type_length
@@ -173,24 +176,51 @@ module Parakiet
       new(root)
     end
 
-    # Builds a schema with the DSL, see Schema::Builder
-    def self.define(&block)
+    # Builds a schema with the DSL (see Schema::Builder), from a Hash, or both:
+    #
+    #   Schema.define(id: {type: :int64, null: false}, name: :string, tags: [:string],
+    #     address: {city: :string, zip: :string}, price: {type: :decimal, precision: 10, scale: 2})
+    #
+    # Hash values: a type Symbol; [element] for a list; a Hash with :type (plus DSL options such as
+    # null:, precision:, of: for lists, key:/value: for maps); or a Hash without :type for a struct.
+    def self.define(spec = nil, &block)
       builder = Builder.new
-      builder.instance_eval(&block)
+      builder.fields(spec) if spec
+      builder.instance_eval(&block) if block
+      raise ArgumentError, "A schema needs at least one field" if builder.nodes.empty?
       new(Node.new(name: "schema", repetition: :required, children: builder.nodes))
     end
 
-    # Infers a schema from sample rows (Hashes). All fields are nullable.
-    # Integer -> int64, Float -> double, String -> string (binary if not valid UTF-8),
-    # true/false -> boolean, Time -> timestamp(micros), Date -> date, BigDecimal -> decimal(38, max scale),
-    # Hash -> struct, Array -> list.
-    def self.infer(rows, sample: 1000)
-      sample_rows = rows.first(sample)
+    # Accepts a Schema or a Hash spec for Schema.define
+    def self.coerce(schema)
+      case schema
+      when Schema then schema
+      when Hash then define(schema)
+      else raise ArgumentError, "Expected a Parakiet::Schema or a Hash, got #{schema.class}"
+      end
+    end
+
+    # Infers a schema from sample rows (Hashes, or objects responding to #attributes or #to_h).
+    # All fields are nullable. Integer -> int64, Integer mixed with Float -> double,
+    # String/Symbol -> string (binary if not valid UTF-8), true/false -> boolean,
+    # Time/DateTime -> timestamp(micros), Date -> date, BigDecimal -> decimal(38, max scale seen),
+    # Hash -> struct, Array -> list. Columns that are nil in every sampled row become strings.
+    # +types+ overrides inference for some columns, using the Hash spec of Schema.define:
+    #   Schema.infer(rows, types: { payload: :json, status: { type: :enum, values: %w[a b] } })
+    def self.infer(rows, sample: 1000, types: {})
+      sample_rows = rows.first(sample).map { |r| Inference.row_hash(r) }
       raise ArgumentError, "Cannot infer a schema from zero rows" if sample_rows.empty?
+      overrides = types.to_h { |k, v| [k.to_s, v] }
       names = sample_rows.flat_map { |r| r.keys.map(&:to_s) }.uniq
       nodes = names.map do |name|
-        values = sample_rows.map { |r| r.fetch(name) { r[name.to_sym] } }
-        Inference.node_for(name, values)
+        if overrides.key?(name)
+          builder = Builder.new
+          builder.fields(name => overrides[name])
+          builder.nodes.first
+        else
+          values = sample_rows.map { |r| r.fetch(name) { r[name.to_sym] } }
+          Inference.node_for(name, values)
+        end
       end
       new(Node.new(name: "schema", repetition: :required, children: nodes))
     end
@@ -198,22 +228,22 @@ module Parakiet
     module Inference
       module_function
 
+      def row_hash(row)
+        return row if row.is_a?(Hash)
+        return row.attributes if row.respond_to?(:attributes)
+        return row.to_h if row.respond_to?(:to_h)
+        raise ArgumentError, "Cannot infer a schema from a #{row.class}"
+      end
+
       def node_for(name, values)
         present = values.compact
-        raise ArgumentError, "Cannot infer a type for #{name}: all sampled values are nil" if present.empty?
-        sample = present.first
-        case sample
-        when Hash
+        return Node.new(name: name, **Types.physical_attributes(:string)) if present.empty?
+        if present.all? { |v| v.is_a?(Hash) }
           keys = present.flat_map { |h| h.keys.map(&:to_s) }.uniq
           children = keys.map { |k| node_for(k, present.map { |h| h.fetch(k) { h[k.to_sym] } }) }
           Node.new(name: name, children: children)
-        when Array
-          elements = present.flatten(1)
-          element = if elements.compact.empty?
-            Node.new(name: "element", **Types.physical_attributes(:string))
-          else
-            node_for("element", elements)
-          end
+        elsif present.all? { |v| v.is_a?(Array) }
+          element = node_for("element", present.flatten(1))
           Node.new(name: name, children: [Node.new(name: "list", repetition: :repeated, children: [element])],
             logical_type: Format::LogicalType.new(list: Format::ListType.new), converted_type: Format::ConvertedType::LIST)
         else
@@ -223,26 +253,28 @@ module Parakiet
       end
 
       def scalar_type(name, values)
-        classes = values.map(&:class).uniq
-        if classes.all? { |c| c <= Integer }
+        all = ->(*classes) { values.all? { |v| classes.any? { |c| v.is_a?(c) } } }
+        if all.call(Integer)
           [:int64]
-        elsif classes.all? { |c| c <= Integer || c <= Float }
-          [:double]
-        elsif classes.all? { |c| c == TrueClass || c == FalseClass }
+        elsif all.call(true.class, false.class)
           [:boolean]
-        elsif classes.all? { |c| c <= String }
-          values.all? { |v| v.encoding != Encoding::BINARY && v.valid_encoding? } ? [:string] : [:binary]
-        elsif classes.all? { |c| c <= Symbol }
-          [:string]
-        elsif classes.all? { |c| c <= Time }
-          [:timestamp, { unit: :micros }]
-        elsif classes.all? { |c| c <= Date && !(c <= DateTime) }
-          [:date]
-        elsif classes.all? { |c| c <= BigDecimal || c <= Integer }
+        elsif all.call(Integer, BigDecimal)
           scale = values.map { |v| v.is_a?(BigDecimal) ? v.to_s("F").split(".")[1].to_s.sub(/0+\z/, "").size : 0 }.max
           [:decimal, { precision: 38, scale: scale }]
+        elsif all.call(Numeric)
+          [:double]
+        elsif all.call(String)
+          values.all? { |v| v.encoding != Encoding::BINARY && v.valid_encoding? } ? [:string] : [:binary]
+        elsif all.call(String, Symbol)
+          [:string]
+        elsif all.call(Time, DateTime)
+          [:timestamp, { unit: :micros }]
+        elsif all.call(Date)
+          [:date]
         else
-          raise ArgumentError, "Cannot infer a Parquet type for #{name} from #{classes.map(&:name).join(", ")}"
+          classes = values.map(&:class).uniq
+          raise ArgumentError, "Cannot infer a Parquet type for #{name} from #{classes.map(&:name).join(", ")}; " \
+            "pass types: { #{name}: ... }"
         end
       end
     end
@@ -383,7 +415,7 @@ module Parakiet
 
       PRIMITIVES = %i[
         boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
-        string binary json bson enum uuid date int96
+        string binary json bson uuid date int96
       ].freeze
 
       PRIMITIVES.each do |t|
@@ -427,8 +459,56 @@ module Parakiet
 
       # Generic column declaration: column :name, :int32, null: false
       def column(name, type, null: true, field_id: nil, **opts)
-        attrs = Types.physical_attributes(type, **opts)
-        add Node.new(name: name, repetition: rep(null), field_id: field_id, **attrs)
+        add leaf_node(name, type, rep(null), opts).tap { |n| n.field_id = field_id }
+      end
+
+      # A string column. With parquet_enum: true it carries the ENUM annotation instead of STRING
+      # (note that pyarrow and pandas then read it as binary). values: restricts what can be
+      # written: an Array of labels, or a Hash like Rails' `Order.statuses` (label => stored value),
+      # in which case both labels and stored values are accepted and the label is written.
+      def enum(name, values: nil, parquet_enum: false, **opts)
+        column(name, :enum, values: values, parquet_enum: parquet_enum, **opts)
+      end
+
+      # Declares fields from a Hash spec, see Schema.define
+      def fields(spec)
+        spec.each { |name, desc| declare(name, desc) }
+        self
+      end
+
+      # Declares one field from a Hash spec value
+      def declare(name, desc, null: true)
+        case desc
+        when Symbol, String
+          column(name, desc.to_sym, null: null)
+        when Array
+          raise ArgumentError, "List spec for #{name} must have exactly one element type" unless desc.size == 1
+          element = desc.first
+          list(name, null: null) { declare(:element, element) }
+        when Hash
+          opts = desc.to_h { |k, v| [k.to_sym, v] }
+          type = opts.delete(:type)
+          null = opts.delete(:null) { null }
+          # A Hash without :type is a struct; its keys (other than null:) are the fields
+          return struct(name, null: null) { fields(opts) } if type.nil?
+          case type.to_sym
+          when :list
+            of = opts.delete(:of) or raise ArgumentError, "list #{name} needs of:"
+            element_null = opts.delete(:element_null) { true }
+            list(name, null: null, **opts) { declare(:element, of, null: element_null) }
+          when :map
+            key = opts.delete(:key) { :string }
+            value = opts.delete(:value) or raise ArgumentError, "map #{name} needs value:"
+            value_null = opts.delete(:value_null) { true }
+            map(name, key, null: null, **opts) { declare(:value, value, null: value_null) }
+          when :struct
+            struct(name, null: null) { fields(opts.fetch(:fields)) }
+          else
+            column(name, type.to_sym, null: null, **opts)
+          end
+        else
+          raise ArgumentError, "Cannot declare #{name} from #{desc.inspect}"
+        end
       end
 
       private
@@ -456,9 +536,15 @@ module Parakiet
           inner.instance_eval(&block)
           Node.new(name: name, repetition: rep(nullable), children: inner.nodes)
         else
-          attrs = Types.physical_attributes(type.to_sym, **type_opts)
-          Node.new(name: name, repetition: rep(nullable), **attrs)
+          leaf_node(name, type, rep(nullable), type_opts)
         end
+      end
+
+      def leaf_node(name, type, repetition, opts)
+        opts = opts.dup
+        values = opts.delete(:values)
+        attrs = Types.physical_attributes(type.to_sym, **opts)
+        Node.new(name: name, repetition: repetition, enum_values: values, **attrs)
       end
     end
   end

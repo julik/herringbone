@@ -24,6 +24,7 @@ require_relative "parakiet/encodings/delta"
 require_relative "parakiet/compression"
 require_relative "parakiet/types"
 require_relative "parakiet/schema"
+require_relative "parakiet/active_record"
 require_relative "parakiet/reader"
 require_relative "parakiet/writer"
 

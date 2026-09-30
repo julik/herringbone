@@ -22,8 +22,8 @@ module Dataset
     Parakiet::Schema.define do
       int64 :id, null: false
       int64 :user_id, null: false
-      enum :status, null: false
-      enum :plan, null: false
+      enum :status, values: STATUSES, null: false
+      enum :plan, values: PLANS, null: false
       string :currency, null: false
       decimal :amount, precision: 12, scale: 2, null: false
       double :discount_rate

@@ -2,31 +2,17 @@
 
 Priorities: writing over reading, native Ruby types, ergonomics over a few % of speed.
 
-## 1. Writer ergonomics and Ruby types (next)
+## 1. Writer ergonomics and Ruby types — done
 
-- **`Schema.from_active_record(Model)`**, duck-typed on `columns_hash` / `defined_enums` so Rails is
-  not a dependency. Maps SQL types, `null: false`, decimal precision/scale, `jsonb`, `uuid`,
-  Postgres arrays → lists, and Rails enums → string columns (optionally validated against the
-  enum's values)
-- **Column types accept what Rails hands you:**
-  - `json` given a Hash/Array → `JSON.generate` (today it writes Ruby `inspect` output — bug)
-  - `time` given a `Time` (Rails time-of-day columns) → time since midnight in the column's unit
-  - `date` given an ISO-8601 String; `timestamp` given an ISO-8601 String
-  - `enum`: write it as a STRING with dictionary encoding by default, since pyarrow and pandas read
-    the ENUM annotation as binary; keep `values:` for validation
-  - Audit every type for Symbol, BigDecimal, Rational, Date/DateTime/Time/TimeWithZone inputs
-- **Hash schemas:** `Schema.define(id: :int64, name: :string, tags: [:string])` for flat and
-  simple nested cases without the block DSL
-- **Better `Schema.infer`:** widen int → double across the sample; nil-only columns take a type from
-  `types: { col: :string }`; detect JSON-ish Hashes when asked
-- **Array rows** in schema order (`w << [1, "x"]`), as well as Hashes / Structs / Data objects
-- **Error messages** that name the row number and the full column path
-- **`Writer.open` takes an IO too**; path writes go to a temp file and are renamed on close,
-  so a crash never leaves a truncated file
-- **zstd as the default codec** now that zstd-ruby is a dependency (~2x faster writes than the
-  pure-Ruby snappy and smaller files in the benchmark)
-- **Byte-based row group flushing** (`row_group_bytes:`, default e.g. 128 MB) with `row_group_size:`
-  as an optional row cap, so memory is predictable for wide rows
+`Schema.from_active_record`, Hash schemas, Array/`#attributes`/`#to_h` rows, coercions for Rails
+values (json, time of day, ISO dates/timestamps, TimeWithZone, booleans, numerics), `enum` as a
+validated string column, row numbers in errors, atomic path writes and IO targets, zstd by
+default, byte-based row groups (`row_group_bytes:`, 16MB default).
+
+Possible follow-ups:
+- Lower the Ruby-object overhead of buffered values (RSS is ~10-20x `row_group_bytes`), e.g. by
+  encoding fixed-width columns into packed Strings as rows arrive
+- `Parakiet.export(relation, path)` convenience that combines `from_active_record` and `find_each`
 
 ## 2. Reading ergonomics
 

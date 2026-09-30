@@ -227,7 +227,7 @@ class InteropTest < Minitest::Test
                      zstd: "ZSTD", brotli: "BROTLI" }.freeze
 
   def check_codecs(c, r)
-    want = PYARROW_CODECS.fetch(c.options.fetch(:compression, :snappy))
+    want = PYARROW_CODECS.fetch(c.options.fetch(:compression, :zstd))
     r["columns"].flatten.each { |col| assert_equal want, col["codec"], "#{c.name}: codec" }
   end
 

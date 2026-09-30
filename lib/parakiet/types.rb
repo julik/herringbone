@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "date"
+require "time"
+require "json"
 require "bigdecimal"
 
 module Parakiet
@@ -67,7 +69,12 @@ module Parakiet
       when :binary, :bytes then { type: T::BYTE_ARRAY }
       when :json then { type: T::BYTE_ARRAY, converted_type: C::JSON, logical_type: lt(json: Format::JsonType.new) }
       when :bson then { type: T::BYTE_ARRAY, converted_type: C::BSON, logical_type: lt(bson: Format::BsonType.new) }
-      when :enum then { type: T::BYTE_ARRAY, converted_type: C::ENUM, logical_type: lt(enum: Format::EnumType.new) }
+      when :enum
+        if opts[:parquet_enum]
+          { type: T::BYTE_ARRAY, converted_type: C::ENUM, logical_type: lt(enum: Format::EnumType.new) }
+        else
+          physical_attributes(:string)
+        end
       when :uuid then { type: T::FIXED_LEN_BYTE_ARRAY, type_length: 16, logical_type: lt(uuid: Format::UUIDType.new) }
       when :date then { type: T::INT32, converted_type: C::DATE, logical_type: lt(date: Format::DateType.new) }
       when :int96 then { type: T::INT96 }
@@ -240,34 +247,44 @@ module Parakiet
     end
 
     # Returns a lambda converting a Ruby value into the physical value for +node+.
+    # Besides the canonical Ruby type of each column (see the table at the top), columns accept
+    # the values Rails and plain Ruby code commonly hand over:
+    #   date:      Date, Time/DateTime (its calendar date), ISO-8601 String, Integer days since epoch
+    #   timestamp: Time, DateTime, ActiveSupport::TimeWithZone, Date (midnight UTC), ISO-8601 String,
+    #              Integer in the column's unit
+    #   time:      Time (its time of day), "HH:MM:SS[.fraction]" String, Integer in the column's unit
+    #   json:      String (used as-is) or any other object (serialized with JSON.generate)
+    #   string:    String, Symbol or anything responding to to_s
+    #   boolean:   true/false, 1/0, "true"/"false", "t"/"f", "1"/"0", "yes"/"no"
+    #   integers:  Integer, or a Float/BigDecimal/Rational/String holding a whole number
+    #   decimal:   BigDecimal, Integer, Rational, Float or numeric String
+    #   uuid:      String with or without dashes, or 16 raw bytes
     def writer_for(node)
-      kind, a, _b = logical_of(node)
+      kind, a, b = logical_of(node)
       type = node.type
       case kind
       when :date
-        return lambda do |v|
-          return v if v.is_a?(Integer)
-          d = v.to_date
-          # Use the civil date, so dates before 1582 in Ruby's default calendar are proleptic Gregorian
-          Date.civil(d.year, d.mon, d.mday, Date::GREGORIAN).jd - EPOCH_JD
-        end
+        return method(:date_to_days)
       when :timestamp
-        mult = UNIT_DIVISORS.fetch(a)
-        return lambda do |v|
-          return v if v.is_a?(Integer)
-          v = v.to_time if v.respond_to?(:to_time) && !v.is_a?(Time)
-          v.to_i * mult + v.nsec * mult / 1_000_000_000
-        end
+        return timestamp_writer(a, b)
+      when :time
+        return time_writer(a) if type == T::INT32 || type == T::INT64
+      when :json
+        return ->(v) { v.is_a?(String) ? v : JSON.generate(v) }
+      when :string, :enum
+        values = node.enum_values
+        return enum_writer(values) if values
+        return ->(v) { v.is_a?(String) ? v : v.to_s }
       when :decimal
         return decimal_writer(node, a)
       when :uuid
         return fixed_checker(16) do |v|
-          v.bytesize == 16 && v.encoding == Encoding::BINARY ? v : [v.delete("-")].pack("H*")
+          v.bytesize == 16 && v.encoding == Encoding::BINARY ? v : [v.to_s.delete("-")].pack("H*")
         end
       when :float16
         return ->(v) { [float_to_half(Float(v))].pack("v") }
       when :integer
-        if !_b && (type == T::INT32 || type == T::INT64)
+        if !b && (type == T::INT32 || type == T::INT64)
           bits = type == T::INT32 ? 32 : 64
           check = int_checker(0, (1 << a) - 1)
           return ->(v) { Delta.wrap(check.call(v), bits) }
@@ -277,22 +294,114 @@ module Parakiet
       end
 
       case type
-      when T::BOOLEAN
-        lambda do |v|
-          raise ArgumentError, "expected true or false" unless v == true || v == false
-          v
-        end
+      when T::BOOLEAN then method(:to_boolean)
       when T::INT32 then int_checker(-(1 << 31), (1 << 31) - 1)
       when T::INT64 then int_checker(-(1 << 63), (1 << 63) - 1)
-      when T::FLOAT, T::DOUBLE then ->(v) { Float(v) }
+      when T::FLOAT, T::DOUBLE then ->(v) { v.is_a?(Float) ? v : Float(v) }
       when T::BYTE_ARRAY then ->(v) { v.is_a?(String) ? v : v.to_s }
       when T::FIXED_LEN_BYTE_ARRAY then fixed_checker(node.type_length) { |v| v.is_a?(String) ? v : v.to_s }
       when T::INT96
         lambda do |v|
           return v if v.is_a?(Array)
+          v = to_time(v)
           nanos = v.to_i * 1_000_000_000 + v.nsec
           day, nanos_of_day = nanos.divmod(NANOS_PER_DAY)
           [nanos_of_day, day + JULIAN_EPOCH_DAY]
+        end
+      end
+    end
+
+    BOOLEANS = {
+      true => true, false => false, 1 => true, 0 => false,
+      "true" => true, "false" => false, "t" => true, "f" => false, "1" => true, "0" => false,
+      "yes" => true, "no" => false, "TRUE" => true, "FALSE" => false, "T" => true, "F" => false
+    }.freeze
+
+    def to_boolean(v)
+      BOOLEANS.fetch(v) do
+        s = v.is_a?(String) || v.is_a?(Symbol) ? v.to_s.downcase : nil
+        BOOLEANS.fetch(s) { raise ArgumentError, "expected a boolean, got #{v.inspect}" }
+      end
+    end
+
+    def date_to_days(v)
+      return v if v.is_a?(Integer)
+      d = case v
+      when Date then v
+      when String then Date.iso8601(v)
+      else
+        raise ArgumentError, "expected a Date, got #{v.class}" unless v.respond_to?(:to_date)
+        v.to_date
+      end
+      # Use the civil date, so dates before 1582 in Ruby's default calendar are proleptic Gregorian
+      Date.civil(d.year, d.mon, d.mday, Date::GREGORIAN).jd - EPOCH_JD
+    end
+
+    # Converts the values a timestamp column accepts into a Time (or Time-like) object
+    def to_time(v)
+      case v
+      when Time then v
+      when DateTime then v.to_time
+      when Date then Time.utc(v.year, v.month, v.day)
+      when String
+        begin
+          Time.iso8601(v)
+        rescue ArgumentError
+          Time.parse(v)
+        end
+      else
+        # ActiveSupport::TimeWithZone and friends
+        raise ArgumentError, "expected a Time, got #{v.class}" unless v.respond_to?(:to_i) && v.respond_to?(:nsec)
+        v
+      end
+    end
+
+    def timestamp_writer(unit, utc)
+      mult = UNIT_DIVISORS.fetch(unit)
+      lambda do |v|
+        return v if v.is_a?(Integer)
+        t = to_time(v)
+        secs = t.to_i
+        # Local (not UTC-adjusted) timestamps store the wall clock time
+        secs += t.utc_offset unless utc
+        secs * mult + t.nsec * mult / 1_000_000_000
+      end
+    end
+
+    def time_writer(unit)
+      mult = UNIT_DIVISORS.fetch(unit)
+      lambda do |v|
+        return v if v.is_a?(Integer)
+        if v.is_a?(String)
+          m = /\A(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?\z/.match(v) or
+            raise ArgumentError, "expected HH:MM[:SS[.fraction]], got #{v.inspect}"
+          nanos = (m[4] || "").ljust(9, "0").to_i
+          secs = m[1].to_i * 3600 + m[2].to_i * 60 + m[3].to_i
+        else
+          raise ArgumentError, "expected a Time, got #{v.class}" unless v.respond_to?(:hour) && v.respond_to?(:nsec)
+          nanos = v.nsec
+          secs = v.hour * 3600 + v.min * 60 + v.sec
+        end
+        raise RangeError, "time of day out of range: #{v.inspect}" unless secs < 86_400
+        secs * mult + nanos * mult / 1_000_000_000
+      end
+    end
+
+    # String column restricted to a set of values. +values+ is an Array of labels, or a Hash of
+    # label => stored value like Rails' `Model.statuses`, in which case either is accepted.
+    def enum_writer(values)
+      labels = {}
+      if values.is_a?(Hash)
+        values.each do |label, stored|
+          labels[label.to_s] = label.to_s
+          labels[stored] = label.to_s unless stored.is_a?(String) || stored.is_a?(Symbol)
+        end
+      else
+        values.each { |label| labels[label.to_s] = label.to_s }
+      end
+      lambda do |v|
+        labels.fetch(v.is_a?(Symbol) ? v.to_s : v) do
+          raise ArgumentError, "#{v.inspect} is not one of #{labels.values.uniq.join(", ")}"
         end
       end
     end
