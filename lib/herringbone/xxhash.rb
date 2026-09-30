@@ -29,7 +29,7 @@ module Herringbone
         v4 = (-P1) & M
         limit = len - 32
         while pos <= limit
-          a, b, c, d = bytes.unpack("Q<4", offset: pos)
+          a, b, c, d = bytes.byteslice(pos, 32).unpack("Q<4")
           v1 = (v1 + a * P2) & M
           v1 = (((v1 << 31) | (v1 >> 33)) & M) * P1 & M
           v2 = (v2 + b * P2) & M
@@ -51,14 +51,14 @@ module Herringbone
         h = (P5 + len) & M
       end
       while pos + 8 <= len
-        k = bytes.unpack1("Q<", offset: pos) * P2 & M
+        k = bytes.byteslice(pos, 8).unpack1("Q<") * P2 & M
         k = (((k << 31) | (k >> 33)) & M) * P1 & M
         h ^= k
         h = ((((h << 27) | (h >> 37)) & M) * P1 + P4) & M
         pos += 8
       end
       if pos + 4 <= len
-        h ^= bytes.unpack1("L<", offset: pos) * P1 & M
+        h ^= bytes.byteslice(pos, 4).unpack1("L<") * P1 & M
         h = ((((h << 23) | (h >> 41)) & M) * P2 + P3) & M
         pos += 4
       end
