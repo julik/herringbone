@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "tmpdir"
 
 # Schema.from_active_record, tested against duck-typed models and (when the gems are
 # installed) a real in-memory SQLite ActiveRecord model.
@@ -327,6 +328,45 @@ class ActiveRecordTest < Minitest::Test
       assert_equal({ "a" => [1, 2] }, JSON.parse(read[0]["payload"]))
       assert_nil read[1]["payload"]
       assert_equal 45_296_789_000, read[0]["cutoff"]
+    end
+  end
+
+  def test_export
+    with_active_record do
+      ActiveRecord::Schema.define do
+        create_table :herringbone_exports, force: true do |t|
+          t.string :name, null: false
+          t.integer :kind, null: false, default: 0
+          t.decimal :amount, precision: 8, scale: 2
+          t.timestamps
+        end
+      end
+      model = Class.new(ActiveRecord::Base) do
+        self.table_name = "herringbone_exports"
+        enum :kind, { free: 0, pro: 1 }
+        def self.name = "HerringboneExport"
+      end
+      25.times { |i| model.create!(name: "n#{i}", kind: i.even? ? :free : :pro, amount: BigDecimal(i) / 4) }
+
+      io = StringIO.new("".b)
+      assert_equal 25, Herringbone.export(model, io, batch_size: 7)
+      rows = Herringbone::Reader.new(StringIO.new(io.string)).rows
+      assert_equal model.order(:id).pluck(:name), rows.map { |r| r["name"] }
+      assert_equal %w[free pro free], rows.first(3).map { |r| r["kind"] }
+      assert_equal BigDecimal("0.25"), rows[1]["amount"]
+
+      io = StringIO.new("".b)
+      assert_equal 12, Herringbone.export(model.where(kind: :pro), io, only: %w[id name], compression: :gzip)
+      reader = Herringbone::Reader.new(StringIO.new(io.string))
+      assert_equal %w[id name], reader.schema.fields.map(&:name)
+      assert_equal [:gzip], reader.codecs
+      assert_equal 12, reader.num_rows
+
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "export.parquet")
+        Herringbone.export(model.all, path)
+        assert_equal 25, Herringbone::Reader.open(path, &:num_rows)
+      end
     end
   end
 end
