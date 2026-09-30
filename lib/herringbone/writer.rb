@@ -579,13 +579,17 @@ module Herringbone
     end
 
     # A filter holding the chunk's values: +dict_values+ (already distinct) for dictionary-encoded
-    # chunks, +values+ otherwise. Sized from the configured ndv, or from the distinct values.
+    # chunks, +values+ otherwise. Each distinct value is hashed once, and the filter is sized from
+    # the configured ndv or from the number of distinct values.
     def build_bloom_filter(col, settings, dict_values, values)
-      hashes = BloomFilter.hash_physical_all(dict_values || values, col.type)
-      hashes.uniq! unless dict_values
+      hashes = if dict_values
+        BloomFilter.hash_physical_all(dict_values, col.type)
+      else
+        BloomFilter.hash_physical_all(values, col.type, distinct: true)
+      end
       size = BloomFilter.optimal_num_bytes(settings[:ndv] || hashes.size, settings[:fpp], max_bytes: settings[:max_bytes])
       filter = BloomFilter.new(size, column: col)
-      hashes.each { |h| filter.insert_hash(h) }
+      filter.insert_hashes(hashes)
       filter
     end
 

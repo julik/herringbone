@@ -20,6 +20,9 @@ module Herringbone
   class BloomFilter
     SALT = [0x47b6137b, 0x44974d91, 0x8824ad5b, 0xa2b7289d, 0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31].freeze
     S0, S1, S2, S3, S4, S5, S6, S7 = SALT
+    # Low 16 bits of the salts: (lo * salt) mod 2**32 is computed as
+    # (lo & 0xFFFF) * salt + ((lo >> 16) * (salt & 0xFFFF) << 16), which stays a Fixnum
+    L0, L1, L2, L3, L4, L5, L6, L7 = SALT.map { |s| s & 0xFFFF }
     BLOCK_BYTES = 32
     MIN_BYTES = 32
     MAX_BYTES = 128 * 1024 * 1024
@@ -51,8 +54,8 @@ module Herringbone
     # XXH64 of the PLAIN encoding of a physical value of +type+ (as the column encoders produce it)
     def self.hash_physical(value, type)
       case type
-      when T::INT32 then XXHash.xxh64_u32(value & M32)
-      when T::INT64 then XXHash.xxh64_u64(value & M64)
+      when T::INT32 then XXHash.xxh64_u32(value)
+      when T::INT64 then XXHash.xxh64_u64(value)
       when T::FLOAT then XXHash.xxh64_u32([value].pack("e").unpack1("L<"))
       when T::DOUBLE then XXHash.xxh64_u64([value].pack("E").unpack1("Q<"))
       when T::INT96 then XXHash.xxh64(value.pack("Q<L<"))
@@ -61,14 +64,22 @@ module Herringbone
       end
     end
 
-    # Hashes of many physical values of +type+, converting them in bulk
-    def self.hash_physical_all(values, type)
+    # Hashes of many physical values of +type+, converting them in bulk. With +distinct+, each
+    # distinct physical value is hashed once (floats are compared by their bytes, so -0.0 and 0.0,
+    # or NaNs with different payloads, stay apart as they hash differently).
+    def self.hash_physical_all(values, type, distinct: false)
       case type
-      when T::INT32 then values.map { |v| XXHash.xxh64_u32(v & M32) }
-      when T::INT64 then values.map { |v| XXHash.xxh64_u64(v & M64) }
-      when T::FLOAT then values.pack("e*").unpack("L<*").map! { |w| XXHash.xxh64_u32(w) }
-      when T::DOUBLE then values.pack("E*").unpack("Q<*").map! { |w| XXHash.xxh64_u64(w) }
-      else values.map { |v| hash_physical(v, type) }
+      when T::INT32 then XXHash.xxh64_u32_all(distinct ? values.uniq : values)
+      when T::INT64 then XXHash.xxh64_u64_all(distinct ? values.uniq : values)
+      when T::FLOAT
+        words = values.pack("e*").unpack("L<*")
+        XXHash.xxh64_u32_all(distinct ? words.uniq! || words : words)
+      when T::DOUBLE
+        lanes = values.pack("E*").unpack("Q<*")
+        XXHash.xxh64_u64_all(distinct ? lanes.uniq! || lanes : lanes)
+      when T::INT96 then XXHash.xxh64_all((distinct ? values.uniq : values).map { |v| v.pack("Q<L<") })
+      when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY then XXHash.xxh64_all(distinct ? values.uniq : values)
+      else raise UnsupportedError, "Bloom filters are not defined for #{T::NAMES.fetch(type, type)} values"
       end
     end
 
@@ -144,31 +155,62 @@ module Herringbone
 
     def insert_hash(h)
       i = (((h >> 32) * @num_blocks) >> 32) << 3
-      lo = h & M32
+      x0 = h & 0xFFFF
+      x1 = (h >> 16) & 0xFFFF
       w = @words
-      w[i] |= 1 << (((lo * S0) & M32) >> 27)
-      w[i + 1] |= 1 << (((lo * S1) & M32) >> 27)
-      w[i + 2] |= 1 << (((lo * S2) & M32) >> 27)
-      w[i + 3] |= 1 << (((lo * S3) & M32) >> 27)
-      w[i + 4] |= 1 << (((lo * S4) & M32) >> 27)
-      w[i + 5] |= 1 << (((lo * S5) & M32) >> 27)
-      w[i + 6] |= 1 << (((lo * S6) & M32) >> 27)
-      w[i + 7] |= 1 << (((lo * S7) & M32) >> 27)
+      w[i] |= 1 << (((x0 * S0 + (x1 * L0 << 16)) & M32) >> 27)
+      w[i + 1] |= 1 << (((x0 * S1 + (x1 * L1 << 16)) & M32) >> 27)
+      w[i + 2] |= 1 << (((x0 * S2 + (x1 * L2 << 16)) & M32) >> 27)
+      w[i + 3] |= 1 << (((x0 * S3 + (x1 * L3 << 16)) & M32) >> 27)
+      w[i + 4] |= 1 << (((x0 * S4 + (x1 * L4 << 16)) & M32) >> 27)
+      w[i + 5] |= 1 << (((x0 * S5 + (x1 * L5 << 16)) & M32) >> 27)
+      w[i + 6] |= 1 << (((x0 * S6 + (x1 * L6 << 16)) & M32) >> 27)
+      w[i + 7] |= 1 << (((x0 * S7 + (x1 * L7 << 16)) & M32) >> 27)
+      self
+    end
+
+    BITS = Array.new(32) { |i| 1 << i }.freeze
+
+    # Inserts many hashes at once: faster than insert_hash, as the hashes (mostly Bignums) are
+    # split into 32-bit halves in bulk and the rest is Fixnum arithmetic
+    def insert_hashes(hashes)
+      halves = hashes.pack("Q<*").unpack("V*")
+      w = @words
+      num_blocks = @num_blocks
+      bit = BITS
+      j = 0
+      n = halves.size
+      while j < n
+        lo = halves[j]
+        i = halves[j + 1] * num_blocks / 4_294_967_296 * 8
+        x0 = lo & 0xFFFF
+        x1 = lo / 65_536
+        w[i] |= bit[(x0 * S0 + x1 * L0 * 65536) / 134_217_728 & 31]
+        w[i + 1] |= bit[(x0 * S1 + x1 * L1 * 65536) / 134_217_728 & 31]
+        w[i + 2] |= bit[(x0 * S2 + x1 * L2 * 65536) / 134_217_728 & 31]
+        w[i + 3] |= bit[(x0 * S3 + x1 * L3 * 65536) / 134_217_728 & 31]
+        w[i + 4] |= bit[(x0 * S4 + x1 * L4 * 65536) / 134_217_728 & 31]
+        w[i + 5] |= bit[(x0 * S5 + x1 * L5 * 65536) / 134_217_728 & 31]
+        w[i + 6] |= bit[(x0 * S6 + x1 * L6 * 65536) / 134_217_728 & 31]
+        w[i + 7] |= bit[(x0 * S7 + x1 * L7 * 65536) / 134_217_728 & 31]
+        j += 2
+      end
       self
     end
 
     def might_contain_hash?(h)
       i = (((h >> 32) * @num_blocks) >> 32) << 3
-      lo = h & M32
+      x0 = h & 0xFFFF
+      x1 = (h >> 16) & 0xFFFF
       w = @words
-      w[i][((lo * S0) & M32) >> 27] == 1 &&
-        w[i + 1][((lo * S1) & M32) >> 27] == 1 &&
-        w[i + 2][((lo * S2) & M32) >> 27] == 1 &&
-        w[i + 3][((lo * S3) & M32) >> 27] == 1 &&
-        w[i + 4][((lo * S4) & M32) >> 27] == 1 &&
-        w[i + 5][((lo * S5) & M32) >> 27] == 1 &&
-        w[i + 6][((lo * S6) & M32) >> 27] == 1 &&
-        w[i + 7][((lo * S7) & M32) >> 27] == 1
+      w[i][(((x0 * S0 + (x1 * L0 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 1][(((x0 * S1 + (x1 * L1 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 2][(((x0 * S2 + (x1 * L2 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 3][(((x0 * S3 + (x1 * L3 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 4][(((x0 * S4 + (x1 * L4 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 5][(((x0 * S5 + (x1 * L5 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 6][(((x0 * S6 + (x1 * L6 << 16)) & M32) >> 27)] == 1 &&
+        w[i + 7][(((x0 * S7 + (x1 * L7 << 16)) & M32) >> 27)] == 1
     end
 
     # The raw bitset (little-endian 32-bit words)

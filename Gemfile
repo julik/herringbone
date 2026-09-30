@@ -19,3 +19,9 @@ group :codecs do
   gem "zstd-ruby"
   gem "brotli"
 end
+
+# Optional native XXH64 for bloom filters. Herringbone uses it when it can be required and falls
+# back to pure Ruby otherwise. CI also runs the suite with BUNDLE_WITHOUT=codecs:speedups.
+group :speedups do
+  gem "xxhash"
+end

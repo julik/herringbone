@@ -51,6 +51,87 @@ class BloomFilterTest < Minitest::Test
     assert_equal XX.xxh64([7, 2_440_588].pack("Q<L<")), BF.hash_physical([7, 2_440_588], Herringbone::Format::Type::INT96)
   end
 
+  def with_xxhash_backend(backend)
+    XX.backend = backend
+    yield
+  ensure
+    XX.backend = nil
+  end
+
+  # The pure-Ruby version is checked directly, whichever backend is in use
+  def test_pure_ruby_xxh64_vectors
+    VECTORS.each { |input, expected| assert_equal expected, XX.ruby_xxh64(input.b) }
+    with_xxhash_backend(:ruby) do
+      assert_equal :ruby, XX.backend
+      VECTORS.each { |input, expected| assert_equal expected, XX.xxh64(input.b) }
+      assert_equal XX.xxh64([2**64 - 5].pack("Q<")), XX.xxh64_u64(-5)
+      assert_equal XX.xxh64([2**32 - 5].pack("L<")), XX.xxh64_u32(-5)
+    end
+  end
+
+  def test_backends_give_identical_hashes
+    skip "the xxhash gem is not installed" unless XX.native_available?
+    rng = Random.new(11)
+    strings = Array.new(300) { |i| rng.bytes(i % 100) } + ["héllo wörld", "\u{1F600}" * 9, "x" * 1000]
+    lanes = Array.new(300) { rng.rand(2**64) } + [0, 1, 2**62, 2**63, 2**64 - 1, -1, -(2**63)]
+    words = Array.new(300) { rng.rand(2**32) } + [0, 2**31, 2**32 - 1, -1, -(2**31)]
+    results = %i[ruby native].map do |backend|
+      with_xxhash_backend(backend) do
+        assert_equal backend, XX.backend
+        [strings.map { |s| XX.xxh64(s) }, XX.xxh64_all(strings), lanes.map { |v| XX.xxh64_u64(v) },
+          XX.xxh64_u64_all(lanes), words.map { |v| XX.xxh64_u32(v) }, XX.xxh64_u32_all(words)]
+      end
+    end
+    assert_equal results[0], results[1]
+    assert_equal results[0][0], results[0][1]
+    assert_equal results[0][2], results[0][3]
+    assert_equal results[0][4], results[0][5]
+  end
+
+  def test_backend_selection
+    with_xxhash_backend(:ruby) { assert_equal :ruby, XX.backend }
+    previous = ENV["HERRINGBONE_PURE_RUBY_XXHASH"]
+    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = "1"
+    with_xxhash_backend(nil) { assert_equal :ruby, XX.backend }
+    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = nil
+    with_xxhash_backend(nil) { assert_equal XX.native_available? ? :native : :ruby, XX.backend }
+    if XX.native_available?
+      with_xxhash_backend(:native) { assert_equal :native, XX.backend }
+    else
+      assert_raises(Herringbone::UnsupportedError) { XX.backend = :native }
+    end
+    assert_raises(ArgumentError) { XX.backend = :fast }
+  ensure
+    ENV["HERRINGBONE_PURE_RUBY_XXHASH"] = previous
+    XX.backend = nil
+  end
+
+  def test_insert_hashes_matches_insert_hash
+    hashes = Array.new(2000) { |i| XX.xxh64("v#{i}") } + [0, 2**64 - 1]
+    one_by_one = BF.new(1024)
+    hashes.each { |h| one_by_one.insert_hash(h) }
+    assert_equal one_by_one.bitset, BF.new(1024).insert_hashes(hashes).bitset
+    assert(hashes.all? { |h| one_by_one.might_contain_hash?(h) })
+  end
+
+  # The writer hashes distinct physical values once; floats are compared by their bytes
+  def test_hash_physical_all_distinct
+    t = Herringbone::Format::Type
+    assert_equal BF.hash_physical_all([1, 2], t::INT64), BF.hash_physical_all([1, 2, 1, 2], t::INT64, distinct: true)
+    assert_equal BF.hash_physical_all(%w[a b], t::BYTE_ARRAY), BF.hash_physical_all(%w[a b a], t::BYTE_ARRAY, distinct: true)
+    nan2 = [0x7FF8_0000_0000_0001].pack("Q<").unpack1("E")
+    [t::FLOAT, t::DOUBLE].each do |type|
+      values = [0.0, -0.0, Float::NAN, 1.5, 0.0, 1.5]
+      values << nan2 if type == t::DOUBLE
+      hashes = BF.hash_physical_all(values, type, distinct: true)
+      assert_equal values.map { |v| BF.hash_physical(v, type) }.uniq, hashes
+      assert_equal (type == t::DOUBLE ? 5 : 4), hashes.size
+    end
+    rows = [0.0, -0.0, 0.0, Float::NAN].map { |v| { d: v } }
+    reader = reader_for(write_to_string({ d: :double }, rows, bloom_filters: true))
+    [0.0, -0.0, Float::NAN].each { |v| assert_equal [0], reader.row_groups_that_may_contain("d", v), v.inspect }
+  end
+
   def test_optimal_num_bytes
     assert_equal 128, BF.optimal_num_bytes(100, 0.01) # same size Arrow C++ picks for ndv 100
     assert_equal 32, BF.optimal_num_bytes(1, 0.5)

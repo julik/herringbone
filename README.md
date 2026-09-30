@@ -282,10 +282,19 @@ File.open("events.parquet", "rb") do |f|
 end
 ```
 
-`Herringbone::BloomFilter` and `Herringbone::XXHash.xxh64` can also be used on their own. Hashing
-is pure Ruby, so bloom filters make writing noticeably slower: on an M-series Mac a filter adds
-about 3.5 s per million rows on an INT64 column and about 17 s per million ~22-byte strings
-(dictionary-encoded columns only hash their distinct values).
+`Herringbone::BloomFilter` and `Herringbone::XXHash.xxh64` can also be used on their own. The
+writer hashes each distinct value of a row group once. Hashing is pure Ruby unless the optional
+`xxhash` gem (a C extension) is installed, which Herringbone then picks up on its own:
+
+```ruby
+gem "herringbone"
+gem "xxhash" # faster bloom filters
+```
+
+On an M-series Mac, writing a million rows takes about 1.2 s longer with a filter on an INT64
+column and 2.8 s longer with one on a ~22-byte string column in pure Ruby, and about 0.5 s longer
+with `xxhash`. Both give the same hashes; set `HERRINGBONE_PURE_RUBY_XXHASH=1` (or
+`Herringbone::XXHash.backend = :ruby`) to skip the gem.
 
 ## Exporting ActiveRecord models
 

@@ -68,9 +68,16 @@ Possible follow-ups: `where:` on list/map elements; OR conditions.
 
 ### Bloom filters — done (reading and writing)
 
-`Herringbone::BloomFilter` (split block, 8 spec salts) with a pure-Ruby XXH64 (`Herringbone::XXHash`,
-masked Bignum arithmetic: faster on MRI than 32-bit limbs; ~690k/s for 8-byte values, ~320k/s for
-20-byte strings). Writer option `bloom_filters:` (`true`, paths, or `{ path => { ndv:, fpp:, max_bytes: } }`;
+`Herringbone::BloomFilter` (split block, 8 spec salts) with XXH64 (`Herringbone::XXHash`): the
+optional `xxhash` gem when it can be required (Gemfile group `:speedups`; ~7M/s for 8-byte values,
+~12M/s for 20-byte strings), else pure Ruby on 32-bit halves with constants split into 16-bit
+pieces so nothing leaves the Fixnum range, generated from small code templates (~1.3M/s, ~0.6M/s).
+Masked Bignum arithmetic looked fast in microbenchmarks but allocates ~25 Bignums per hash, and
+with a writer's large live heap the resulting GCs made it up to 10x slower. Shifts are written as
+`*`/`/` (YARV has no specialized instruction for Integer `<<`/`>>`). `HERRINGBONE_PURE_RUBY_XXHASH=1`
+or `XXHash.backend = :ruby` forces pure Ruby. The writer hashes each distinct value once (floats by
+their bytes) and inserts in bulk (`insert_hashes`); `benchmark/bloom_filters.rb` measures it.
+Writer option `bloom_filters:` (`true`, paths, or `{ path => { ndv:, fpp:, max_bytes: } }`;
 sized from counted distinct values when ndv is not given), written after each row group's chunks
 with `bloom_filter_offset`/`bloom_filter_length`. Reader: `bloom_filter(rg, path)`,
 `row_groups_that_may_contain(path, value)` (values go through the column encoder). Verified against
