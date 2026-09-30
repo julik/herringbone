@@ -21,3 +21,15 @@
 
 - Per-page min/max/null counts and page locations, for page-level predicate pushdown
 - Same order of work as bloom filters; best done together if pushdown is the goal
+
+## Streaming reads
+
+- The reader materializes a whole row group before yielding rows. Files with huge row groups
+  (parquet-rs writes up to 1M rows per group) cost ~750 MB RSS per 1M rows of the benchmark schema.
+  Read page by page / in row batches across all columns of a row group instead.
+
+## Writer
+
+- Byte-based row group flushing (`row_group_bytes:`) so memory is predictable for wide rows
+- Consider zstd as the default codec now that zstd-ruby is a dependency: in the 1M-row benchmark it
+  writes ~2x faster than the pure-Ruby snappy and makes a smaller file (25.7 vs 44.2 MB)
