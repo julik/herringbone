@@ -25,6 +25,10 @@ module Herringbone
   #                    (default 16MB). This bounds memory use while writing.
   #   row_group_size:  also flush after this many rows (default: no row limit)
   #   page_size:       approximate uncompressed data page size in bytes (default 1MB)
+  #   page_row_limit:  at most this many rows per data page (default 20_000), which keeps the page
+  #                    index selective
+  #   page_index:      write ColumnIndex/OffsetIndex structures (default true), so readers such as
+  #                    DuckDB, Spark, Trino and Arrow can skip pages by row range or min/max
   #   data_page_version: 1 (default) or 2
   #   dictionary:      true/false, or an Array of column paths to dictionary-encode
   #   encodings:       { "path.to.column" => :delta_binary_packed, ... } for non-dictionary pages
@@ -72,7 +76,7 @@ module Herringbone
     end
 
     def initialize(target, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
-      page_size: 1024 * 1024, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
+      page_size: 1024 * 1024, page_row_limit: 20_000, page_index: true, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
       @schema = Schema.coerce(schema)
       schema = @schema
       @codec = Compression.codec_id(compression)
@@ -82,6 +86,10 @@ module Herringbone
       @row_group_size = row_group_size && Integer(row_group_size)
       @row_limit = @row_group_size || ESTIMATE_AFTER_ROWS
       @page_size = Integer(page_size)
+      @page_row_limit = Integer(page_row_limit)
+      raise ArgumentError, "page_row_limit must be positive" unless @page_row_limit.positive?
+      @page_index = page_index
+      @page_indexes = [] # [ColumnChunk, ColumnIndex or nil, OffsetIndex] per written column chunk
       @data_page_version = Integer(data_page_version)
       raise ArgumentError, "data_page_version must be 1 or 2" unless [1, 2].include?(@data_page_version)
       @dictionary = dictionary
@@ -164,6 +172,7 @@ module Herringbone
     def close
       return if @closed
       flush_row_group
+      write_page_indexes
       meta = Format::FileMetaData.new(
         version: 2,
         schema: @schema.to_elements,
@@ -433,6 +442,9 @@ module Herringbone
       else
         values.sum(&:bytesize) + 4 * values.size
       end
+      order = @page_index || @statistics ? sort_key(col) : nil
+      pages = []
+      first_row = 0
       page_ranges(buf, value_bytes).each do |from, to|
         n = to - from
         defs = buf.defs[from, n]
@@ -440,6 +452,12 @@ module Herringbone
         non_null = max_def.zero? ? n : defs.count(max_def)
         page_values = (indices || values)[value_index, non_null]
         value_index += non_null
+        page_offset = @pos
+        range = nil
+        if @page_index && order && non_null.positive?
+          in_page = dict_values ? page_values.uniq.map { |i| dict_values[i] } : page_values
+          range = value_range(col, in_page, order)
+        end
         encoded = encode_values(page_values, value_encoding, type, col.type_length, dict_values&.size)
         rep_bytes = max_rep.positive? ? Encodings::RLE.encode_hybrid(reps, max_rep.bit_length) : "".b
         def_bytes = max_def.positive? ? Encodings::RLE.encode_hybrid(defs, max_def.bit_length) : "".b
@@ -449,6 +467,8 @@ module Herringbone
           num_rows = max_rep.zero? ? n : reps.count(0)
           write_data_page_v2(n, n - non_null, num_rows, rep_bytes, def_bytes, encoded, value_encoding)
         end
+        pages << PageInfo.new(page_offset, @pos - page_offset, first_row, n - non_null, non_null, range)
+        first_row += max_rep.zero? ? n : reps.count(0)
       end
 
       encodings = [E::RLE]
@@ -464,9 +484,63 @@ module Herringbone
         total_compressed_size: @pos - chunk_start,
         data_page_offset: data_offset,
         dictionary_page_offset: dictionary_offset,
-        statistics: @statistics ? statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }) : nil
+        statistics: @statistics ? statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }, order) : nil
       )
-      Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
+      chunk = Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
+      @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)] if @page_index
+      chunk
+    end
+
+    PageInfo = Struct.new(:offset, :size, :first_row, :nulls, :non_null, :range)
+
+    def offset_index_for(pages)
+      Format::OffsetIndex.new(page_locations: pages.map do |p|
+        Format::PageLocation.new(offset: p.offset, compressed_page_size: p.size, first_row_index: p.first_row)
+      end)
+    end
+
+    # nil when the column has no defined sort order, or a page's values have no min/max (all NaN)
+    def column_index_for(col, pages, order)
+      return nil unless order
+      return nil if pages.any? { |p| p.non_null.positive? && p.range.nil? }
+      Format::ColumnIndex.new(
+        null_pages: pages.map { |p| p.non_null.zero? },
+        min_values: pages.map { |p| p.range ? truncate_min(stat_bytes(col, p.range[0])) : "".b },
+        max_values: pages.map { |p| p.range ? truncate_max(stat_bytes(col, p.range[1])) : "".b },
+        boundary_order: boundary_order(pages.filter_map(&:range), order),
+        null_counts: pages.map(&:nulls)
+      )
+    end
+
+    def boundary_order(ranges, order)
+      return Format::BoundaryOrder::ASCENDING if ranges.size < 2
+      cmp = ->(a, b) { order.equal?(IDENTITY) ? a <=> b : order.call(a) <=> order.call(b) }
+      pairs = ranges.each_cons(2)
+      if pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.(a_min, b_min) <= 0 && cmp.(a_max, b_max) <= 0 }
+        Format::BoundaryOrder::ASCENDING
+      elsif pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.(a_min, b_min) >= 0 && cmp.(a_max, b_max) >= 0 }
+        Format::BoundaryOrder::DESCENDING
+      else
+        Format::BoundaryOrder::UNORDERED
+      end
+    end
+
+    # Page indexes go after the last row group: all column indexes, then all offset indexes
+    def write_page_indexes
+      @page_indexes.each do |chunk, column_index, _|
+        next unless column_index
+        bytes = column_index.encode
+        chunk.column_index_offset = @pos
+        chunk.column_index_length = bytes.bytesize
+        write_raw(bytes)
+      end
+      @page_indexes.each do |chunk, _, offset_index|
+        bytes = offset_index.encode
+        chunk.offset_index_offset = @pos
+        chunk.offset_index_length = bytes.bytesize
+        write_raw(bytes)
+      end
+      @page_indexes.clear
     end
 
     def use_dictionary?(col)
@@ -506,8 +580,9 @@ module Herringbone
       n = buf.defs.size
       bytes = n + value_bytes
       pages = (bytes + @page_size - 1) / @page_size
-      return [[0, n]] if pages <= 1
-      per = (n + pages - 1) / pages
+      per = pages <= 1 ? n : (n + pages - 1) / pages
+      per = @page_row_limit if per > @page_row_limit
+      return [[0, n]] if per >= n
       reps = buf.reps
       ranges = []
       start = 0
@@ -592,46 +667,86 @@ module Herringbone
       write_page(header, "".b, rep_bytes + def_bytes + compressed)
     end
 
-    def statistics_for(col, defs, values)
+    STAT_TRUNCATE_BYTES = 64
+    IDENTITY = ->(v) { v }
+
+    def statistics_for(col, defs, values, order)
       max_def = col.max_definition_level
       nulls = max_def.zero? ? 0 : defs.size - defs.count(max_def)
       stats = Format::Statistics.new(null_count: nulls)
-      min, max = min_max(col, values)
-      if min
-        stats.min_value = min
-        stats.max_value = max
-        stats.is_min_value_exact = true
-        stats.is_max_value_exact = true
+      range = order && value_range(col, values, order)
+      if range
+        min = stat_bytes(col, range[0])
+        max = stat_bytes(col, range[1])
+        stats.min_value = truncate_min(min)
+        stats.max_value = truncate_max(max)
+        stats.is_min_value_exact = stats.min_value.bytesize == min.bytesize
+        stats.is_max_value_exact = stats.max_value.bytesize == max.bytesize
       end
       stats
     end
 
-    # Min/max for types whose Parquet sort order matches Ruby's comparison of the physical values
-    def min_max(col, values)
-      return nil if values.empty?
+    # A key giving the Parquet sort order of the column's physical values (IDENTITY when Ruby's own
+    # comparison already matches), or nil when the order is undefined (INT96)
+    def sort_key(col)
       kind, _, signed = Types.logical_of(col.node)
       case col.type
-      when T::BOOLEAN
-        [values.include?(false) ? "\x00".b : "\x01".b, values.include?(true) ? "\x01".b : "\x00".b]
+      when T::BOOLEAN then ->(v) { v ? 1 : 0 }
       when T::INT32, T::INT64
-        return nil if kind == :integer && !signed
-        fmt = col.type == T::INT32 ? "l<" : "q<"
-        min, max = values.minmax
-        [[min].pack(fmt), [max].pack(fmt)]
-      when T::FLOAT, T::DOUBLE
-        finite = values.reject(&:nan?)
-        return nil if finite.empty?
-        min, max = finite.minmax
+        return IDENTITY unless kind == :integer && !signed
+        mask = col.type == T::INT32 ? 0xFFFF_FFFF : 0xFFFF_FFFF_FFFF_FFFF
+        ->(v) { v & mask }
+      when T::FLOAT, T::DOUBLE then IDENTITY
+      when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY
+        case kind
+        when :decimal then Types.method(:be_to_int)
+        when :float16 then ->(v) { Types.half_to_float(v.unpack1("v")) }
+        else IDENTITY # unsigned lexicographic, which is how Ruby compares binary Strings
+        end
+      end
+    end
+
+    # [min, max] of +values+ in column order, ignoring NaNs; nil if there is nothing to compare
+    def value_range(col, values, order)
+      floats = col.type == T::FLOAT || col.type == T::DOUBLE
+      if floats
+        values = values.reject(&:nan?)
+      elsif Types.logical_of(col.node).first == :float16
+        values = values.reject { |v| order.call(v).nan? }
+      end
+      return nil if values.empty?
+      min, max = order.equal?(IDENTITY) ? values.minmax : values.minmax_by(&order)
+      if floats
         min = -0.0 if min.zero?
         max = 0.0 if max.zero?
-        fmt = col.type == T::FLOAT ? "e" : "E"
-        [[min].pack(fmt), [max].pack(fmt)]
-      when T::BYTE_ARRAY
-        return nil if kind == :decimal
-        min, max = values.minmax
-        return nil if min.bytesize > 1024 || max.bytesize > 1024
-        [min, max]
       end
+      [min, max]
+    end
+
+    def stat_bytes(col, value)
+      case col.type
+      when T::BOOLEAN then value ? "\x01".b : "\x00".b
+      when T::INT32 then [value].pack("l<")
+      when T::INT64 then [value].pack("q<")
+      when T::FLOAT then [value].pack("e")
+      when T::DOUBLE then [value].pack("E")
+      else value.b
+      end
+    end
+
+    # Long byte-array bounds are truncated: a prefix is still a lower bound for the minimum, and
+    # a prefix with its last byte incremented is an upper bound for the maximum
+    def truncate_min(bytes)
+      bytes.bytesize > STAT_TRUNCATE_BYTES ? bytes.byteslice(0, STAT_TRUNCATE_BYTES) : bytes
+    end
+
+    def truncate_max(bytes)
+      return bytes if bytes.bytesize <= STAT_TRUNCATE_BYTES
+      prefix = bytes.byteslice(0, STAT_TRUNCATE_BYTES).bytes
+      prefix.pop while prefix.last == 0xFF
+      return bytes if prefix.empty?
+      prefix[-1] += 1
+      prefix.pack("C*")
     end
   end
 end

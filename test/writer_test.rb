@@ -500,6 +500,14 @@ def test_dictionary_encoded_floats_keep_negative_zero
       end
       assert_equal rg.total_compressed_size, offset - rg.file_offset
     end
+    # Page indexes sit between the last row group and the footer: column indexes, then offset indexes
+    index_ranges = md.row_groups.flat_map(&:columns).flat_map do |c|
+      [[c.column_index_offset, c.column_index_length], [c.offset_index_offset, c.offset_index_length]]
+    end.select(&:first).sort
+    index_ranges.each do |start, length|
+      assert_equal offset, start
+      offset += length
+    end
     footer_len = bytes.byteslice(-8, 4).unpack1("V")
     assert_equal bytes.bytesize - 8 - footer_len, offset
   end
@@ -518,11 +526,13 @@ def test_dictionary_encoded_floats_keep_negative_zero
         present = vals.compact
         min, max = expected_min_max(name, col, present)
         if min.nil?
-          assert_nil stats.min_value, name if %w[u8 u16 u32 u64 fx uid f16 dec_large dec_bin i96].include?(name)
+          assert_nil stats.min_value, name if name == "i96"
           next
         end
-        assert_equal min.b, stats.min_value.b, "min of #{name} in row group #{g}"
-        assert_equal max.b, stats.max_value.b, "max of #{name} in row group #{g}"
+        # Byte arrays longer than 64 bytes are truncated (min to a prefix, max to an incremented prefix)
+        assert stats.min_value.b <= min.b && min.b.start_with?(stats.min_value.b), "min of #{name} in row group #{g}"
+        assert_equal max.b, stats.max_value.b, "max of #{name} in row group #{g}" if max.bytesize <= 64
+        assert_operator stats.max_value.b, :>=, max.b.byteslice(0, 64), "max of #{name} in row group #{g}"
       end
     end
   end
@@ -534,9 +544,14 @@ def test_dictionary_encoded_floats_keep_negative_zero
     case col.type
     when T::BOOLEAN then [phys.include?(false) ? "\x00".b : "\x01".b, phys.include?(true) ? "\x01".b : "\x00".b]
     when T::INT32, T::INT64
-      return nil if kind == :integer && name.start_with?("u")
       fmt = col.type == T::INT32 ? "l<" : "q<"
-      [[phys.min].pack(fmt), [phys.max].pack(fmt)]
+      if kind == :integer && name.start_with?("u")
+        # Unsigned columns sort by the unsigned value of the stored (wrapped) integer
+        mask = (1 << (col.type == T::INT32 ? 32 : 64)) - 1
+        [[phys.min_by { |v| v & mask }].pack(fmt), [phys.max_by { |v| v & mask }].pack(fmt)]
+      else
+        [[phys.min].pack(fmt), [phys.max].pack(fmt)]
+      end
     when T::FLOAT, T::DOUBLE
       fin = phys.reject(&:nan?)
       return nil if fin.empty?
@@ -546,9 +561,20 @@ def test_dictionary_encoded_floats_keep_negative_zero
       mn = -0.0 if mn.zero?
       mx = 0.0 if mx.zero?
       [[mn].pack(fmt), [mx].pack(fmt)]
-    when T::BYTE_ARRAY
-      return nil if kind == :decimal
-      [phys.min, phys.max]
+    when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY
+      case kind
+      when :decimal
+        # Big-endian two's complement: sorts by the signed integer
+        by = ->(b) { i = b.unpack1("H*").to_i(16); i >= (1 << (b.bytesize * 8 - 1)) ? i - (1 << (b.bytesize * 8)) : i }
+        [phys.min_by(&by), phys.max_by(&by)]
+      when :float16
+        halves = phys.reject { |b| Herringbone::Types.half_to_float(b.unpack1("v")).nan? }
+        return nil if halves.empty?
+        by = ->(b) { Herringbone::Types.half_to_float(b.unpack1("v")) }
+        [halves.min_by(&by), halves.max_by(&by)]
+      else
+        [phys.min, phys.max]
+      end
     end
   end
 

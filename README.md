@@ -153,11 +153,26 @@ Writer options:
 | `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory; bounds memory use. Low-cardinality string columns are dictionary-encoded as rows arrive and other strings are packed into byte buffers, so a 15-column table exported in 16MB groups peaks around 290 MB RSS (420 MB with 64MB groups) |
 | `row_group_size` | none | also flush after this many rows |
 | `page_size` | 1MB | approximate data page size |
+| `page_row_limit` | `20_000` | at most this many rows per data page |
+| `page_index` | `true` | write page indexes (see below) |
 | `data_page_version` | `1` | `1` or `2` |
 | `dictionary` | `true` | `false`, or an Array of column paths to dictionary-encode |
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
 | `statistics` | `true` | write min/max/null_count |
 | `metadata` | `{}` | footer key/value metadata |
+
+### Page indexes and statistics
+
+Every column chunk gets min/max/null-count statistics, and the writer adds the Parquet page index:
+an OffsetIndex (where each data page starts and which row it begins with) for every column, and a
+ColumnIndex (per-page min/max, null counts, all-null pages, and whether pages are sorted) for every
+column with a defined sort order (all types except INT96). Query engines such as DuckDB, Spark,
+Trino, Arrow and DataFusion use these to skip whole pages: with the default 20,000 rows per page,
+a lookup like `WHERE id BETWEEN ...` on a sorted column reads a handful of pages instead of the
+whole row group. Sort your rows by the columns you filter on to get the most out of it.
+
+Unsigned integers, decimals and float16 use their proper sort orders; NaNs are left out of float
+bounds; byte-array bounds longer than 64 bytes are truncated (flagged as inexact in statistics).
 
 ## Exporting ActiveRecord models
 
@@ -170,6 +185,13 @@ schema = Herringbone::Schema.from_active_record(Order)
 Herringbone::Writer.open("orders.parquet", schema) do |w|
   Order.find_each { |order| w << order.attributes }
 end
+```
+
+Or in one go, which loads records with `find_each` and returns the number of rows written:
+
+```ruby
+Herringbone.export(Order.where(created_at: 1.year.ago..), "orders.parquet", compression: :zstd)
+Herringbone.export(Order, io, only: %w[id status total], batch_size: 5000)
 ```
 
 Options: `only:` and `except:` take attribute names; `enums: :enum` writes enum attributes with

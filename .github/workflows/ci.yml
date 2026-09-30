@@ -74,7 +74,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - run: python -m pip install pyarrow numpy
+      - run: python -m pip install pyarrow numpy datafusion
       - run: HERRINGBONE_PYTHON="$(which python)" HERRINGBONE_REQUIRE_INTEROP=1 bundle exec rake test
 
   gem:

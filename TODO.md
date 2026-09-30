@@ -13,8 +13,7 @@ Buffering: levels are byte Strings, string/fixed columns are dictionary-encoded 
 packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB row groups,
 660 → 416 MB at 64MB.
 
-Possible follow-ups:
-- `Herringbone.export(relation, path)` convenience that combines `from_active_record` and `find_each`
+`Herringbone.export(relation, target, **options)` combines `from_active_record` and `find_each`.
 
 ## 2. Reading ergonomics
 
@@ -34,9 +33,16 @@ Possible follow-ups:
   sizes, encoding, value counts, statistics, offsets), per-column totals and compression ratios,
   dictionary sizes, encoding stats, and a `reader.summary` for the CLI
 
-## 4. Pushdown structures (later)
+## 4. Pushdown structures
 
-### Bloom filters (read + write)
+### Page indexes — done (writing)
+
+ColumnIndex + OffsetIndex for every column chunk (column index where a sort order is defined),
+`page_row_limit:` (20k rows per page), sort orders for unsigned/decimal/float16, 64-byte
+truncation of byte-array bounds. Verified against DataFusion's page pruning in CI.
+Possible follow-up: use page indexes when reading (skip pages for row ranges / predicates).
+
+### Bloom filters (not now)
 
 - Thrift structs: `BloomFilterHeader` (numBytes, algorithm/hash/compression unions with one member each)
 - Pure-Ruby XXH64 (seed 0) — needs masked 64-bit arithmetic; benchmark bignum-masking vs 32-bit limbs.
@@ -52,9 +58,3 @@ Possible follow-ups:
   `bloom_filter_offset` / `bloom_filter_length`
 - Fixtures: parquet-testing `data_index_bloom_encoding_stats.parquet`,
   `data_index_bloom_encoding_with_length.parquet`; interop-check with pyarrow
-
-### Page indexes (ColumnIndex / OffsetIndex)
-
-- Per-page min/max/null counts and page locations, for page-level predicate pushdown
-- Same order of work as bloom filters; best done together. Writing them helps downstream engines
-  (DuckDB, Spark, Trino) skip data in files we produce
