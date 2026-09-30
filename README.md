@@ -38,7 +38,8 @@ a ZSTD-compressed file raises it when the first such page is reached, naming the
 the column. The file's metadata and schema can still be read. To check upfront:
 
 ```ruby
-Herringbone::Reader.open("data.parquet") do |reader|
+File.open("data.parquet", "rb") do |file|
+  reader = Herringbone::Reader.new(file)
   reader.codecs          # => [:zstd]
   reader.missing_codecs  # => [:zstd] when zstd-ruby is not installed
   reader.ensure_codecs_available! # raises MissingCodecError now instead of mid-read
@@ -48,10 +49,14 @@ Herringbone::Compression.available?(:zstd) # => true / false
 
 ## Reading
 
+Readers take a random-access IO (a `File` opened with `"rb"`, `StringIO`, `Tempfile`...);
+Herringbone does not open files by path. The IO belongs to the caller and is not closed by the reader.
+
 ```ruby
 require "herringbone"
 
-Herringbone::Reader.open("data.parquet") do |reader|
+File.open("data.parquet", "rb") do |file|
+  reader = Herringbone::Reader.new(file)
   reader.schema             # => #<Herringbone::Schema ...>
   reader.num_rows
 
@@ -59,13 +64,37 @@ Herringbone::Reader.open("data.parquet") do |reader|
     p row
   end
 
+  reader.each_batch(1000) { |rows| ... }                 # Arrays of up to 1000 row Hashes
   reader.each_row(columns: ["id", "name"]) { |row| ... } # projection
   reader.column("name")     # => all values of one top-level field
   reader.read_row_group(0)  # => { "id" => [...], "name" => [...] }
 end
 
-Herringbone.read("data.parquet") # => Array of row Hashes
+File.open("data.parquet", "rb") { |f| Herringbone::Reader.new(f, keys: :symbol, time_zone: "+02:00").rows }
+Herringbone::Reader.from_string(bytes).rows # Parquet bytes in a String
 ```
+
+`each_row`, `each_batch` and `rows` stream: pages are read from the file and decoded one at a
+time per column, and rows are assembled in batches (1024 by default, `each_batch(size)` or
+`each_row(batch_size:)`), so memory depends on the batch and page sizes rather than on the
+row group size. Reading 1M rows stored in a single row group (as parquet-rs writes them) peaks at
+about 60–160 MB RSS growth instead of 660 MB. `column` and `read_row_group` return whole
+columns, so they hold them in memory.
+
+Options, for `Reader.new` and `Reader.open`, and per call for `each_row`, `each_batch` and `rows`:
+
+| option | default | |
+|---|---|---|
+| `keys` | `:string` | `:symbol` for Symbol keys in rows and in Hashes built from structs (map keys stay as stored) |
+| `time_zone` | none (UTC) | return timestamps in this zone, see below |
+
+`time_zone:` accepts a UTC offset (`"+02:00"`, `"-0500"`, or seconds as an Integer), `"UTC"`, a
+timezone object that `Time#getlocal` accepts (e.g. `TZInfo::Timezone.get("Europe/Amsterdam")`),
+or anything responding to `#at`, such as `Time.zone` or `ActiveSupport::TimeZone["Amsterdam"]`
+in Rails (timestamps then come back as `ActiveSupport::TimeWithZone`). Zone names such as
+`"Europe/Amsterdam"` work when ActiveSupport or TZInfo is loaded. All of these work on Ruby 3.0.
+It applies to UTC-adjusted timestamps and INT96; timestamps stored with `isAdjustedToUTC=false`
+are wall-clock values and stay as they are.
 
 ## Writing
 
@@ -85,17 +114,19 @@ schema = Herringbone::Schema.define do
   timestamp :created_at
 end
 
-Herringbone::Writer.open("out.parquet", schema) do |w|
-  w << { "id" => 1, "name" => "Anna", "status" => "paid", "tags" => ["a", "b"],
-         "scores" => { "x" => 1.5 }, "address" => { "city" => "Amsterdam" },
-         "price" => BigDecimal("9.99"), "payload" => { "any" => ["json"] }, "created_at" => Time.now }
-  w << { id: 2, status: :pending }  # Symbol keys and values work; missing keys are nulls
-  w << [3, "Bo", nil, nil, nil, nil, nil, nil, nil, nil] # Arrays in schema order
-  w << order                         # anything with #attributes (ActiveRecord) or #to_h (Struct, Data)
+File.open("out.parquet", "wb") do |file|
+  Herringbone::Writer.open(file, schema) do |w|
+    w << { "id" => 1, "name" => "Anna", "status" => "paid", "tags" => ["a", "b"],
+           "scores" => { "x" => 1.5 }, "address" => { "city" => "Amsterdam" },
+           "price" => BigDecimal("9.99"), "payload" => { "any" => ["json"] }, "created_at" => Time.now }
+    w << { id: 2, status: :pending }  # Symbol keys and values work; missing keys are nulls
+    w << [3, "Bo", nil, nil, nil, nil, nil, nil, nil, nil] # Arrays in schema order
+    w << order                         # anything with #attributes (ActiveRecord) or #to_h (Struct, Data)
+  end
 end
 
 # Or with an inferred schema, optionally overriding some columns
-Herringbone.write("out.parquet", rows, schema: Herringbone::Schema.infer(rows, types: { payload: :json }))
+Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows, types: { payload: :json }))
 ```
 
 Schemas can also be given as a Hash, anywhere a schema is accepted:
@@ -109,7 +140,7 @@ Herringbone::Schema.define(
   price: { type: :decimal, precision: 12, scale: 2 },
   scores: { type: :map, key: :string, value: :double }
 )
-Herringbone::Writer.open("out.parquet", { id: :int64, name: :string }) { |w| w << [1, "x"] }
+Herringbone::Writer.open(io, { id: :int64, name: :string }) { |w| w << [1, "x"] }
 ```
 
 Column types in the DSL: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double
@@ -140,10 +171,17 @@ Columns accept the values Ruby and Rails code usually has at hand:
 Values that don't fit raise `Herringbone::EncodeError` naming the row number and column path; the
 failed row is discarded and the writer can carry on.
 
-When given a path, the writer writes to a temporary file next to it and renames it into place on
-close. If the block raises (or `#abort` is called), the temporary file is removed and any
-existing file at the path is left untouched. An IO (`File`, `StringIO`, a socket...) can be
-given instead of a path.
+The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
+pipe); it writes sequentially and never seeks, rewinds or closes it. If the `Writer.open` block
+raises (or `#abort` is called), no footer is written and whatever was written so far is left in
+the IO for you to discard. To replace a file only once it is complete, write to a temporary file
+and rename it yourself:
+
+```ruby
+tmp = "orders.parquet.tmp"
+File.open(tmp, "wb") { |f| Herringbone.export(Order, f) }
+File.rename(tmp, "orders.parquet")
+```
 
 Writer options:
 
@@ -182,15 +220,19 @@ bounds; byte-array bounds longer than 64 bytes are truncated (flagged as inexact
 
 ```ruby
 schema = Herringbone::Schema.from_active_record(Order)
-Herringbone::Writer.open("orders.parquet", schema) do |w|
-  Order.find_each { |order| w << order.attributes }
+File.open("orders.parquet", "wb") do |file|
+  Herringbone::Writer.open(file, schema) do |w|
+    Order.find_each { |order| w << order.attributes }
+  end
 end
 ```
 
 Or in one go, which loads records with `find_each` and returns the number of rows written:
 
 ```ruby
-Herringbone.export(Order.where(created_at: 1.year.ago..), "orders.parquet", compression: :zstd)
+File.open("orders.parquet", "wb") do |file|
+  Herringbone.export(Order.where(created_at: 1.year.ago..), file, compression: :zstd)
+end
 Herringbone.export(Order, io, only: %w[id status total], batch_size: 5000)
 ```
 
@@ -240,12 +282,65 @@ Column order follows `Model.columns`.
 - Not supported: encryption, column chunks in external files, bloom filters and page indexes
   (ignored when reading, not written)
 
+## Inspecting files
+
+> The inspector and its HTML view are modelled on
+> **[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1** —
+> the design and the idea are theirs. Go check it out.
+
+`Herringbone::Inspector` examines a file using only its footer, page headers, page indexes and
+bloom filter headers. No values are decompressed or decoded, so it is fast on big files and works
+for ZSTD/Brotli files even without the codec gems.
+
+```ruby
+File.open("data.parquet", "rb") do |file|
+  i = Herringbone::Inspector.new(file)   # also takes a Reader
+  i.summary        # size, footer size, rows, row groups, created_by, codecs, page index / bloom presence
+  i.schema_tree    # physical + logical types, repetition, max definition/repetition levels
+  i.key_value_metadata # ARROW:schema abbreviated, JSON values (pandas, Spark) parsed
+  rg = i.row_groups[0]
+  rg.sorting_columns
+  chunk = rg.column("name")
+  chunk.codec, chunk.encodings, chunk.encoding_stats, chunk.compression_ratio
+  chunk.statistics # min/max decoded to Ruby values (Date, Time, BigDecimal...), with caveats for legacy stats
+  chunk.pages      # every page header: type, offset, sizes, values, nulls, rows, encoding, page statistics, CRC
+  chunk.column_index # per-page min/max/null counts; chunk.offset_index: page locations and first rows
+  i.pages(0, "name") # same as above
+  i.column_totals  # per column, summed over row groups
+  i.layout         # byte ranges of everything in the file, in order
+  i.to_h           # all of it, JSON-serializable
+  puts i.report    # readable text summary
+end
+```
+
+`Herringbone::Visualizer` renders the same information as one self-contained HTML page: a byte map
+of the file drawn to scale (row groups, column chunks, dictionary and data pages, page indexes,
+bloom filters, footer) that zooms into a row group and a column chunk, the schema, a column table
+with codecs, encodings, sizes, compression ratios and statistics, per-page tables, page indexes and
+key/value metadata. Everything is inline; highlight.js is loaded from cdnjs to colour JSON, and the
+page works without it. The design and idea come from
+[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1.
+
+```ruby
+File.open("data.parquet", "rb") do |file|
+  html = Herringbone.visualize(file)                          # the page as a String
+  File.open("layout.html", "w") { |out| Herringbone.visualize(file, out) } # or into an IO
+end
+```
+
+```
+bin/herringbone inspect FILE [OUT.html]   # HTML page to OUT.html, or to stdout
+bin/herringbone inspect FILE --text       # text summary (add --pages to list every page header)
+bin/herringbone inspect FILE --json       # everything as JSON
+```
+
 ## Command line
 
 ```
 bin/herringbone schema FILE
 bin/herringbone meta FILE
 bin/herringbone cat FILE [N]
+bin/herringbone inspect FILE [OUT.html | --text [--pages] | --json]
 ```
 
 ## Development

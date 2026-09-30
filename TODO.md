@@ -15,23 +15,33 @@ packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB
 
 `Herringbone.export(relation, target, **options)` combines `from_active_record` and `find_each`.
 
-## 2. Reading ergonomics
+## 2. Reading ergonomics — done
 
-- **Streaming reads:** the reader materializes a whole row group before yielding rows. Files with
-  huge row groups (parquet-rs writes up to 1M rows per group) cost ~750 MB RSS per 1M rows of the
-  benchmark schema. Read page by page / in row batches across the columns of a row group instead
-- `keys: :symbol` option for rows; batch iteration (`each_batch(size)`)
-- Optional `time_zone:` for returned timestamps (e.g. `Time.zone` in Rails)
+Streaming reads: pages are read lazily (seek + read per page) and decoded one at a time per
+column; rows are assembled in batches (`each_batch(size)`, `each_row` on top of it), with values
+converted to Ruby objects per batch. 1M rows in one row group: 662 → ~160 MB peak RSS growth,
+107k → 158k rows/s (`benchmark/streaming_read.rb`). `keys: :symbol` and `time_zone:` options.
 
-## 3. Inspecting files without reading the data
+Possible follow-ups:
+- Decode within a page incrementally (RLE runs, PLAIN values) to bound memory by the batch
+  alone; today a decoded page (up to ~200k entries for dictionary-encoded 1MB pages) is held
+- Use the OffsetIndex to skip pages/rows (`each_row(from:)`)
 
-- A visualizer that renders a file's layout as a self-contained HTML page with SVG: schema tree,
-  row groups, column chunks and pages drawn to scale (compressed vs uncompressed size), codecs,
-  encodings, dictionary pages, statistics, key/value metadata. `bin/herringbone html FILE > out.html`
-- Methods to examine a file from its footer and page headers only, without decoding values:
-  `reader.inspect_layout` / `reader.pages(row_group, column)` returning page headers (type,
-  sizes, encoding, value counts, statistics, offsets), per-column totals and compression ratios,
-  dictionary sizes, encoding stats, and a `reader.summary` for the CLI
+## 3. Inspecting files without reading the data — done
+
+`Herringbone::Inspector` (footer, page headers, page indexes and bloom filter headers only; never
+decompresses): summary, schema tree, key/value metadata, row groups, column chunks with decoded
+statistics and caveats, every page header, ColumnIndex/OffsetIndex, per-column totals, a byte
+`layout` of the whole file, `to_h` (JSON) and a text `report`. `Herringbone::Visualizer` renders it
+as a self-contained HTML page (design and idea from
+[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1):
+`bin/herringbone inspect FILE [OUT]`, `--text`, `--json`.
+
+Possible follow-ups:
+- `reader.inspector` convenience (`Inspector.new(reader)` works already)
+- Verify page CRCs (needs reading page bodies, so opt-in)
+- Decode the ARROW:schema flatbuffer to show Arrow types next to Parquet ones
+- Compare page statistics with the page index and flag disagreements
 
 ## 4. Pushdown structures
 

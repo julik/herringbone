@@ -314,7 +314,12 @@ module Herringbone
         else
           "group"
         end
-        ann = node.logical_type ? node.logical_type.kind.first.to_s.upcase : Format::ConvertedType::NAMES[node.converted_type]
+        # A logical type this version does not know decodes as an empty union
+        kind = node.logical_type&.kind
+        ann = if kind then kind.first.to_s.upcase
+        elsif node.logical_type then "UNKNOWN LOGICAL TYPE"
+        else Format::ConvertedType::NAMES[node.converted_type]
+        end
         lines << "#{"  " * depth}#{node.repetition} #{desc} #{node.name}#{ann ? " (#{ann})" : ""}"
         node.children&.each { |c| walk.call(c, depth + 1) }
       end

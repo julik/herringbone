@@ -251,4 +251,10 @@ class ErgonomicsTest < Minitest::Test
     Herringbone::Writer.open(io, schema, row_group_size: 3000) { |w| w.write_rows(rows) }
     assert_equal [3000] * 6 + [2000], Herringbone::Reader.new(StringIO.new(io.string)).row_groups.map(&:num_rows)
   end
+
+  def test_created_by
+    io = StringIO.new("".b)
+    Herringbone.write(io, [{ a: 1 }])
+    assert_equal "herringbone-ruby #{Herringbone::VERSION}", Herringbone::Reader.new(StringIO.new(io.string)).created_by
+  end
 end

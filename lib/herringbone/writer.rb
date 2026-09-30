@@ -184,7 +184,7 @@ module Herringbone
         num_rows: @total_rows,
         row_groups: @row_groups,
         key_value_metadata: @metadata.empty? ? nil : @metadata.map { |k, v| Format::KeyValue.new(key: k.to_s, value: v&.to_s) },
-        created_by: "herringbone version #{VERSION}",
+        created_by: "herringbone-ruby #{VERSION}",
         column_orders: @schema.columns.map { Format::ColumnOrder.new(type_order: Format::TypeDefinedOrder.new) }
       )
       footer = meta.encode

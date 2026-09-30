@@ -1,0 +1,191 @@
+# frozen_string_literal: true
+
+require_relative "test_helper"
+require "minitest/mock"
+require "tmpdir"
+require "open3"
+require "rbconfig"
+
+class VisualizerTest < Minitest::Test
+  Visualizer = Herringbone::Visualizer
+  FIXTURES = Dir[File.join(FIXTURES_DIR, "{parquet-testing,generated}", "*.parquet")].sort
+  BIN = File.expand_path("../bin/herringbone", __dir__)
+  ALLOWED_URLS = [Visualizer::HIGHLIGHT_JS, Visualizer::CREDIT_URL].freeze
+
+  def render(path, **opts)
+    File.open(path, "rb") { |io| Visualizer.new(io, **opts).to_html }
+  end
+
+  def embedded_data(html)
+    json = html[%r{<script type="application/json" id="hb-data">(.*?)</script>}m, 1]
+    refute_nil json, "no embedded data"
+    JSON.parse(json)
+  end
+
+  def inline_script(html)
+    html.scan(%r{<script>(.*?)</script>}m).flatten.first
+  end
+
+  def check_html(html, name)
+    assert html.start_with?("<!doctype html>"), name
+    assert html.rstrip.end_with?("</html>"), name
+    %w[html head body style].each do |tag|
+      assert_equal 1, html.scan(/<#{tag}[\s>]/).size, "#{name}: <#{tag}>"
+      assert_equal 1, html.scan("</#{tag}>").size, "#{name}: </#{tag}>"
+    end
+    assert_equal html.scan(/<script[\s>]/).size, html.scan("</script>").size, name
+    assert_equal 3, html.scan(/<script[\s>]/).size, name
+    # No "</" can end the data script early: the JSON has every "<" escaped
+    data_json = html[%r{id="hb-data">(.*?)</script>}m, 1]
+    refute_includes data_json, "<", name
+    urls = html.scan(%r{https?://[^\s"'<>)]+}).uniq
+    assert_empty urls - ALLOWED_URLS, "#{name}: unexpected external URLs"
+    assert_equal 1, html.scan(%(<script src="#{Visualizer::HIGHLIGHT_JS}")).size, name
+    refute_match(/<link[^>]+stylesheet/, html, name)
+  end
+
+  def test_renders_every_fixture
+    FIXTURES.each do |path|
+      name = File.basename(path)
+      html = render(path)
+      check_html(html, name)
+      data = embedded_data(html)
+      assert_equal File.size(path), data["file"]["file_size"], name
+      assert_equal name, data["file"]["name"]
+      File.open(path, "rb") do |io|
+        r = Herringbone::Reader.new(io)
+        assert_equal r.num_rows, data["file"]["num_rows"], name
+        assert_equal r.schema.columns.size, data["columns"].size, name
+        assert_equal r.num_row_groups, data["row_groups"].size, name
+      end
+      data["row_groups"].each do |rg|
+        rg["chunks"].each do |ch|
+          next unless ch["pages"]
+          assert_equal ch["np"], ch["pages"].size, name
+          assert_equal ch["values"], ch["pages"].reject { |p| p[0] == 2 }.sum { |p| p[5] }, name
+        end
+      end
+    end
+  end
+
+  def test_credit_is_prominent_at_the_top
+    html = render(File.join(FIXTURES_DIR, "generated", "codec_snappy.parquet"))
+    link = %(<a href="#{Visualizer::CREDIT_URL}")
+    assert_includes html, link
+    body = html[html.index("<body>")..]
+    credit_at = body.index(link)
+    assert_operator credit_at, :<, body.index("<section"), "credit comes before any content"
+    assert_operator credit_at, :<, body.index("</header>"), "credit sits in the page header"
+    assert_match(/Design and idea from <a href="#{Regexp.escape(Visualizer::CREDIT_URL)}"[^>]*>Parquet X-ray<\/a> by cfahlgren1/, html)
+  end
+
+  def test_page_indexes_and_stats_are_embedded
+    data = embedded_data(render(File.join(FIXTURES_DIR, "parquet-testing", "alltypes_tiny_pages.parquet")))
+    assert data["file"]["page_index"]
+    id = data["row_groups"][0]["chunks"][0]
+    assert_equal "0", id["stats"]["min"]
+    assert_equal "7299", id["stats"]["max"]
+    assert_equal id["ndp"], id["offset_index"].size
+    assert_equal id["ndp"], id["column_index"]["rows"].size
+    strings = data["row_groups"][0]["chunks"].find { |c| data["columns"][c["c"]]["path"] == "string_col" }
+    assert_equal '"0"', strings["stats"]["min"]
+    refute_nil data["footer_json"]
+    assert JSON.parse(data["footer_json"]).key?("schema")
+  end
+
+  def test_key_value_metadata_is_embedded_with_json_parsed
+    data = embedded_data(render(File.join(FIXTURES_DIR, "parquet-testing", "int96_from_spark.parquet")))
+    json_kv = data["kv"].find { |kv| kv["format"] == "json" }
+    assert_kind_of Hash, json_kv["json"]
+    arrow = embedded_data(render(File.join(FIXTURES_DIR, "generated", "logical_misc.parquet")))["kv"]
+      .find { |kv| kv["key"] == "ARROW:schema" }
+    assert_operator arrow["value"].size, :<, 200
+  end
+
+  def test_big_files_cap_page_detail
+    path = File.join(FIXTURES_DIR, "parquet-testing", "overflow_i16_page_cnt.parquet")
+    inspector = File.open(path, "rb") { |io| Herringbone.inspect_file(io) }
+    full = embedded_data(Visualizer.new(inspector).to_html)
+    refute full["file"]["pages_truncated"]
+    assert_equal 40_000, full["row_groups"][0]["chunks"][0]["pages"].size
+    capped_html = Visualizer.new(inspector, max_pages: 1000).to_html
+    capped = embedded_data(capped_html)
+    assert capped["file"]["pages_truncated"]
+    assert_nil capped["row_groups"][0]["chunks"][0]["pages"]
+    assert_equal 40_000, capped["row_groups"][0]["chunks"][0]["np"]
+    assert_operator capped_html.bytesize, :<, 100_000
+  end
+
+  def test_html_escapes_hostile_names
+    io = StringIO.new("".b)
+    schema = Herringbone::Schema.define { string :"</script><script>alert(1)</script>" }
+    Herringbone::Writer.open(io, schema) { |w| w << ["</script><!--"] }
+    html = Visualizer.new(StringIO.new(io.string), title: "<b>%%DATA%%</b>").to_html
+    check_html(html, "hostile")
+    assert_includes html, "<title>&lt;b&gt;%%DATA%%&lt;/b&gt; · Parquet layout</title>"
+    assert_equal "</script><script>alert(1)</script>", embedded_data(html)["columns"][0]["path"]
+  end
+
+  def test_works_without_codec_gems
+    Herringbone::Compression.instance_variable_set(:@libraries, {})
+    missing = ->(path) { raise LoadError, "cannot load such file -- #{path}" }
+    Herringbone::Compression.stub(:require_library, missing) do
+      %w[codec_zstd codec_brotli enc_delta_mixed_v2_zstd].each do |f|
+        html = render(File.join(FIXTURES_DIR, "generated", "#{f}.parquet"))
+        check_html(html, f)
+      end
+    end
+  ensure
+    Herringbone::Compression.instance_variable_set(:@libraries, {})
+  end
+
+  def test_visualize_writes_or_returns_html
+    path = File.join(FIXTURES_DIR, "generated", "nested_map_string_int.parquet")
+    html = File.open(path, "rb") { |io| Herringbone.visualize(io) }
+    check_html(html, "visualize")
+    out = StringIO.new
+    File.open(path, "rb") { |io| assert_same out, Herringbone.visualize(io, out) }
+    assert_equal html, out.string
+    assert_equal html, Visualizer.new(StringIO.new(File.binread(path)), title: "nested_map_string_int.parquet").to_html
+    assert_raises(ArgumentError) { Visualizer.new(path) }
+  end
+
+  def test_inline_javascript_is_valid
+    node = ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).map { |d| File.join(d, "node") }.find { |f| File.executable?(f) }
+    skip "node is not installed" unless node
+    js = inline_script(render(File.join(FIXTURES_DIR, "generated", "codec_snappy.parquet")))
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, "page.js")
+      File.write(file, js)
+      out, status = Open3.capture2e(node, "--check", file)
+      assert status.success?, out
+    end
+  end
+
+  def test_cli_inspect
+    path = File.join(FIXTURES_DIR, "parquet-testing", "data_index_bloom_encoding_stats.parquet")
+    ruby = RbConfig.ruby
+    html, status = Open3.capture2(ruby, BIN, "inspect", path)
+    assert status.success?
+    check_html(html, "cli stdout")
+    Dir.mktmpdir do |dir|
+      out = File.join(dir, "layout.html")
+      _, err, status = Open3.capture3(ruby, BIN, "inspect", path, out)
+      assert status.success?, err
+      assert_equal html, File.read(out)
+    end
+    text, status = Open3.capture2(ruby, BIN, "inspect", path, "--text")
+    assert status.success?
+    assert_match(/rows: 14, row groups: 1/, text)
+    assert_match(/bloom filters: yes/, text)
+    pages, = Open3.capture2(ruby, BIN, "inspect", path, "--text", "--pages")
+    assert_match(/0: DATA_PAGE @4/, pages)
+    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json")
+    assert status.success?
+    assert_equal 14, JSON.parse(json)["summary"]["num_rows"]
+    _, _, status = Open3.capture3(ruby, BIN, "inspect", path, "--text", "--json")
+    refute status.success?
+    _, _, status = Open3.capture3(ruby, BIN, "html", path)
+    refute status.success?, "the old html command is gone"
+  end
+end
