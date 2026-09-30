@@ -176,8 +176,7 @@ module Parakiet
           unless size.zero?
             kv = read_byte
             size.times do
-              skip(kv >> 4)
-              skip(kv & 0x0F)
+              [kv >> 4, kv & 0x0F].each { |w| (w == T_TRUE || w == T_FALSE) ? read_byte : skip(w) }
             end
           end
         when T_STRUCT

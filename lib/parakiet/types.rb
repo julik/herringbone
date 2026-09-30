@@ -232,30 +232,21 @@ module Parakiet
       end
     end
 
+    # Rounds a Float to the nearest half-precision value (ties to even). Every step is exact
+    # in double arithmetic, so there is no double rounding.
     def float_to_half(f)
       return 0x7E00 if f.nan?
-      # Round-trip through float32 bits and narrow with round-to-nearest-even
-      bits = [f].pack("e").unpack1("L<")
-      sign = (bits >> 16) & 0x8000
-      exp = ((bits >> 23) & 0xFF) - 127 + 15
-      mant = bits & 0x7FFFFF
-      if exp >= 31
-        return sign | ((((bits >> 23) & 0xFF) == 0xFF && mant != 0) ? 0x7E00 : 0x7C00)
+      sign = f.negative? || (f.zero? && (1.0 / f).negative?) ? 0x8000 : 0
+      a = f.abs
+      return sign | 0x7C00 if a >= 65_520.0
+      return sign | (a * 2.0**24).round(half: :even) if a < 2.0**-14
+      e = Math.frexp(a)[1] - 1
+      m = ((a / 2.0**e - 1) * 1024).round(half: :even)
+      if m == 1024
+        m = 0
+        e += 1
       end
-      if exp <= 0
-        return sign if exp < -10
-        mant |= 0x800000
-        shift = 14 - exp
-        half = mant >> shift
-        rem = mant & ((1 << shift) - 1)
-        mid = 1 << (shift - 1)
-        half += 1 if rem > mid || (rem == mid && half.odd?)
-        return sign | half
-      end
-      half = (exp << 10) | (mant >> 13)
-      rem = mant & 0x1FFF
-      half += 1 if rem > 0x1000 || (rem == 0x1000 && half.odd?)
-      sign | half
+      sign | ((e + 15) << 10) | m
     end
 
     # Returns a lambda converting a Ruby value into the physical value for +node+.
@@ -264,7 +255,12 @@ module Parakiet
       type = node.type
       case kind
       when :date
-        return ->(v) { v.is_a?(Integer) ? v : v.to_date.jd - EPOCH_JD }
+        return lambda do |v|
+          return v if v.is_a?(Integer)
+          d = v.to_date
+          # Use the civil date, so dates before 1582 in Ruby's default calendar are proleptic Gregorian
+          Date.civil(d.year, d.mon, d.mday, Date::GREGORIAN).jd - EPOCH_JD
+        end
       when :timestamp
         mult = UNIT_DIVISORS.fetch(a)
         return lambda do |v|
@@ -275,7 +271,7 @@ module Parakiet
       when :decimal
         return decimal_writer(node, a)
       when :uuid
-        return lambda do |v|
+        return fixed_checker(16) do |v|
           v.bytesize == 16 && v.encoding == Encoding::BINARY ? v : [v.delete("-")].pack("H*")
         end
       when :float16
@@ -283,15 +279,24 @@ module Parakiet
       when :integer
         if !_b && (type == T::INT32 || type == T::INT64)
           bits = type == T::INT32 ? 32 : 64
-          return ->(v) { Delta.wrap(Integer(v), bits) }
+          check = int_checker(0, (1 << a) - 1)
+          return ->(v) { Delta.wrap(check.call(v), bits) }
+        elsif type == T::INT32 || type == T::INT64
+          return int_checker(-(1 << (a - 1)), (1 << (a - 1)) - 1)
         end
       end
 
       case type
-      when T::BOOLEAN then ->(v) { v ? true : false }
-      when T::INT32, T::INT64 then ->(v) { Integer(v) }
+      when T::BOOLEAN
+        lambda do |v|
+          raise ArgumentError, "expected true or false" unless v == true || v == false
+          v
+        end
+      when T::INT32 then int_checker(-(1 << 31), (1 << 31) - 1)
+      when T::INT64 then int_checker(-(1 << 63), (1 << 63) - 1)
       when T::FLOAT, T::DOUBLE then ->(v) { Float(v) }
-      when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY then ->(v) { v.is_a?(String) ? v : v.to_s }
+      when T::BYTE_ARRAY then ->(v) { v.is_a?(String) ? v : v.to_s }
+      when T::FIXED_LEN_BYTE_ARRAY then fixed_checker(node.type_length) { |v| v.is_a?(String) ? v : v.to_s }
       when T::INT96
         lambda do |v|
           return v if v.is_a?(Array)
@@ -302,8 +307,27 @@ module Parakiet
       end
     end
 
+    # Converts to Integer, rejecting fractional numbers and values outside min..max
+    def int_checker(min, max)
+      lambda do |v|
+        i = Integer(v)
+        raise ArgumentError, "#{v.inspect} is not an integer" unless v.is_a?(Integer) || !v.is_a?(Numeric) || v == i
+        raise RangeError, "#{i} is outside #{min}..#{max}" unless i >= min && i <= max
+        i
+      end
+    end
+
+    def fixed_checker(length, &convert)
+      lambda do |v|
+        s = convert.call(v)
+        raise ArgumentError, "expected #{length} bytes, got #{s.bytesize}" unless s.bytesize == length
+        s
+      end
+    end
+
     def decimal_writer(node, scale)
       mult = 10**scale
+      limit = node.precision ? 10**node.precision : nil
       to_unscaled = lambda do |v|
         r = case v
         when Integer then v * mult
@@ -311,7 +335,9 @@ module Parakiet
         else v.to_r * mult
         end
         r = r.round if r.is_a?(Rational)
-        r.to_i
+        i = r.to_i
+        raise RangeError, "#{v} does not fit DECIMAL(#{node.precision}, #{scale})" if limit && i.abs >= limit
+        i
       end
       case node.type
       when T::INT32, T::INT64 then to_unscaled

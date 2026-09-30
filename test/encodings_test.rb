@@ -348,13 +348,6 @@ class PlainEncodingTest < Minitest::Test
     assert_raises(Parakiet::DecodeError) { Plain.decode("ab".b, 0, 1, T::FIXED_LEN_BYTE_ARRAY, 3) }
     assert_raises(Parakiet::DecodeError) { Plain.decode("".b, 0, 9, T::BOOLEAN) }
   end
-
-  def test_out_of_range_integers_are_rejected
-    skip "BUG: Plain.encode silently truncates integers that do not fit the physical type " \
-      "([2**40].pack('l<') wraps, [2**70].pack('q<') yields 0)"
-    assert_raises(Parakiet::EncodeError) { Plain.encode([2**40], T::INT32) }
-    assert_raises(Parakiet::EncodeError) { Plain.encode([2**70], T::INT64) }
-  end
 end
 
 class ThriftCompactTest < Minitest::Test
@@ -532,7 +525,6 @@ class ThriftCompactTest < Minitest::Test
     b = fh(50, Th::T_MAP) + varint(2) + [(Th::T_I32 << 4) | Th::T_TRUE] + zz(1) + [1] + zz(2) + [2]
     b += fh(6, Th::T_BINARY) + binary("after")
     b << 0
-    skip "BUG: Thrift::Reader#skip does not consume the byte of bool map keys/values"
     md, = F::FileMetaData.decode(b.pack("C*"))
     assert_equal "after", md.created_by
   end

@@ -68,6 +68,8 @@ module Parakiet
       raise ArgumentError, "data_page_version must be 1 or 2" unless [1, 2].include?(@data_page_version)
       @dictionary = dictionary
       @encodings = encodings.to_h { |path, enc| [path.to_s, encoding_id(path, enc)] }
+      unknown = @encodings.keys - schema.columns.map(&:dotted_path)
+      raise ArgumentError, "encodings: no such column #{unknown.join(", ")}" unless unknown.empty?
       @statistics = statistics
       @metadata = metadata
       @row_groups = []
@@ -81,22 +83,28 @@ module Parakiet
     # Appends a row (a Hash keyed by top-level field names, as Strings or Symbols)
     def <<(row)
       raise Error, "Writer is closed" if @closed
-      row = row.to_h unless row.is_a?(Hash)
-      @plan.each do |field, name, sym, buf, encoder|
-        value = row.fetch(name) { row[sym] }
-        if buf.nil?
-          shred(field, value, 0, 0)
-        elsif value.nil?
-          raise EncodeError, "Field #{name} is required but got nil" unless field.optional
-          buf.defs << 0
-        else
-          buf.defs << field.def_level
-          begin
-            buf.values << encoder.call(value)
-          rescue ArgumentError, TypeError, NoMethodError => e
-            raise EncodeError, "Cannot write #{value.inspect} to #{name}: #{e.message}"
+      row = as_hash(row, "row")
+      marks = @nested_buffers.empty? ? nil : @nested_buffers.map { |b| [b.defs.size, b.reps&.size, b.values.size] }
+      begin
+        @plan.each do |field, name, sym, buf, encoder|
+          value = row.fetch(name) { row[sym] }
+          if buf.nil?
+            shred(field, value, 0, 0)
+          elsif value.nil?
+            raise EncodeError, "Field #{name} is required but got nil" unless field.optional
+            buf.defs << 0
+          else
+            begin
+              buf.values << encoder.call(value)
+            rescue ArgumentError, TypeError, NoMethodError, RangeError => e
+              raise EncodeError, "Cannot write #{value.inspect} to #{name}: #{e.message}"
+            end
+            buf.defs << field.def_level
           end
         end
+      rescue StandardError
+        rollback_row(marks)
+        raise
       end
       @buffered_rows += 1
       flush_row_group if @buffered_rows >= @row_group_size
@@ -159,6 +167,7 @@ module Parakiet
         flat = field.leaf? && field.column.max_repetition_level.zero?
         [field, field.name, field.name.to_sym, flat ? @buffers[field.column.index] : nil, flat ? field.column.encoder : nil]
       end
+      @nested_buffers = @plan.reject { |p| p[3] }.flat_map { |p| p[0].leaves.map { |c| @buffers[c.index] } }
       @buffered_rows = 0
     end
 
@@ -174,8 +183,29 @@ module Parakiet
 
     def lookup(hash, name)
       return nil if hash.nil?
-      hash = hash.to_h unless hash.is_a?(Hash)
+      hash = as_hash(hash, name) unless hash.is_a?(Hash)
       hash.fetch(name) { hash[name.to_sym] }
+    end
+
+    def as_hash(value, what)
+      return value if value.is_a?(Hash)
+      raise EncodeError, "Expected a Hash for #{what}, got #{value.class}" unless value.respond_to?(:to_h)
+      value.to_h
+    end
+
+    # Removes the entries a failed row left behind, so the buffers stay aligned
+    def rollback_row(marks)
+      @plan.each do |field, _, _, buf|
+        next unless buf && buf.defs.size > @buffered_rows
+        d = buf.defs.pop
+        buf.values.pop if d == field.def_level
+      end
+      marks&.each_with_index do |(defs, reps, values), i|
+        buf = @nested_buffers[i]
+        buf.defs.slice!(defs..)
+        buf.reps&.slice!(reps..)
+        buf.values.slice!(values..)
+      end
     end
 
     # Record shredding: turns a nested value into (definition level, repetition level, value) entries
@@ -198,7 +228,7 @@ module Parakiet
         buf.reps&.<< rep
         begin
           buf.values << field.column.encoder.call(value)
-        rescue ArgumentError, TypeError, NoMethodError => e
+        rescue ArgumentError, TypeError, NoMethodError, RangeError => e
           raise EncodeError, "Cannot write #{value.inspect} to #{field.column.dotted_path}: #{e.message}"
         end
       when :struct
@@ -308,6 +338,7 @@ module Parakiet
     end
 
     def use_dictionary?(col)
+      return false if col.type == T::BOOLEAN
       case @dictionary
       when true then ![T::BOOLEAN, T::FLOAT, T::DOUBLE].include?(col.type) && !@encodings.key?(col.dotted_path)
       when false, nil then false
@@ -317,6 +348,14 @@ module Parakiet
 
     # Returns [dictionary_values, indices] or nil when a dictionary is not worthwhile
     def build_dictionary(values, type, type_length)
+      # Floats are keyed by bit pattern so that -0.0 and 0.0 (and NaNs) stay distinct
+      if type == T::FLOAT || type == T::DOUBLE
+        keys = values.pack("G*").unpack("Q>*")
+        uniq = keys.uniq
+        return nil if uniq.size > values.size / 2 + 1 && values.size > 16
+        index = uniq.each_with_index.to_h
+        return [uniq.pack("Q>*").unpack("G*"), keys.map(&index)]
+      end
       dict = values.uniq
       return nil if dict.size > values.size / 2 + 1 && values.size > 16
       size = case type

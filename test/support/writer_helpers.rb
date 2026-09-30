@@ -150,11 +150,11 @@ module WriterHelpers
     "t_ms" => ->(r) { r.rand(0...86_400_000) },
     "t_us" => ->(r) { r.rand(0...86_400_000_000) },
     "t_ns" => ->(r) { r.rand(0...86_400_000_000_000) },
-    "ts_ms" => ->(r) { Time.at(r.rand(-2**40..2**40), :millisecond).utc },
-    "ts_us" => ->(r) { Time.at(r.rand(-2**50..2**50), :microsecond).utc },
-    "ts_ns" => ->(r) { Time.at(r.rand(-2**62..2**62), :nanosecond).utc },
-    "ts_local" => ->(r) { Time.at(r.rand(-2**50..2**50), :microsecond).utc },
-    "i96" => ->(r) { Time.at(r.rand(-2**62..2**62), :nanosecond).utc },
+    "ts_ms" => ->(r) { Time.at(0, r.rand(-2**40..2**40), :millisecond).utc },
+    "ts_us" => ->(r) { Time.at(0, r.rand(-2**50..2**50), :microsecond).utc },
+    "ts_ns" => ->(r) { Time.at(0, r.rand(-2**62..2**62), :nanosecond).utc },
+    "ts_local" => ->(r) { Time.at(0, r.rand(-2**50..2**50), :microsecond).utc },
+    "i96" => ->(r) { Time.at(0, r.rand(-2**62..2**62), :nanosecond).utc },
     "dec_small" => ->(r) { BigDecimal(r.rand(-999_999_999..999_999_999)) / 100 },
     "dec_med" => ->(r) { BigDecimal(r.rand(-10**18 + 1..10**18 - 1)) / 10_000 },
     "dec_large" => ->(r) { BigDecimal(r.rand(-10**38 + 1..10**38 - 1)) / 10**10 },
@@ -269,5 +269,68 @@ module WriterHelpers
       yield header, body
     end
     assert_equal buf.bytesize, pos, "pages must exactly fill total_compressed_size"
+  end
+end
+
+# Schema and data for the explicit encodings tests
+module WriterTestSchemas
+  I32_MIN = WriterHelpers::I32_MIN
+  I32_MAX = WriterHelpers::I32_MAX
+  I64_MIN = WriterHelpers::I64_MIN
+  I64_MAX = WriterHelpers::I64_MAX
+
+  ENCODING_SCHEMA = Parakiet::Schema.define do
+    int32 :i32
+    int64 :i64, null: false
+    int32 :i32_bss
+    int64 :i64_bss
+    float :f32
+    double :f64
+    string :s_dlba
+    string :s_dba
+    binary :b_dba
+    fixed :fx_dba, length: 4
+    fixed :fx_bss, length: 3
+    decimal :dec_bss, precision: 30, scale: 2
+    boolean :bool_rle
+    boolean :bool_rle_req, null: false
+    list :l_delta, :int64
+    date :d_delta
+    uint64 :u64_delta
+  end
+
+  ENCODINGS = {
+    "i32" => :delta_binary_packed, "i64" => :delta_binary_packed, "i32_bss" => :byte_stream_split,
+    "i64_bss" => :byte_stream_split, "f32" => :byte_stream_split, "f64" => :byte_stream_split,
+    "s_dlba" => :delta_length_byte_array, "s_dba" => :delta_byte_array, "b_dba" => :delta_byte_array,
+    "fx_dba" => :delta_byte_array, "fx_bss" => :byte_stream_split, "dec_bss" => :byte_stream_split,
+    "bool_rle" => :rle, "bool_rle_req" => :rle, "l_delta.list.element" => :delta_binary_packed,
+    "d_delta" => :delta_binary_packed, "u64_delta" => :delta_binary_packed
+  }.freeze
+
+  def self.encoding_rows(n)
+    rng = Random.new(9)
+    Array.new(n) do |i|
+      maybe = ->(v) { (i % 7 == 3) ? nil : v }
+      {
+        "i32" => maybe.([I32_MIN, I32_MAX, 0, rng.rand(-100..100)][i % 4]),
+        "i64" => [I64_MIN, I64_MAX, 0, rng.rand(I64_MIN..I64_MAX)][i % 4],
+        "i32_bss" => maybe.(rng.rand(I32_MIN..I32_MAX)),
+        "i64_bss" => maybe.(rng.rand(I64_MIN..I64_MAX)),
+        "f32" => maybe.([1.5, -0.0, Float::NAN, Float::INFINITY, 0.25][i % 5]),
+        "f64" => maybe.([rng.rand, -0.0, Float::NAN, -Float::INFINITY][i % 4]),
+        "s_dlba" => maybe.(["", "é" * (i % 5), "abc#{i}"][i % 3]),
+        "s_dba" => maybe.(["prefix/#{i / 3}/x", "", "prefix/"][i % 3]),
+        "b_dba" => maybe.(rng.bytes(i % 6)),
+        "fx_dba" => maybe.(["aaaa", "aaab", "\x00\x00\x00\x00".b, "zzzz"][i % 4]),
+        "fx_bss" => maybe.(rng.bytes(3)),
+        "dec_bss" => maybe.(BigDecimal(rng.rand(-10**27..10**27)) / 100),
+        "bool_rle" => maybe.(i % 11 < 8),
+        "bool_rle_req" => i.odd?,
+        "l_delta" => maybe.(Array.new(i % 4) { |j| j == 1 ? nil : rng.rand(I64_MIN..I64_MAX) }),
+        "d_delta" => maybe.(Date.new(2000, 1, 1) + i * 1000 - 20_000),
+        "u64_delta" => maybe.([2**64 - 1, 0, 2**63][i % 3])
+      }
+    end
   end
 end
