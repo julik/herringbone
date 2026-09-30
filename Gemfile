@@ -12,3 +12,10 @@ group :test do
   gem "activerecord", ">= 7.0", "< 9"
   gem "sqlite3", ">= 1.6"
 end
+
+# Optional compression libraries. Herringbone requires them on first use of ZSTD / Brotli.
+# CI also runs the suite with BUNDLE_WITHOUT=codecs to check the behaviour without them.
+group :codecs do
+  gem "zstd-ruby"
+  gem "brotli"
+end

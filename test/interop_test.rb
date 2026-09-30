@@ -78,7 +78,7 @@ class InteropTest < Minitest::Test
       enc_rows = WriterTestSchemas.encoding_rows(200)
       [1, 2].each do |v|
         [nil, 50].each do |ps|
-          opts = { data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: :zstd }
+          opts = { data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: Herringbone::Compression.available?(:zstd) ? :zstd : :gzip }
           opts[:page_size] = ps if ps
           list << Case.new(name: "encodings_v#{v}_#{ps || "default"}", schema: enc_schema, rows: enc_rows, options: opts)
         end
@@ -230,7 +230,7 @@ class InteropTest < Minitest::Test
                      zstd: "ZSTD", brotli: "BROTLI" }.freeze
 
   def check_codecs(c, r)
-    want = PYARROW_CODECS.fetch(c.options.fetch(:compression, :zstd))
+    want = PYARROW_CODECS.fetch(c.options.fetch(:compression, :snappy))
     r["columns"].flatten.each { |col| assert_equal want, col["codec"], "#{c.name}: codec" }
   end
 

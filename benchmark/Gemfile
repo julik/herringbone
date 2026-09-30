@@ -4,5 +4,6 @@
 source "https://rubygems.org"
 
 gem "herringbone", path: ".."
+gem "zstd-ruby" # optional ZSTD support in herringbone, used by the benchmarks
 gem "parquet" # https://github.com/njaremko/parquet-ruby (Rust, via magnus)
 gem "get_process_mem"

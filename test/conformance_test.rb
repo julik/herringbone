@@ -21,7 +21,11 @@ class ConformanceTest < Minitest::Test
     define_method("test_#{name.gsub(/[^a-z0-9]+/i, "_")}") do
       skip SKIPS[name] if SKIPS[name]
       skip "pyarrow cannot read this file either: #{expected["error"]}" if expected["error"] && !expected["rows"]
-      check_file(parquet_path, expected)
+      begin
+        check_file(parquet_path, expected)
+      rescue Herringbone::MissingCodecError => e
+        skip e.message
+      end
     end
   end
 

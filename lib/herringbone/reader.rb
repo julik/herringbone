@@ -55,6 +55,22 @@ module Herringbone
       (@metadata.key_value_metadata || []).to_h { |kv| [kv.key, kv.value] }
     end
 
+    # Compression codecs used by the file's column chunks, e.g. [:snappy, :zstd]
+    def codecs
+      codec_ids.map { |id| Compression::NAMES.fetch(id, id) }
+    end
+
+    # Codecs this file uses that cannot be decoded here (e.g. [:zstd] without the zstd-ruby gem)
+    def missing_codecs
+      codec_ids.reject { |id| Compression.available?(id) }.map { |id| Compression::NAMES.fetch(id, id) }
+    end
+
+    # Raises MissingCodecError / UnsupportedError now, rather than partway through reading
+    def ensure_codecs_available!
+      codec_ids.each { |id| Compression.ensure_available!(id) }
+      self
+    end
+
     # Yields each row as a Hash of top-level field name => value
     def each_row(columns: nil, &block)
       return enum_for(:each_row, columns: columns) unless block
@@ -96,6 +112,11 @@ module Herringbone
       chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
       ColumnChunkReader.new(@io, chunk, column).read
     end
+
+    def codec_ids
+      row_groups.flat_map { |rg| rg.columns.map { |c| c.meta_data&.codec } }.compact.uniq
+    end
+    private :codec_ids
 
     def inspect
       "#<#{self.class.name} rows=#{num_rows} row_groups=#{num_row_groups} created_by=#{created_by.inspect}>"
@@ -215,6 +236,8 @@ module Herringbone
 
       def decompress(body, size)
         Compression.decompress(@meta.codec, body, size)
+      rescue UnsupportedError => e
+        raise e, "#{e.message} (column #{@column.dotted_path})"
       end
 
       def read_dictionary(header, body)

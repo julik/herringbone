@@ -6,8 +6,8 @@ Priorities: writing over reading, native Ruby types, ergonomics over a few % of 
 
 `Schema.from_active_record`, Hash schemas, Array/`#attributes`/`#to_h` rows, coercions for Rails
 values (json, time of day, ISO dates/timestamps, TimeWithZone, booleans, numerics), `enum` as a
-validated string column, row numbers in errors, atomic path writes and IO targets, zstd by
-default, byte-based row groups (`row_group_bytes:`, 16MB default).
+validated string column, row numbers in errors, atomic path writes and IO targets, snappy by
+default with zstd/brotli as optional gems (clear MissingCodecError when absent), byte-based row groups (`row_group_bytes:`, 16MB default).
 
 Buffering: levels are byte Strings, string/fixed columns are dictionary-encoded on the fly or
 packed into byte buffers (ByteValues). 3M-row export: 370 → 285 MB RSS at 16MB row groups,

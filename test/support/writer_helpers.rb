@@ -6,7 +6,8 @@ require_relative "canonical"
 
 # Shared schemas, data generators and helpers for the writer and interop tests
 module WriterHelpers
-  CODECS = %i[none snappy gzip lz4 lz4_hadoop zstd brotli].freeze
+  # zstd and brotli only when their optional gems are installed (CI also runs without them)
+  CODECS = %i[none snappy gzip lz4 lz4_hadoop zstd brotli].select { |c| Herringbone::Compression.available?(c) }.freeze
 
   def self.codec_available?(codec)
     Herringbone::Compression.compress(Herringbone::Compression.codec_id(codec), "x".b)

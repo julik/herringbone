@@ -2,8 +2,8 @@
 
 A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) files.
 
-- No native extensions, no Thrift gem: the Thrift compact protocol, all encodings and the
-  Snappy and LZ4 codecs are implemented in Ruby
+- No Thrift gem and no native extensions of its own: the Thrift compact protocol, all encodings
+  and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems)
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
 - Ruby 3.0+
@@ -14,8 +14,37 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 gem "herringbone"
 ```
 
-Snappy and LZ4 are implemented in Ruby, GZIP uses `zlib`, and ZSTD and Brotli come from the
-`zstd-ruby` and `brotli` gems (runtime dependencies, along with `bigdecimal`).
+The only dependency is `bigdecimal`. Compression support:
+
+| codec | provided by |
+|---|---|
+| none, Snappy, LZ4 (raw and Hadoop-framed) | Herringbone itself (pure Ruby) |
+| GZIP | `zlib` (part of Ruby) |
+| ZSTD | the `zstd-ruby` gem, if installed |
+| Brotli | the `brotli` gem, if installed |
+| LZO | not supported |
+
+To read or write ZSTD or Brotli, add the gem next to Herringbone:
+
+```ruby
+gem "herringbone"
+gem "zstd-ruby" # ZSTD: faster writes and smaller files than the default Snappy
+gem "brotli"
+```
+
+Herringbone requires these on first use. Without them, asking a writer for `compression: :zstd`
+raises `Herringbone::MissingCodecError` straight away (before any file is created), and reading
+a ZSTD-compressed file raises it when the first such page is reached, naming the missing gem and
+the column. The file's metadata and schema can still be read. To check upfront:
+
+```ruby
+Herringbone::Reader.open("data.parquet") do |reader|
+  reader.codecs          # => [:zstd]
+  reader.missing_codecs  # => [:zstd] when zstd-ruby is not installed
+  reader.ensure_codecs_available! # raises MissingCodecError now instead of mid-read
+end
+Herringbone::Compression.available?(:zstd) # => true / false
+```
 
 ## Reading
 
@@ -120,7 +149,7 @@ Writer options:
 
 | option | default | |
 |---|---|---|
-| `compression` | `:zstd` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
+| `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd` (needs `zstd-ruby`), `:brotli` (needs `brotli`) |
 | `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory; bounds memory use. Low-cardinality string columns are dictionary-encoded as rows arrive and other strings are packed into byte buffers, so a 15-column table exported in 16MB groups peaks around 290 MB RSS (420 MB with 64MB groups) |
 | `row_group_size` | none | also flush after this many rows |
 | `page_size` | 1MB | approximate data page size |

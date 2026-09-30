@@ -226,13 +226,6 @@ class ErgonomicsTest < Minitest::Test
     assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).rows
   end
 
-  def test_default_codec_is_zstd
-    io = StringIO.new("".b)
-    Herringbone::Writer.open(io, { a: :int32 }) { |w| w << [1] }
-    reader = Herringbone::Reader.new(StringIO.new(io.string))
-    assert_equal Herringbone::Format::Codec::ZSTD, reader.row_groups[0].columns[0].meta_data.codec
-  end
-
   def test_row_group_bytes_bounds_row_groups
     schema = Herringbone::Schema.define(id: :int64, s: :string)
     rows = Array.new(20_000) { |i| { id: i, s: format("%090d", i) } } # ~110 bytes per row, all distinct

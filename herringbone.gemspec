@@ -8,8 +8,9 @@ Gem::Specification.new do |spec|
   spec.authors = ["Julik Tarkhanov"]
   spec.email = ["me@julik.nl"]
   spec.summary = "Pure-Ruby Apache Parquet reader and writer"
-  spec.description = "Reads and writes Apache Parquet files without native extensions or Thrift. " \
-    "Snappy and LZ4 are implemented in Ruby; ZSTD and Brotli are used when their gems are present."
+  spec.description = "Reads and writes Apache Parquet files in Ruby, without Thrift or native extensions " \
+    "of its own. Snappy and LZ4 are implemented in Ruby and GZIP uses zlib; ZSTD and Brotli are " \
+    "available when the zstd-ruby / brotli gems are installed."
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
   spec.files = Dir["lib/**/*.rb", "bin/*", "README.md", "LICENSE"]
@@ -18,6 +19,4 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "bigdecimal"
-  spec.add_dependency "brotli"
-  spec.add_dependency "zstd-ruby"
 end

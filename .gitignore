@@ -1,6 +1,7 @@
 # Bundler / packaging
 /Gemfile.lock
 /benchmark/Gemfile.lock
+/.bundle/
 /pkg/
 *.gem
 

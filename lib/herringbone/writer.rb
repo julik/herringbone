@@ -19,7 +19,8 @@ module Herringbone
   # failed write never leaves a truncated file behind.
   #
   # Options:
-  #   compression:     :zstd (default), :snappy, :gzip, :lz4 (LZ4_RAW), :brotli, :none
+  #   compression:     :snappy (default), :zstd, :gzip, :lz4 (LZ4_RAW), :lz4_hadoop, :brotli, :none
+  #                    (:zstd and :brotli need the zstd-ruby / brotli gems)
   #   row_group_bytes: flush a row group once the buffered values take roughly this much memory
   #                    (default 16MB). This bounds memory use while writing.
   #   row_group_size:  also flush after this many rows (default: no row limit)
@@ -70,11 +71,13 @@ module Herringbone
       result
     end
 
-    def initialize(target, schema, compression: :zstd, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
+    def initialize(target, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_size: nil,
       page_size: 1024 * 1024, data_page_version: 1, dictionary: true, encodings: {}, statistics: true, metadata: {})
       @schema = Schema.coerce(schema)
       schema = @schema
       @codec = Compression.codec_id(compression)
+      # Fail before creating any file if the codec's library is missing
+      Compression.ensure_available!(@codec)
       @row_group_bytes = Integer(row_group_bytes)
       @row_group_size = row_group_size && Integer(row_group_size)
       @row_limit = @row_group_size || ESTIMATE_AFTER_ROWS
