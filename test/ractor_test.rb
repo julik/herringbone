@@ -98,6 +98,49 @@ class RactorTest < Minitest::Test
     rereads.each_with_index { |r, i| assert_includes [200 + i, :no_numo], r[3] }
   end
 
+  # Shareable rows reach the writer by reference, without being copied. (send(row, move: true)
+  # cannot move Time or Date, and corrupts moved Hashes of Strings on Ruby 3.2 and 3.4.)
+  def test_rows_sent_to_a_writer_ractor_are_not_copied
+    skip "Ractors need Ruby 3.1" if RUBY_VERSION < "3.1"
+    schemas = {
+      "all_types.parquet" => WriterHelpers::ALL_TYPES_SCHEMA,
+      "nested.parquet" => WriterHelpers::NESTED_SCHEMA
+    }
+    writers = schemas.to_h do |name, schema|
+      writer = Ractor.new(File.join(@dir, name), Ractor.make_shareable(schema)) do |path, schema|
+        seen = []
+        File.open(path, "wb") do |f|
+          w = Herringbone::Writer.new(f, schema, row_group_rows: 50)
+          while (row = Ractor.receive) != :done
+            seen << row.object_id if seen.size < 3
+            w << row
+          end
+          w.close
+          [w.rows_written, seen]
+        end
+      end
+      [name, writer]
+    end
+
+    rows = {
+      "all_types.parquet" => WriterHelpers.all_types_rows(120),
+      "nested.parquet" => WriterHelpers.nested_rows(80)
+    }
+    rows.each do |name, list|
+      list.each { |row| writers[name].send(Ractor.make_shareable(row)) }
+      writers[name].send(:done)
+    end
+
+    rows.each do |name, list|
+      count, seen = ractor_value(writers[name])
+      assert_equal list.size, count, name
+      assert_equal list.first(3).map(&:object_id), seen, "#{name}: the writer gets the same objects"
+    end
+    read = ->(name, columns) { File.open(File.join(@dir, name), "rb") { |f| Herringbone::Reader.new(f).read(columns: columns) } }
+    assert_equal rows["all_types.parquet"].map { |r| r.slice("id", "str", "ts_us") }, read.call("all_types.parquet", %w[id str ts_us])
+    assert_equal rows["nested.parquet"].map { |r| r.slice("id", "m_nullval") }, read.call("nested.parquet", %w[id m_nullval])
+  end
+
   private
 
   # Whether the codecs of the file's column chunks are available
