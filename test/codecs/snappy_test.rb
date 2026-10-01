@@ -130,3 +130,87 @@ class SnappyTest < Minitest::Test
     assert_operator Snappy::Error, :<, StandardError
   end
 end
+
+# The optional `snappy` gem and the pure-Ruby codec must be interchangeable
+class SnappyBackendTest < Minitest::Test
+  Snappy = Herringbone::Codecs::Snappy
+
+  def teardown
+    Snappy.backend = nil
+  end
+
+  def with_backend(name)
+    Snappy.backend = name
+    yield
+  ensure
+    Snappy.backend = nil
+  end
+
+  def samples
+    rng = Random.new(42)
+    [
+      "".b,
+      "a".b,
+      ("abcd" * 10_000).b,
+      Array.new(70_000) { rng.rand(256) }.pack("C*"),       # incompressible, over one 64KB block
+      (("hello parquet " * 50) + rng.bytes(3_000)) * 40,    # mixed
+      Array.new(200_000) { |i| [i, i * 3].pack("q<l<") }.join # page-like numbers
+    ]
+  end
+
+  def test_pure_ruby_backend_can_be_forced
+    with_backend(:ruby) do
+      assert_equal :ruby, Snappy.backend
+      samples.each { |data| assert_equal data, Snappy.decompress(Snappy.compress(data)) }
+    end
+  end
+
+  def test_backends_read_each_others_blocks
+    skip "the snappy gem is not installed" unless native?
+    samples.each do |data|
+      from_ruby = with_backend(:ruby) { Snappy.compress(data) }
+      from_native = with_backend(:native) { Snappy.compress(data) }
+      assert_equal data, with_backend(:native) { Snappy.decompress(from_ruby) }
+      assert_equal data, with_backend(:ruby) { Snappy.decompress(from_native) }
+      assert_equal Encoding::BINARY, with_backend(:native) { Snappy.decompress(from_ruby) }.encoding
+    end
+  end
+
+  def test_native_errors_are_wrapped
+    skip "the snappy gem is not installed" unless native?
+    with_backend(:native) do
+      assert_raises(Snappy::Error) { Snappy.decompress("\xFF\xFF\xFFgarbage".b) }
+    end
+  end
+
+  def test_files_round_trip_with_either_backend
+    rows = Array.new(5_000) { |i| { id: i, name: "name #{i % 97}", score: i * 0.5 } }
+    %i[ruby native].each do |backend|
+      next if backend == :native && !native?
+      bytes = with_backend(backend) do
+        io = StringIO.new("".b)
+        Herringbone.write(io, rows)
+        io.string
+      end
+      %i[ruby native].each do |reading|
+        next if reading == :native && !native?
+        got = with_backend(reading) { Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol).read }
+        assert got == rows, "written with #{backend}, read with #{reading}"
+      end
+    end
+  end
+
+  def test_backend_validation
+    assert_raises(ArgumentError) { Snappy.backend = :fast }
+    if native?
+      Snappy.backend = :native
+      assert_equal :native, Snappy.backend
+    else
+      assert_raises(Herringbone::UnsupportedError) { Snappy.backend = :native }
+    end
+  end
+
+  def native?
+    Snappy.send(:native_library) ? true : false
+  end
+end

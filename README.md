@@ -12,13 +12,16 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 
 ```ruby
 gem "herringbone"
+gem "snappy"    # optional: native Snappy, 2-3x faster reads and writes of typical files
 gem "zstd-ruby" # optional: ZSTD (faster writes and smaller files than the default Snappy)
 gem "brotli"    # optional: Brotli
 gem "xxhash"    # optional: faster bloom filters
 gem "numo-narray-alt" # optional: read(as: :numo)
 ```
 
-The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. `Herringbone.codecs` lists
+The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. Snappy, Parquet's most
+common codec, is pure Ruby unless the `snappy` gem is installed (it needs libsnappy or cmake to
+build); Herringbone then uses it automatically. `Herringbone.codecs` lists
 the codecs this process can use, e.g. `[:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd]`. Using
 a missing one raises `Herringbone::MissingCodecError` naming the gem to add: a writer raises it
 before writing anything, a reader when it reaches the first such page (the schema and metadata

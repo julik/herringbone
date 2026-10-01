@@ -23,12 +23,18 @@ jobs:
         include:
           - os: macos-latest
             ruby: "3.4"
+    # The optional native Snappy gem (the runners have cmake to build it); the pure-Ruby Snappy
+    # is covered by the "Without IO::Buffer" and "Without ... gems" jobs below
+    env:
+      BUNDLE_WITH: snappy
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
+      - name: Check the native Snappy gem is in use
+        run: bundle exec ruby -Ilib -e 'require "herringbone"; abort "pure-Ruby Snappy in use" unless Herringbone::Codecs::Snappy.backend == :native'
       - run: bundle exec rake test
 
   # Without the optional zstd-ruby / brotli / xxhash / numo-narray-alt gems: ZSTD and Brotli must
@@ -50,7 +56,8 @@ jobs:
         run: bundle exec ruby -e 'abort "optional gems present" if %w[zstd-ruby brotli xxhash numo-narray-alt].any? { |g| Gem.loaded_specs.key?(g) }'
       - run: bundle exec rake test
 
-  # Same suite on the String-based Snappy path used where IO::Buffer is unavailable
+  # Same suite on the pure-Ruby Snappy's String-based path (used where IO::Buffer is unavailable);
+  # the native snappy gem is not installed here
   no-io-buffer:
     name: Without IO::Buffer
     runs-on: ubuntu-latest
@@ -70,6 +77,8 @@ jobs:
     name: pyarrow interop
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      BUNDLE_WITH: snappy
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1

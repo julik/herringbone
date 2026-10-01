@@ -26,6 +26,13 @@ group :speedups do
   gem "xxhash"
 end
 
+# Optional: native Snappy (libsnappy), used automatically when it loads. Building it needs a
+# system libsnappy (brew install snappy / apt-get install libsnappy-dev) or cmake, so it is only
+# installed on request: `bundle config set --local with snappy` (CI sets BUNDLE_WITH=snappy).
+group :snappy, optional: true do
+  gem "snappy"
+end
+
 # Optional: Herringbone requires "numo/narray" on first use of read(as: :numo) / each_batch(as: :numo).
 # numo-narray-alt is the maintained fork that Rover and ankane's ML gems depend on (plain
 # numo-narray works too). CI also runs the suite with BUNDLE_WITHOUT=codecs:speedups:numo.

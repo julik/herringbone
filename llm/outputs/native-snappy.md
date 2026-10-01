@@ -1,7 +1,14 @@
 # Proposal: optional native Snappy via the `snappy` gem
 
-Status: proposal, not implemented. Measured 2026-10-01 on an M-series Mac, Ruby 3.4.1, using a
-throwaway GEM_HOME (nothing was added to the project).
+Status: implemented as proposed (optional Bundler group `snappy`; `Herringbone::Codecs::Snappy`
+uses the gem when it loads). Measured 2026-10-01 on an M-series Mac, Ruby 3.4.1.
+
+Deviation from the proposal: the gem is in its own *optional* Bundler group
+(`group :snappy, optional: true`), not in `:speedups`, because building it fails on machines
+without libsnappy or cmake and would otherwise break a plain `bundle install`. Developers opt in
+with `bundle config set --local with snappy`; CI sets `BUNDLE_WITH=snappy` on the Ruby matrix and
+interop jobs and checks the native backend is active, while the "Without IO::Buffer" and
+"Without ... gems" jobs keep testing the pure-Ruby codec.
 
 ## Summary
 

@@ -93,3 +93,8 @@ with `bloom_filter_offset`/`bloom_filter_length`. Reads with `where:` consult th
 the parquet-testing fixtures (parquet-mr without length, parquet-rs with length), a pyarrow-written
 fixture covering every physical type, pyarrow reading our files, and DataFusion pruning row groups.
 Possible follow-up: let the Inspector reuse `Format::BloomFilterHeader`.
+
+## Speed
+
+- Optional native Snappy (`snappy` gem, optional Bundler group): 27x faster compression, 12x
+  faster decompression; see llm/outputs/native-snappy.md
