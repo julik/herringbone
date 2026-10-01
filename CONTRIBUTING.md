@@ -38,6 +38,7 @@ Run the `rake` default task to make sure code is properly formatted and document
 This project is something created with love, and I - as an author - expect you, as a contributor, to return the favor. The ground rules:
 
 * Be polite and direct. No abrasiveness, no passive-aggression.
+* [Low-context](https://www.ebsco.com/research-starters/communication-and-mass-media/high-context-and-low-context-cultures) communication is preferred and permitted
 * No ad-hominems, also in code comments
 * No sexualized or aggressive language
 
