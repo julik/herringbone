@@ -292,8 +292,8 @@ module Herringbone
         rep_len = dh.repetition_levels_byte_length
         def_len = dh.definition_levels_byte_length
         reps = defs = nil
-        reps = PageStream::HybridDecoder.new(body, 0, rep_len, RLE_WIDTH[@max_rep]) if @max_rep.positive?
-        defs = PageStream::HybridDecoder.new(body, rep_len, rep_len + def_len, RLE_WIDTH[@max_def]) if @max_def.positive?
+        reps = PageStream::HybridDecoder.new(body, 0, rep_len, @max_rep.bit_length) if @max_rep.positive?
+        defs = PageStream::HybridDecoder.new(body, rep_len, rep_len + def_len, @max_def.bit_length) if @max_def.positive?
         data = body.byteslice(rep_len + def_len, body.bytesize - rep_len - def_len)
         if dh.is_compressed != false
           data = decompress(data, header.uncompressed_page_size - rep_len - def_len)
@@ -301,9 +301,6 @@ module Herringbone
         values, conv = value_decoder(data, 0, dh.encoding)
         PageStream::Page.new(n, defs, reps, values, conv)
       end
-
-      # Bit width of levels up to a max level (memoized Integer#bit_length)
-      RLE_WIDTH = Hash.new { |h, k| h[k] = k.bit_length }
 
       # [decoder, position after the levels]
       #
@@ -317,7 +314,7 @@ module Herringbone
       # @raise [FormatError] when the RLE length prefix is cut off
       # @raise [UnsupportedError] for any other level encoding
       def level_decoder(data, pos, encoding, max, n)
-        width = RLE_WIDTH[max]
+        width = max.bit_length
         case encoding
         when E::RLE
           len = data.byteslice(pos, 4)&.unpack1("V") or raise FormatError, "Truncated levels"
@@ -332,9 +329,9 @@ module Herringbone
       end
 
       # Physical type => [String#unpack directive, byte width] for PLAIN fixed-width values
-      FIXED_FORMATS = {
+      FIXED_FORMATS = Ractor.make_shareable({
         T::INT32 => ["l<", 4], T::INT64 => ["q<", 8], T::FLOAT => ["e", 4], T::DOUBLE => ["E", 8]
-      }.freeze
+      })
 
       # [value decoder, converter still to apply to its values (nil for dictionary pages)]
       #

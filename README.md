@@ -27,7 +27,7 @@ end
 gem "herringbone"
 ```
 
-Require these libraries to speed up and enable certain functionality:
+Add these libraries to speed up and enable certain functionality:
 
 ```ruby
 gem "snappy"          # native Snappy, 2-3x faster reads and writes of typical files
@@ -36,6 +36,17 @@ gem "brotli"          # Brotli
 gem "xxhash"          # faster bloom filters
 gem "numo-narray-alt" # read(as: :numo)
 ```
+
+Herringbone never requires them itself: it uses whichever are loaded. Bundler.require (as in Rails)
+loads them, otherwise require them yourself:
+
+```ruby
+require "herringbone"
+require "zstd-ruby"
+require "numo/narray"
+```
+
+Herringbone works from any Ractor. Pass a schema to a Ractor with `Ractor.make_shareable(schema)`.
 
 ## Reading
 
@@ -93,8 +104,8 @@ shows which row groups and row ranges a read would touch, without reading them.
 
 `as: :numo` returns (or yields, with `each_batch`) a Hash of column name => Numo array, and takes
 the same `columns:`, `where:`, `from:` and `limit:`. Add `gem "numo-narray-alt"` (or
-`numo-narray`) to your Gemfile: Herringbone requires it on first use and raises
-`Herringbone::UnsupportedError` naming the gem when it is missing.
+`numo-narray`) to your Gemfile and `require "numo/narray"`: without it, `as: :numo` raises
+`Herringbone::UnsupportedError` naming the gem.
 
 ```ruby
 cols = reader.read(as: :numo, columns: %w[id amount])  # { "id" => Numo::Int64, "amount" => Numo::DFloat }
@@ -234,7 +245,7 @@ emails or UUIDs; a bloom filter can. They are off by default. `bloom_filters: ["
 (or `true` for every non-boolean column) writes Parquet's split block bloom filters, sized from
 each row group's distinct values at a false positive probability of 1% (`fpp:`, up to `max_bytes:`,
 default 1MB) unless `ndv:` gives the number of distinct values. Nested leaves are named by their
-dotted path (`"tags.list.element"`). Hashing is pure Ruby unless the `xxhash` gem is installed:
+dotted path (`"tags.list.element"`). Hashing is pure Ruby unless the `xxhash` gem is loaded:
 a million rows take about 1.2 s longer to write with a filter on an INT64 column and 2.8 s longer
 with one on a ~22-byte string column, and about 0.5 s longer with `xxhash`.
 

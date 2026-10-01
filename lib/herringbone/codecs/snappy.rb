@@ -7,7 +7,7 @@ module Herringbone
     # Pure-Ruby implementation of the raw Snappy block format (as used by Parquet),
     # see https://github.com/google/snappy/blob/main/format_description.txt
     #
-    # When the `snappy` gem (a binding to Google's libsnappy) can be loaded, it is used instead:
+    # When the `snappy` gem (a binding to Google's libsnappy) is loaded, it is used instead:
     # 12x faster decompression and 27x faster compression. It is optional and only a speedup: if
     # it is missing, the pure-Ruby code below is used silently. Both produce raw Snappy blocks the
     # other reads.
@@ -30,7 +30,7 @@ module Herringbone
       # The length preamble is a 32-bit varint, so no block may decompress to more than this.
       MAX_UNCOMPRESSED = (1 << 32) - 1
 
-      # Name of the optional native gem, passed to +require+.
+      # Name of the optional native gem.
       NATIVE_GEM = "snappy"
 
       module_function
@@ -57,41 +57,34 @@ module Herringbone
         native ? :native : :ruby
       end
 
-      # For tests and benchmarks: :ruby forces pure Ruby, :native requires the snappy gem
-      # (UnsupportedError if it cannot be loaded), nil goes back to the default
+      # For tests and benchmarks: :ruby forces pure Ruby, :native the snappy gem
+      # (UnsupportedError if it is not loaded), nil goes back to the default
       # @param name [Symbol, nil] +:ruby+, +:native+ or nil
       # @return [void]
-      # @raise [UnsupportedError] if +:native+ is requested and the gem cannot be loaded
+      # @raise [UnsupportedError] if +:native+ is requested and the gem is not loaded
       # @raise [ArgumentError] for any other backend name
       def backend=(name)
         @native = case name
         when :ruby then false
         when :native
-          native_library || raise(UnsupportedError, "The \"#{NATIVE_GEM}\" gem could not be loaded")
+          native_library || raise(UnsupportedError, "The \"#{NATIVE_GEM}\" gem is not loaded (require \"#{NATIVE_GEM}\")")
         when nil then nil
         else raise ArgumentError, "Unknown Snappy backend #{name.inspect} (expected :ruby, :native or nil)"
         end
       end
 
-      # The native library to use, resolved (and memoized) on first call unless forced by backend=.
+      # The native library to use: the snappy gem when it is loaded, unless backend= forced one.
       # @return [Module, nil] the +::Snappy+ module, or nil when the pure-Ruby code should run
       def native
-        @native = native_library || false if @native.nil?
-        @native || nil
+        native = @native
+        native = native_library if native.nil?
+        native || nil
       end
 
-      # Tries to load the snappy gem once and memoizes the result.
-      # @return [Module, false] the +::Snappy+ module, or false if it is missing or lacks inflate/deflate
+      # Not memoized, so that it works the same in every Ractor and once the gem is required later.
+      # @return [Module, false] the +::Snappy+ module, or false if it is not loaded or lacks inflate/deflate
       def native_library
-        if @native_lib.nil?
-          @native_lib = begin
-            require NATIVE_GEM
-            (::Snappy.respond_to?(:inflate) && ::Snappy.respond_to?(:deflate)) ? ::Snappy : false
-          rescue LoadError
-            false
-          end
-        end
-        @native_lib
+        (defined?(::Snappy.inflate) && defined?(::Snappy.deflate)) ? ::Snappy : false
       end
 
       # Decompresses into a preallocated IO::Buffer: copies do not allocate intermediate Strings.

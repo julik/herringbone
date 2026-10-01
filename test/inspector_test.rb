@@ -15,14 +15,10 @@ class InspectorTest < Minitest::Test
 
   # Runs the block with the optional codec gems unavailable and decompression forbidden
   def without_decompression(&block)
-    Compression.instance_variable_set(:@libraries, {})
-    missing = ->(path) { raise LoadError, "cannot load such file -- #{path}" }
     forbidden = ->(*) { flunk "the inspector must not decompress pages" }
-    Compression.stub(:require_library, missing) do
+    Compression.stub(:loaded_library, nil) do
       Compression.stub(:decompress, forbidden, &block)
     end
-  ensure
-    Compression.instance_variable_set(:@libraries, {})
   end
 
   def inspect_file(path)

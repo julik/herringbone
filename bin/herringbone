@@ -13,6 +13,10 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
 require "json"
+%w[zstd-ruby brotli snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "tmpdir"
 
 def jsonable(v)

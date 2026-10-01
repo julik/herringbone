@@ -2,12 +2,17 @@
 
 # Cost of bloom filters when writing: XXH64 throughput, then writing ROWS rows (an INT64 id and a
 # ~22-byte String) without filters, with a filter on the int column and on the string column.
-# Runs with the pure-Ruby XXH64 and, when the optional "xxhash" gem can be loaded, with it too.
+# Runs with the pure-Ruby XXH64 and, when the optional "xxhash" gem is installed, with it too.
 #
 #   ruby -Ilib benchmark/bloom_filters.rb
 #   ROWS=100000 ruby -Ilib benchmark/bloom_filters.rb
 require "herringbone"
 require "stringio"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 
 ROWS = Integer(ENV.fetch("ROWS", 1_000_000))
 HASHES = Integer(ENV.fetch("HASHES", 500_000))

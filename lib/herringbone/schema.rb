@@ -147,21 +147,18 @@ module Herringbone
       # @return [String] path joined with dots, as used for column names in options
       def dotted_path = @path.join(".")
 
-      # Memoized Types.reader_for of the node.
+      # Types.reader_for of the node. Not memoized: a Schema holding Procs could not be made
+      # Ractor-shareable.
       #
       # @return [Proc, Method, nil] converts a physical value into its Ruby value, or nil when the physical
       #   value is used as-is
-      def converter
-        @converter ||= Types.reader_for(@node)
-      end
+      def converter = Types.reader_for(@node)
 
-      # Memoized Types.writer_for of the node.
+      # Types.writer_for of the node. Not memoized, like #converter.
       #
       # @return [Proc, Method] converts a Ruby value into the physical value to store, raising
       #   ArgumentError / TypeError / RangeError for values that do not fit
-      def encoder
-        @encoder ||= Types.writer_for(@node)
-      end
+      def encoder = Types.writer_for(@node)
     end
 
     # A node of the logical tree.
@@ -217,12 +214,10 @@ module Herringbone
       # @return [Boolean] true for a primitive (+:leaf+) field
       def leaf? = @kind == :leaf
 
-      # Memoized lookup of a struct's children; only valid for +:struct+ fields.
+      # Lookup of a struct's children; only valid for +:struct+ fields.
       #
       # @return [Hash{String => Field}] child fields by name
-      def children_by_name
-        @children_by_name ||= @children.to_h { |c| [c.name, c] }
-      end
+      def children_by_name = @children.to_h { |c| [c.name, c] }
     end
 
     # The root Node, the leaf Columns in file order, and the top-level Fields of the logical tree

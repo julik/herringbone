@@ -62,7 +62,7 @@ module Herringbone
     #   (other Writer options are passed on as well)
     # @yield optional block evaluated with +instance_eval+ on a Schema::Builder, declaring columns
     #   (named in #headers!) that replace inferred ones
-    # @raise [MissingCodecError] when the codec's optional gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's optional gem is not loaded
     def initialize(io, **options, &overrides)
       @headers = nil
       @overrides = overrides

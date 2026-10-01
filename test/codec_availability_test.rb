@@ -24,11 +24,7 @@ class CodecAvailabilityTest < Minitest::Test
 
   # Runs the block as if the optional codec gems were not installed
   def without_codec_gems(&block)
-    Compression.instance_variable_set(:@libraries, {})
-    missing = ->(path) { raise LoadError, "cannot load such file -- #{path}" }
-    Compression.stub(:require_library, missing, &block)
-  ensure
-    Compression.instance_variable_set(:@libraries, {})
+    Compression.stub(:loaded_library, nil, &block)
   end
 
   def test_writer_fails_upfront_for_missing_codec
@@ -39,8 +35,7 @@ class CodecAvailabilityTest < Minitest::Test
       assert_equal "ZSTD", error.codec
       assert_equal "zstd-ruby", error.gem_name
       assert_match(/needs the "zstd-ruby" gem/, error.message)
-      assert_match(/cannot load such file -- zstd-ruby/, error.message)
-      assert_match(/Add `gem "zstd-ruby"` to your Gemfile/, error.message)
+      assert_match(/Add `gem "zstd-ruby"` to your Gemfile and `require "zstd-ruby"`/, error.message)
 
       error = assert_raises(Herringbone::MissingCodecError) do
         Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :brotli)

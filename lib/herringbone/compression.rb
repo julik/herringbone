@@ -4,74 +4,59 @@ require "zlib"
 require "stringio"
 
 module Herringbone
-  # Raised when a file uses (or a writer asks for) a codec whose library is not installed
+  # Raised when a file uses (or a writer asks for) a codec whose library is not loaded
   class MissingCodecError < UnsupportedError
     # @return [String] codec name (+"ZSTD"+) and name of the gem providing it (+"zstd-ruby"+)
     attr_reader :codec, :gem_name
 
     # @param codec [String] codec name, as shown in the message
     # @param gem_name [String] gem to add to the Gemfile
-    # @param load_error [LoadError] the error from requiring the gem, whose message is included
-    def initialize(codec, gem_name, load_error)
+    # @param path [String] what to require to load the gem
+    def initialize(codec, gem_name, path)
       @codec = codec
       @gem_name = gem_name
-      super("#{codec} compression needs the \"#{gem_name}\" gem, which could not be loaded " \
-        "(#{load_error.message}). Add `gem \"#{gem_name}\"` to your Gemfile to use #{codec}.")
+      super("#{codec} compression needs the \"#{gem_name}\" gem, which is not loaded. Add " \
+        "`gem \"#{gem_name}\"` to your Gemfile and `require \"#{path}\"` to use #{codec}.")
     end
   end
 
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby and GZIP
   # uses zlib, so those always work. ZSTD and Brotli come from optional gems (zstd-ruby, brotli),
-  # which are required on first use; if they are missing, MissingCodecError says what to add.
-  # (Snappy also uses the optional snappy gem when it is installed, see Codecs::Snappy.)
+  # which the application requires; if they are not loaded, MissingCodecError says what to add.
+  # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
   module Compression
     module_function
 
     # Codecs backed by optional native gems: codec id => [name, gem, require path, constant]
-    LIBRARIES = {
+    LIBRARIES = Ractor.make_shareable({
       Format::Codec::ZSTD => ["ZSTD", "zstd-ruby", "zstd-ruby", :Zstd],
       Format::Codec::BROTLI => ["Brotli", "brotli", "brotli", :Brotli]
-    }.freeze
+    })
 
-    @libraries = {}
-    @library_mutex = Mutex.new
-
-    # The library module for a codec backed by an optional gem, requiring it on first use
+    # The library module for a codec backed by an optional gem
     #
     # @param codec [Integer] a codec id that is a key of LIBRARIES
     # @return [Module] the gem's module (+Zstd+ or +Brotli+)
-    # @raise [MissingCodecError] when the gem cannot be loaded
+    # @raise [MissingCodecError] when the gem is not loaded
     # @raise [KeyError] for a codec id not in LIBRARIES
     def library(codec)
-      @libraries.fetch(codec) do
-        @library_mutex.synchronize do
-          @libraries.fetch(codec) do
-            name, gem_name, path, const = LIBRARIES.fetch(codec)
-            begin
-              require_library(path)
-            rescue LoadError => e
-              raise MissingCodecError.new(name, gem_name, e)
-            end
-            @libraries[codec] = Object.const_get(const)
-          end
-        end
-      end
+      name, gem_name, path, const = LIBRARIES.fetch(codec)
+      loaded_library(const) || raise(MissingCodecError.new(name, gem_name, path))
     end
 
-    # Requires a codec gem; a separate method so tests can stub it to simulate a missing gem
+    # A separate method so tests can stub it to simulate a missing gem
     #
-    # @param path [String] require path of the gem
-    # @return [Boolean] whether the library was newly loaded
-    # @raise [LoadError] when the gem is not installed
-    def require_library(path)
-      require path
+    # @param const [Symbol] top-level constant the gem defines
+    # @return [Module, nil] the gem's module, nil when it is not loaded
+    def loaded_library(const)
+      Object.const_get(const) if Object.const_defined?(const)
     end
 
     # Raises MissingCodecError (or UnsupportedError) unless +codec+ can be used
     #
     # @param codec [Integer, Symbol, String] codec id or name (see NAMES)
     # @return [Module, nil] the gem's module for a gem-backed codec, nil for a built-in one
-    # @raise [MissingCodecError] when the codec's gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's gem is not loaded
     # @raise [UnsupportedError] for a codec herringbone does not implement (LZO)
     # @raise [ArgumentError] for an unknown codec name
     def ensure_available!(codec)
@@ -115,7 +100,7 @@ module Herringbone
     # @param uncompressed_size [Integer] expected decompressed size in bytes
     # @return [String] decompressed bytes (binary)
     # @raise [UnsupportedError] for a codec herringbone does not implement
-    # @raise [MissingCodecError] when the codec's gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's gem is not loaded
     # @raise [FormatError] when the decompressed size does not match +uncompressed_size+
     def decompress(codec, data, uncompressed_size)
       return "".b if uncompressed_size.zero? && data.empty?
@@ -143,7 +128,7 @@ module Herringbone
     # @param data [String] bytes to compress
     # @return [String] compressed bytes (binary)
     # @raise [UnsupportedError] for a codec herringbone does not implement
-    # @raise [MissingCodecError] when the codec's gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's gem is not loaded
     def compress(codec, data)
       case codec
       when Format::Codec::UNCOMPRESSED then data

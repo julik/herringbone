@@ -107,7 +107,7 @@ module Herringbone
     # @return [Reader, Enumerator] self, or an Enumerator of batches when no block is given
     # @raise [ArgumentError] for a non-positive +size+, unknown +as+, negative +from+ / +limit+,
     #   or an unknown column in +columns+ or +where+
-    # @raise [UnsupportedError] with +as: :numo+ when no Numo gem can be loaded
+    # @raise [UnsupportedError] with +as: :numo+ when Numo is not loaded
     def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, as: :rows, where: nil, from: nil, limit: nil)
       return enum_for(:each_batch, size, columns: columns, as: as, where: where, from: from, limit: limit) unless block_given?
       size = Integer(size)
@@ -249,7 +249,7 @@ module Herringbone
     # @return [Array<Hash>, Hash{String, Symbol => Array}, Hash{String, Symbol => Numo::NArray}]
     #   row Hashes (+:rows+), or field name => all values (+:columns+, +:numo+)
     # @raise [ArgumentError] for an unknown +as+, negative +from+ / +limit+ or an unknown column
-    # @raise [UnsupportedError] with +as: :numo+ when no Numo gem can be loaded
+    # @raise [UnsupportedError] with +as: :numo+ when Numo is not loaded
     def read(columns: nil, as: :rows, where: nil, from: nil, limit: nil)
       if as == :numo
         raise ArgumentError, "limit: must not be negative" if limit&.negative?
@@ -315,7 +315,7 @@ module Herringbone
     # @yieldparam batch [Hash{String, Symbol => Numo::NArray}] field name => values of the batch
     # @yieldreturn [void]
     # @return [void]
-    # @raise [UnsupportedError] when no Numo gem can be loaded
+    # @raise [UnsupportedError] when Numo is not loaded
     def each_numo_batch(size, columns, where, from, limit)
       NumoColumns.load!
       symbolize = @symbolize

@@ -12,6 +12,11 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
 require "numo/narray"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "fiddle"
 require "tmpdir"
 

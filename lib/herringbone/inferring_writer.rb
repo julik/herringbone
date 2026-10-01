@@ -23,7 +23,7 @@ module Herringbone
     # @yield [sample] builds the schema once the sample is complete (or at #close)
     # @yieldparam sample [Array] the rows held back, at most Schema::INFER_SAMPLE
     # @yieldreturn [Schema]
-    # @raise [MissingCodecError] when the codec's optional gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's optional gem is not loaded
     def initialize(io, fix:, **options, &schema_for)
       # Fail before reading any rows if the codec's library is missing
       Compression.ensure_available!(Compression.codec_id(options.fetch(:compression, :snappy)))

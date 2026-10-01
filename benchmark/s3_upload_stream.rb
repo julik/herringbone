@@ -17,6 +17,11 @@
 # After the upload it downloads the object and reads it back, then runs an upload that fails
 # halfway through and checks that the multipart upload was aborted and no object was created.
 require "herringbone"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "aws-sdk-s3"
 require "securerandom"
 require "tempfile"

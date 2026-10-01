@@ -8,6 +8,11 @@
 #   ROWS=20_000_000 [ROW_GROUP_BYTES=67108864] [ROW_GROUP_ROWS=100_000] [COMPRESSION=zstd] \
 #     bundle exec ruby rails_export.rb [out.parquet]
 require "herringbone"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "get_process_mem"
 require_relative "dataset"
 
