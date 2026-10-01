@@ -6,6 +6,7 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
   and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems)
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
+- Optimized reads with batches and pages 
 - Ruby 3.0+
 
 ## Diving in: dumping records in Rails
