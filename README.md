@@ -46,7 +46,23 @@ require "zstd-ruby"
 require "numo/narray"
 ```
 
-On Ruby 3.1 and later, Herringbone works from any Ractor. Pass a schema to a Ractor with `Ractor.make_shareable(schema)`.
+On Ruby 3.1 and later, Herringbone works from any Ractor. Pass a schema to a Ractor with
+`Ractor.make_shareable(schema)`. Rows made shareable the same way reach a writing Ractor by
+reference, without being copied:
+
+```ruby
+writer = Ractor.new("out.parquet", Ractor.make_shareable(schema)) do |path, schema|
+  File.open(path, "wb") do |f|
+    Herringbone::Writer.open(f, schema) do |w|
+      while (row = Ractor.receive) != :done
+        w << row
+      end
+    end
+  end
+end
+rows.each { |row| writer.send(Ractor.make_shareable(row)) }
+writer.send(:done)
+```
 
 ## Reading
 
