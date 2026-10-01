@@ -1,13 +1,17 @@
 # Contributing to Herringbone
 
-Please take a moment to review this document in order to make the contribution
-process easy and effective for everyone involved.
+Contributions are welcome! Please take a moment to review this document so that
+contributing stays easy and effective for everyone involved.
+
+I'd especially love to get:
+
+* Parquet files from writers Herringbone can't read yet
+* Performance work
+* Documentation fixes
 
 ## What do I need to know to help?
 
-If you are already familiar with the [Ruby Programming Language](https://www.ruby-lang.org/) you can start contributing code right away, otherwise look for issues labeled with *documentation* or *good first issue* to get started.
-
-If you are interested in contributing code and would like to learn more about the technologies that we use, check out the (non-exhaustive) list below. You can also get in touch with us via an issue or email to get additional information.
+If you would like to learn more about the technologies Herringbone builds on, check out the (non-exhaustive) list below. You can also get in touch with me via an issue or email.
 
  - [ruby](https://ruby-doc.org)
  - [Apache Parquet](https://parquet.apache.org/docs/file-format/) and the [parquet-format](https://github.com/apache/parquet-format) specification
@@ -17,10 +21,9 @@ If you are interested in contributing code and would like to learn more about th
 
 ## Issues and pull requests
 
-A few expectations:
-
-* Issues are likely better than PRs because I can shape your request into a fix or a feature faster and it is likely to fit the spirit of the library better
-* Do not be upset if I close your PR and implement your proposal differently
+* Opening an issue first is often the fastest way to get something in. I can shape it into something that fits the library.
+* The most useful bug report is a small Parquet file that reproduces the problem, plus the name and version of the tool that wrote it.
+* I may close a PR and implement the idea differently. That's not a rejection of the idea, and you'll be credited (`Co-authored-by`).
 * Feel free to propose opinionated changes, but be prepared that your opinion won't be shared. It is a give-and-take.
 
 ## Code changes
@@ -30,31 +33,38 @@ accurate and terse comments, etc.) and any other requirements (such as test cove
 
 Run the `rake` default task to make sure code is properly formatted and documented.
 
-**IMPORTANT**: By submitting a patch, you agree to allow the project owner to
-license your work under the same license as that used by the project, which you
-can see [here](LICENSE).
-
 ## Basic expectations
 
-This project is something created with love, and I - as an author - have the expectation that you, as a contributor, will pay in kind. But to set the ground rules:
+This project is something created with love, and I - as an author - expect you, as a contributor, to return the favor. The ground rules:
 
-* Be polite
-* Do not be abrasive
+* Be polite and direct. No abrasiveness, no passive-aggression.
 * No ad-hominems, also in code comments
 * No sexualized or aggressive language
-* Passive-aggressive tone is not appreciated here
-* Debating LLM use (utility, harm, societal implications etc.) is not appreciated here
 
 As a maintainer, I reserve the right to deny any contribution, discussion post, comment or pull request I find inappropriate.
 
-Similarly, I reserve the right to not accept any contribution I find mismatching with the goals/spirit of the project or with my own, without providing explanations as to why the contribution has been refused.
+Similarly, I reserve the right to not accept any contribution that doesn't fit the goals or spirit of the project (or my own), without explaining why it has been refused.
+
+## Decisions are final
+
+You're welcome to make your case once, clearly. After that, please don't reopen closed issues, start meta-threads about the decision, or argue about the wording of this document. This is a list of expectations, not a contract to be lawyered. If something isn't covered, the maintainer's judgment applies.
+
+## What happens elsewhere stays elsewhere
+
+Contributions are judged on what they are, not on who sent them. What anyone says or does outside this project (on social media, at their job, in other repos, in politics) is not a topic here and will not be considered, either for or against them. Please don't bring it in: no call-outs, no "are you aware this person…" threads, no requests to ban someone over things that didn't happen here.
 
 ## AI-generated issues and code
 
-This project is using LLMs to produce code and artifacts, and it's fine if you do the same when contributing. However, the following is on you:
+This project uses LLMs to produce code and artifacts, and it's fine if you do the same when contributing. You don't need to disclose LLM use. LLM use in this project is settled: threads about whether it should be used (utility, harm, societal implications etc.) will be closed.
+
+However, the following is on you:
 
 * Make your LLM output _terse._ Nobody likes reading slop, even my agents. Make it get to the point.
+* Make sure what you submit actually ran. Don't file issues about behavior or APIs your LLM imagined.
 * Do not add external dependencies (or have your LLM do it) unless absolutely necessary
 * If you file a PR, make at least one pass with "Make this at least 50% less code"
 * Code generated by your LLM will be considered as written by you, with the same requirements
 
+## License
+
+By submitting a patch, you agree to allow the project owner to license your work under the same license as that used by the project, which you can see [here](LICENSE).
