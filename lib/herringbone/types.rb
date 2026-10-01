@@ -21,18 +21,44 @@ module Herringbone
   module Types
     module_function
 
+    # Shorthand for Format::Type
     T = Format::Type
+    # Shorthand for Format::ConvertedType
     C = Format::ConvertedType
 
+    # Julian day number of 1970-01-01, the origin of DATE columns
     EPOCH_JD = Date.new(1970, 1, 1).jd
+    # Julian day number of 1970-01-01, the origin of the day half of an INT96 timestamp
     JULIAN_EPOCH_DAY = 2_440_588 # Julian day number of 1970-01-01, used by INT96
+    # Nanoseconds in a day, used to split INT96 timestamps into day and nanoseconds of day
     NANOS_PER_DAY = 86_400 * 1_000_000_000
 
+    # Ticks per second for each TimeUnit
     UNIT_DIVISORS = {millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000}.freeze
+    # Sub-second unit names understood by +Time.at+, for each TimeUnit
     UNIT_NAMES = {millis: :millisecond, micros: :microsecond, nanos: :nanosecond}.freeze
 
+    # Shorthand for building a LogicalType union.
+    # @param kw [Hash{Symbol => Thrift::Struct}] the single union member to set; any LogicalType
+    #   field is accepted, those used in this module are listed below
+    # @option kw [Format::StringType] :string
+    # @option kw [Format::EnumType] :enum
+    # @option kw [Format::JsonType] :json
+    # @option kw [Format::BsonType] :bson
+    # @option kw [Format::UUIDType] :uuid
+    # @option kw [Format::DateType] :date
+    # @option kw [Format::Float16Type] :float16
+    # @option kw [Format::IntType] :integer bit width and signedness
+    # @option kw [Format::DecimalType] :decimal scale and precision
+    # @option kw [Format::TimeType] :time unit and UTC adjustment
+    # @option kw [Format::TimestampType] :timestamp unit and UTC adjustment
+    # @return [Format::LogicalType]
     def lt(**kw) = Format::LogicalType.new(**kw)
 
+    # TimeUnit union for a unit name.
+    # @param unit [Symbol, String] +:millis+/+:ms+, +:micros+/+:us+ or +:nanos+/+:ns+
+    # @return [Format::TimeUnit]
+    # @raise [ArgumentError] for any other unit
     def time_unit(unit)
       case unit.to_sym
       when :millis, :ms then Format::TimeUnit.millis
@@ -42,6 +68,11 @@ module Herringbone
       end
     end
 
+    # Physical attributes of an annotated integer column, with both the INTEGER logical type
+    # and the matching INT_n/UINT_n converted type.
+    # @param bits [Integer] bit width: 8, 16, 32 or 64 (64 is stored as INT64, the rest as INT32)
+    # @param signed [Boolean] whether the integers are signed
+    # @return [Hash{Symbol => Object}] +:type+, +:converted_type+ and +:logical_type+
     def int_type(bits, signed)
       physical = (bits == 64) ? T::INT64 : T::INT32
       converted = signed ? C.const_get("INT_#{bits}") : C.const_get("UINT_#{bits}")
@@ -50,6 +81,21 @@ module Herringbone
     end
 
     # Physical attributes (type, logical type etc.) for a DSL type name
+    # @param type [Symbol, String] column type name, e.g. +:string+, +:int64+, +:decimal+, +:timestamp+
+    # @param opts [Hash{Symbol => Object}] type-specific options
+    # @option opts [Boolean] :parquet_enum for +:enum+, annotate as ENUM instead of STRING
+    # @option opts [Integer] :length byte length for +:fixed+ (required)
+    # @option opts [Symbol] :unit (:micros) for +:time+ and +:timestamp+, see {time_unit}
+    # @option opts [Boolean] :utc (true) for +:time+ and +:timestamp+, sets +is_adjusted_to_utc+;
+    #   the legacy converted type is only written when true
+    # @option opts [Integer] :precision number of decimal digits for +:decimal+ (required)
+    # @option opts [Integer] :scale (0) digits after the decimal point for +:decimal+
+    # @option opts [Symbol] :physical for +:decimal+, force +:int32+, +:int64+, +:binary+ or
+    #   +:fixed+ storage instead of picking the smallest by precision
+    # @return [Hash{Symbol => Object}] keyword arguments for Schema::Node.new: +:type+ and,
+    #   where applicable, +:type_length+, +:converted_type+, +:logical_type+, +:scale+, +:precision+
+    # @raise [ArgumentError] for an unknown type, unit, or invalid decimal precision/scale
+    # @raise [KeyError] when a required option is missing or +:physical+ is not recognized
     def physical_attributes(type, **opts)
       case type.to_sym
       when :boolean then {type: T::BOOLEAN}
@@ -109,6 +155,8 @@ module Herringbone
     end
 
     # Minimal number of bytes to hold a signed integer of +precision+ decimal digits
+    # @param precision [Integer] number of decimal digits
+    # @return [Integer] byte length for a FIXED_LEN_BYTE_ARRAY decimal
     def decimal_bytes(precision)
       max = 10**precision
       n = 1
@@ -117,6 +165,17 @@ module Herringbone
     end
 
     # Normalized logical kind of a node: [symbol, details]
+    #
+    # The LogicalType wins when present; otherwise the legacy converted type is mapped onto
+    # the same shapes. Details depend on the kind:
+    #   [:integer, bit_width, signed]
+    #   [:decimal, scale, precision]
+    #   [:timestamp, unit, adjusted_to_utc]   (unit is :millis, :micros or :nanos)
+    #   [:time, unit, adjusted_to_utc]
+    #   [kind]                                for other annotations (:string, :date, :uuid ...)
+    #   [nil]                                 for unannotated columns
+    # @param node [Schema::Node] leaf node of the physical schema
+    # @return [Array] kind Symbol (or nil) followed by its details
     def logical_of(node)
       if (kind = node.logical_type&.kind)
         name, payload = kind
@@ -152,6 +211,8 @@ module Herringbone
     end
 
     # Returns a lambda converting a physical value into a Ruby value, or nil when no conversion is needed.
+    # @param node [Schema::Node] leaf node of the physical schema
+    # @return [Proc, nil] one-argument converter, or nil when decoded values are used as-is
     def reader_for(node)
       kind, a, b = logical_of(node)
       type = node.type
@@ -178,12 +239,18 @@ module Herringbone
       nil
     end
 
+    # Converter from an INT64 timestamp to a UTC Time.
+    # @param unit [Symbol] +:millis+, +:micros+ or +:nanos+
+    # @return [Proc] lambda taking an Integer count of +unit+ since the epoch
+    # @raise [KeyError] for an unknown unit
     def timestamp_reader(unit)
       div = UNIT_DIVISORS.fetch(unit)
       name = UNIT_NAMES.fetch(unit)
       ->(v) { Time.at(v / div, v % div, name).utc }
     end
 
+    # Converter from a decoded INT96 value to a UTC Time.
+    # @return [Proc] lambda taking a +[nanoseconds_of_day, julian_day]+ pair
     def int96_reader
       lambda do |(nanos, day)|
         secs = (day - JULIAN_EPOCH_DAY) * 86_400
@@ -191,6 +258,11 @@ module Herringbone
       end
     end
 
+    # Converter from a stored unscaled decimal to a BigDecimal.
+    # @param type [Integer] physical type (Format::Type) of the column
+    # @param scale [Integer] digits after the decimal point
+    # @return [Proc, nil] lambda taking an Integer (INT32/INT64) or big-endian two's complement
+    #   bytes (BYTE_ARRAY/FIXED_LEN_BYTE_ARRAY), or nil for any other physical type
     def decimal_reader(type, scale)
       to_decimal = scale.zero? ? ->(i) { BigDecimal(i) } : ->(i) { BigDecimal("#{i}e-#{scale}") }
       case type
@@ -201,6 +273,8 @@ module Herringbone
     end
 
     # Big-endian two's complement bytes to Integer
+    # @param bytes [String] binary string; empty decodes as 0
+    # @return [Integer]
     def be_to_int(bytes)
       return 0 if bytes.empty?
       i = bytes.unpack1("H*").to_i(16)
@@ -208,6 +282,11 @@ module Herringbone
       (i >= (1 << (bits - 1))) ? i - (1 << bits) : i
     end
 
+    # Integer to big-endian two's complement bytes of a fixed width
+    # @param i [Integer] value to encode
+    # @param nbytes [Integer] output width in bytes
+    # @return [String] binary string of +nbytes+ bytes
+    # @raise [EncodeError] when +i+ does not fit in +nbytes+ bytes
     def int_to_be(i, nbytes)
       bits = nbytes * 8
       raise EncodeError, "Decimal value #{i} does not fit in #{nbytes} bytes" unless i.bit_length < bits
@@ -215,6 +294,9 @@ module Herringbone
       [i.to_s(16).rjust(nbytes * 2, "0")].pack("H*")
     end
 
+    # Decodes an IEEE 754 half-precision value, including subnormals, infinities and NaN.
+    # @param h [Integer] 16-bit pattern
+    # @return [Float]
     def half_to_float(h)
       sign = (h >> 15).zero? ? 1.0 : -1.0
       exp = (h >> 10) & 0x1F
@@ -230,6 +312,8 @@ module Herringbone
 
     # Rounds a Float to the nearest half-precision value (ties to even). Every step is exact
     # in double arithmetic, so there is no double rounding.
+    # @param f [Float] value to round; overflows to infinity, NaN becomes the canonical quiet NaN
+    # @return [Integer] 16-bit pattern
     def float_to_half(f)
       return 0x7E00 if f.nan?
       sign = (f.negative? || (f.zero? && (1.0 / f).negative?)) ? 0x8000 : 0
@@ -258,6 +342,10 @@ module Herringbone
     #   integers:  Integer, or a Float/BigDecimal/Rational/String holding a whole number
     #   decimal:   BigDecimal, Integer, Rational, Float or numeric String
     #   uuid:      String with or without dashes, or 16 raw bytes
+    # The returned lambda raises ArgumentError or RangeError for values it cannot convert.
+    # @param node [Schema::Node] leaf node of the physical schema
+    # @return [Proc, nil] one-argument converter; nil only for a column with no recognized
+    #   physical type
     def writer_for(node)
       kind, a, b = logical_of(node)
       type = node.type
@@ -310,12 +398,17 @@ module Herringbone
       end
     end
 
+    # Values accepted for a boolean column (strings are also matched case-insensitively)
     BOOLEANS = {
       true => true, false => false, 1 => true, 0 => false,
       "true" => true, "false" => false, "t" => true, "f" => false, "1" => true, "0" => false,
       "yes" => true, "no" => false, "TRUE" => true, "FALSE" => false, "T" => true, "F" => false
     }.freeze
 
+    # Coerces a value to true/false using BOOLEANS.
+    # @param v [Object] true/false, 1/0, or a String/Symbol such as "yes" or :false
+    # @return [Boolean]
+    # @raise [ArgumentError] when +v+ is not recognized as a boolean
     def to_boolean(v)
       BOOLEANS.fetch(v) do
         s = (v.is_a?(String) || v.is_a?(Symbol)) ? v.to_s.downcase : nil
@@ -323,6 +416,11 @@ module Herringbone
       end
     end
 
+    # Days since the Unix epoch in the proleptic Gregorian calendar, as stored in DATE columns.
+    # @param v [Date, String, Integer, #to_date] a Date, an ISO-8601 date String, an Integer
+    #   (returned as-is) or anything responding to +to_date+ (Time, DateTime)
+    # @return [Integer]
+    # @raise [ArgumentError] when +v+ cannot be turned into a Date
     def date_to_days(v)
       return v if v.is_a?(Integer)
       d = case v
@@ -337,6 +435,10 @@ module Herringbone
     end
 
     # Converts the values a timestamp column accepts into a Time (or Time-like) object
+    # @param v [Time, DateTime, Date, String, #to_i] a Time, DateTime, Date (taken as midnight UTC),
+    #   ISO-8601 (or +Time.parse+-able) String, or a Time-like object responding to +to_i+ and +nsec+
+    # @return [Time, Object] a Time, or +v+ itself when it is Time-like
+    # @raise [ArgumentError] when +v+ is none of the above or the String cannot be parsed
     def to_time(v)
       case v
       when Time then v
@@ -355,6 +457,13 @@ module Herringbone
       end
     end
 
+    # Converter from a timestamp-like value to an INT64 count of +unit+ since the epoch.
+    # Integers pass through unchanged; sub-unit precision is truncated.
+    # @param unit [Symbol] +:millis+, +:micros+ or +:nanos+
+    # @param utc [Boolean] whether the column is adjusted to UTC; when false the local wall
+    #   clock time of the value (its UTC offset added) is stored
+    # @return [Proc] one-argument lambda, see {to_time} for accepted values
+    # @raise [KeyError] for an unknown unit
     def timestamp_writer(unit, utc)
       mult = UNIT_DIVISORS.fetch(unit)
       lambda do |v|
@@ -367,6 +476,13 @@ module Herringbone
       end
     end
 
+    # Converter from a time of day to a count of +unit+ since midnight.
+    # The lambda accepts an Integer (returned as-is), an "HH:MM[:SS[.fraction]]" String or
+    # anything responding to +hour+ and +nsec+ (Time, DateTime), and raises ArgumentError or
+    # RangeError for anything else or a time past 23:59:59.
+    # @param unit [Symbol] +:millis+, +:micros+ or +:nanos+
+    # @return [Proc] one-argument lambda
+    # @raise [KeyError] for an unknown unit
     def time_writer(unit)
       mult = UNIT_DIVISORS.fetch(unit)
       lambda do |v|
@@ -388,6 +504,9 @@ module Herringbone
 
     # String column restricted to a set of values. +values+ is an Array of labels, or a Hash of
     # label => stored value like Rails' `Model.statuses`, in which case either is accepted.
+    # Symbols are accepted in place of String labels.
+    # @param values [Array<String, Symbol>, Hash{String, Symbol => Object}] allowed labels
+    # @return [Proc] lambda returning the String label, raising ArgumentError for any other value
     def enum_writer(values)
       labels = {}
       if values.is_a?(Hash)
@@ -406,6 +525,9 @@ module Herringbone
     end
 
     # Converts to Integer, rejecting fractional numbers and values outside min..max
+    # @param min [Integer] smallest accepted value
+    # @param max [Integer] largest accepted value
+    # @return [Proc] lambda raising ArgumentError for non-integers and RangeError when out of range
     def int_checker(min, max)
       lambda do |v|
         i = Integer(v)
@@ -415,6 +537,12 @@ module Herringbone
       end
     end
 
+    # Wraps a conversion to a String and checks the result has exactly +length+ bytes.
+    # @param length [Integer] required byte length
+    # @yield [v] converts the incoming value
+    # @yieldparam v [Object] value handed to the writer
+    # @yieldreturn [String] bytes to store
+    # @return [Proc] lambda raising ArgumentError when the converted String has another length
     def fixed_checker(length, &convert)
       lambda do |v|
         s = convert.call(v)
@@ -423,6 +551,14 @@ module Herringbone
       end
     end
 
+    # Converter from a numeric value to the stored unscaled decimal. Values are rounded
+    # (half away from zero) to +scale+ digits; the lambda raises RangeError when the result
+    # exceeds the column's precision.
+    # @param node [Schema::Node] DECIMAL leaf node, for its physical type, precision and type length
+    # @param scale [Integer] digits after the decimal point
+    # @return [Proc, nil] lambda returning an Integer (INT32/INT64) or big-endian two's complement
+    #   bytes (FIXED_LEN_BYTE_ARRAY, BYTE_ARRAY with minimal length), or nil for any other
+    #   physical type
     def decimal_writer(node, scale)
       mult = 10**scale
       limit = node.precision ? 10**node.precision : nil

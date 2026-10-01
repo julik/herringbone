@@ -17,8 +17,11 @@ module Herringbone
     # After this many values, give up on the dictionary if more than half of them are distinct
     CARDINALITY_CHECK_AT = 4096
 
+    # Whether String#append_as_bytes (Ruby 3.4+) is available for appending without re-encoding
     APPEND_AS_BYTES = "".respond_to?(:append_as_bytes)
 
+    # @param width [Integer, nil] byte length of each value for FIXED_LEN_BYTE_ARRAY, nil for BYTE_ARRAY
+    # @param dictionary [Boolean] start in dictionary mode; false appends raw bytes from the start
     def initialize(width: nil, dictionary: true)
       @width = width
       @bytes = String.new(encoding: Encoding::BINARY)
@@ -31,14 +34,21 @@ module Herringbone
       end
     end
 
+    # @return [Integer] number of values held
     def size
       @indices ? @indices.size : @count
     end
 
+    # @return [Boolean] true when no values are held
     def empty? = size.zero?
 
+    # @return [Boolean] true while still dictionary-encoding (not yet switched to raw bytes)
     def dictionary? = !@indices.nil?
 
+    # Appends a value, switching to raw bytes when the dictionary limits are exceeded.
+    # @param value [String] bytes of the value; for FIXED_LEN_BYTE_ARRAY it must be +width+ bytes
+    #   long (not checked here)
+    # @return [ByteValues] self
     def <<(value)
       if @indices
         index = @dictionary[value]
@@ -61,16 +71,20 @@ module Herringbone
     end
 
     # Removes the last value
+    # @return [void]
     def pop
       truncate(size - 1) unless size.zero?
     end
 
     # Supports the `slice!(n..)` form used to roll back a failed row
+    # @param range [Range] endless range; values from +range.begin+ on are dropped
+    # @return [void]
     def slice!(range)
       truncate(range.begin)
     end
 
     # Approximate memory held, used to size row groups
+    # @return [Integer] estimated bytes
     def memory_bytes
       if @indices
         # Each distinct value is a String object plus a Hash entry
@@ -82,6 +96,11 @@ module Herringbone
 
     # Returns [:dictionary, values, indices] when the column is worth dictionary-encoding,
     # otherwise [:plain, values]
+    #
+    # Dictionary encoding is kept unless there are more than 16 values and more than about half
+    # of them are distinct.
+    # @return [Array(Symbol, Array<String>, Array<Integer>), Array(Symbol, Array<String>)]
+    #   distinct values and an index per value, or all values in order
     def materialize
       if @indices
         keys = @dictionary.keys
@@ -93,6 +112,9 @@ module Herringbone
 
     private
 
+    # Appends +value+ in raw-bytes mode, recording its length for BYTE_ARRAY.
+    # @param value [String] bytes of the value, in any encoding
+    # @return [ByteValues] self
     def append_bytes(value)
       if value.encoding == Encoding::BINARY || value.ascii_only?
         @bytes << value
@@ -106,6 +128,8 @@ module Herringbone
       self
     end
 
+    # Leaves dictionary mode, re-appending every value held so far as raw bytes.
+    # @return [void]
     def switch_to_bytes
       keys = @dictionary.keys
       indices = @indices
@@ -113,6 +137,9 @@ module Herringbone
       indices.each { |i| append_bytes(keys[i]) }
     end
 
+    # Drops all values after the first +n+.
+    # @param n [Integer] number of values to keep
+    # @return [void]
     def truncate(n)
       if @indices
         @indices.slice!(n..)
@@ -128,6 +155,8 @@ module Herringbone
       end
     end
 
+    # Splits the raw bytes back into one binary String per value.
+    # @return [Array<String>]
     def strings
       if @lengths
         pos = 0

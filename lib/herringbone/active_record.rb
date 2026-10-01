@@ -11,11 +11,16 @@ module Herringbone
     # ActiveRecord is not required: this only uses what a model class exposes
     # (+columns+, +primary_key+ and, when present, +defined_enums+).
     #
-    # only:         attribute names to include (Strings or Symbols)
-    # except:       attribute names to leave out
-    # parquet_enum: Rails enum attributes are string columns holding the labels (the writer
-    #               rejects values outside the enum; stored values such as 0/1 are written as
-    #               their labels). true adds the Parquet ENUM annotation, see Builder#enum.
+    # Primary key columns are never nullable. Rails enum attributes are string columns holding the
+    # labels (the writer rejects values outside the enum; stored values such as 0/1 are written as
+    # their labels).
+    #
+    # @param model [Class] ActiveRecord model class, or anything exposing +columns+ the same way
+    # @param only [Array<String, Symbol>, String, Symbol, nil] attribute names to include
+    # @param except [Array<String, Symbol>, String, Symbol, nil] attribute names to leave out
+    # @param parquet_enum [Boolean] true adds the Parquet ENUM annotation to enum columns, see Builder#enum
+    # @return [Schema] schema with one top-level field per selected column, in model column order
+    # @raise [ArgumentError] when no columns are left after +only+ / +except+
     def self.from_active_record(model, only: nil, except: nil, parquet_enum: false)
       only &&= Array(only).map(&:to_s)
       except = Array(except).map(&:to_s)
@@ -54,9 +59,14 @@ module Herringbone
     module ActiveRecordMapping
       module_function
 
+      # Precision for decimal columns that declare none (Postgres +numeric+ without arguments);
+      # 38 digits is the most a 16-byte FIXED_LEN_BYTE_ARRAY decimal holds
       DEFAULT_DECIMAL_PRECISION = 38
+      # Scale used together with DEFAULT_DECIMAL_PRECISION when the column declares neither
       DEFAULT_DECIMAL_SCALE = 9
 
+      # Bit width of named SQL integer types (MySQL, Postgres and SQLite spellings), keyed by the
+      # leading word of the lowercased +sql_type+
       INTEGER_SQL_TYPES = {
         "tinyint" => 8, "int1" => 8,
         "smallint" => 16, "int2" => 16, "smallserial" => 16, "serial2" => 16,
@@ -64,6 +74,16 @@ module Herringbone
         "bigint" => 64, "int8" => 64, "bigserial" => 64, "serial8" => 64
       }.freeze
 
+      # Declares +column+ on +builder+: hstore as map<string, string>, array columns as a list of
+      # the element type, everything else as the scalar type picked by #scalar_type.
+      #
+      # @param builder [Builder] builder to add the field to
+      # @param column [ActiveRecord::ConnectionAdapters::Column] column metadata (+name+, +type+, and
+      #   when available +sql_type+, +array+, +limit+, +precision+, +scale+)
+      # @param nullable [Boolean] whether the field may be null
+      # @param primary [Boolean] whether the column is (part of) the primary key
+      # @return [Node] the added schema node
+      # @raise [ArgumentError] when the builder rejects the field (e.g. a duplicate name)
       def add_column(builder, column, nullable, primary)
         sql_type = column.respond_to?(:sql_type) ? column.sql_type.to_s.downcase : ""
         array = (column.respond_to?(:array) && column.array) || sql_type.end_with?("[]")
@@ -83,6 +103,14 @@ module Herringbone
         end
       end
 
+      # Picks the DSL type for a non-array, non-hstore column, following the table above.
+      #
+      # @param column [ActiveRecord::ConnectionAdapters::Column] column metadata, read for
+      #   +limit+, +precision+ and +scale+
+      # @param type [Symbol, nil] ActiveRecord's abstract type (+column.type+)
+      # @param sql_type [String] lowercased database type with any array suffix removed
+      # @param primary [Boolean] whether the column is (part of) the primary key
+      # @return [Array(Symbol, Hash{Symbol => Object})] DSL type and its options for Builder#column
       def scalar_type(column, type, sql_type, primary)
         case type
         when :integer, :bigint then [integer_type(column, sql_type, primary), {}]
@@ -108,6 +136,11 @@ module Herringbone
 
       # Named SQL types (smallint, bigint, ...) decide the width; a generic "integer"/"int"
       # uses the column limit in bytes, since e.g. SQLite reports `t.integer limit: 2` as "integer(2)".
+      #
+      # @param column [ActiveRecord::ConnectionAdapters::Column] column metadata, read for +limit+
+      # @param sql_type [String] lowercased database type with any array suffix removed
+      # @param primary [Boolean] true forces int64, since row ids can outgrow the declared width
+      # @return [Symbol] one of +:int8+ .. +:int64+ or +:uint8+ .. +:uint64+
       def integer_type(column, sql_type, primary)
         bits = INTEGER_SQL_TYPES[sql_type[/\A[a-z0-9]+/]]
         bits ||= case (column.respond_to?(:limit) ? column.limit : nil)

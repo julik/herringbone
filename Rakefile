@@ -10,4 +10,15 @@ Rake::TestTask.new(:test) do |t|
   t.warning = false
 end
 
-task default: [:"standard:fix", :test]
+namespace :yard do
+  desc "Check the YARD documentation in lib/ with yard-lint (config in .yard-lint.yml)"
+  task :lint do
+    if Gem.loaded_specs.key?("yard-lint")
+      sh "bundle exec yard-lint --no-progress lib/"
+    else
+      warn "yard-lint is not in the bundle (it needs Ruby 3.3+), skipping yard:lint"
+    end
+  end
+end
+
+task default: [:"standard:fix", :"yard:lint", :test]

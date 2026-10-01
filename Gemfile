@@ -10,6 +10,8 @@ gem "rake"
 group :development do
   # Pinned exactly so a new Standard release can't start failing lint on its own; bump deliberately
   gem "standard", "1.56.0"
+  # Checks the YARD docs (`rake yard:lint`). Needs Ruby 3.3+, so older Rubies go without it
+  gem "yard-lint", "1.12.0" if RUBY_VERSION >= "3.3"
 end
 
 group :test do

@@ -6,8 +6,12 @@ require "stringio"
 module Herringbone
   # Raised when a file uses (or a writer asks for) a codec whose library is not installed
   class MissingCodecError < UnsupportedError
+    # @return [String] codec name (+"ZSTD"+) and name of the gem providing it (+"zstd-ruby"+)
     attr_reader :codec, :gem_name
 
+    # @param codec [String] codec name, as shown in the message
+    # @param gem_name [String] gem to add to the Gemfile
+    # @param load_error [LoadError] the error from requiring the gem, whose message is included
     def initialize(codec, gem_name, load_error)
       @codec = codec
       @gem_name = gem_name
@@ -19,6 +23,7 @@ module Herringbone
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby and GZIP
   # uses zlib, so those always work. ZSTD and Brotli come from optional gems (zstd-ruby, brotli),
   # which are required on first use; if they are missing, MissingCodecError says what to add.
+  # (Snappy also uses the optional snappy gem when it is installed, see Codecs::Snappy.)
   module Compression
     module_function
 
@@ -32,6 +37,11 @@ module Herringbone
     @library_mutex = Mutex.new
 
     # The library module for a codec backed by an optional gem, requiring it on first use
+    #
+    # @param codec [Integer] a codec id that is a key of LIBRARIES
+    # @return [Module] the gem's module (+Zstd+ or +Brotli+)
+    # @raise [MissingCodecError] when the gem cannot be loaded
+    # @raise [KeyError] for a codec id not in LIBRARIES
     def library(codec)
       @libraries.fetch(codec) do
         @library_mutex.synchronize do
@@ -48,11 +58,22 @@ module Herringbone
       end
     end
 
+    # Requires a codec gem; a separate method so tests can stub it to simulate a missing gem
+    #
+    # @param path [String] require path of the gem
+    # @return [Boolean] whether the library was newly loaded
+    # @raise [LoadError] when the gem is not installed
     def require_library(path)
       require path
     end
 
     # Raises MissingCodecError (or UnsupportedError) unless +codec+ can be used
+    #
+    # @param codec [Integer, Symbol, String] codec id or name (see NAMES)
+    # @return [Module, nil] the gem's module for a gem-backed codec, nil for a built-in one
+    # @raise [MissingCodecError] when the codec's gem cannot be loaded
+    # @raise [UnsupportedError] for a codec herringbone does not implement (LZO)
+    # @raise [ArgumentError] for an unknown codec name
     def ensure_available!(codec)
       codec = codec_id(codec)
       return library(codec) if LIBRARIES.key?(codec)
@@ -60,6 +81,7 @@ module Herringbone
       raise UnsupportedError, "#{Format::Codec::NAMES[codec] || codec} compression is not supported"
     end
 
+    # Codec ids that work without optional gems
     SUPPORTED = [
       Format::Codec::UNCOMPRESSED, Format::Codec::SNAPPY, Format::Codec::GZIP,
       Format::Codec::LZ4_RAW, Format::Codec::LZ4
@@ -71,8 +93,14 @@ module Herringbone
       Format::Codec::LZ4_RAW => :lz4, Format::Codec::LZ4 => :lz4_hadoop, Format::Codec::ZSTD => :zstd,
       Format::Codec::BROTLI => :brotli, Format::Codec::LZO => :lzo
     }.freeze
+    # Codec name => codec id, the inverse of NAMES
     CODECS_BY_NAME = NAMES.invert.freeze
 
+    # Codec id for a codec name; Integers are taken to be ids already and returned unchecked
+    #
+    # @param name [Integer, Symbol, String] codec id, or a name from NAMES (case-insensitive)
+    # @return [Integer] the Format::Codec id
+    # @raise [ArgumentError] for an unknown name
     def codec_id(name)
       return name if name.is_a?(Integer)
       CODECS_BY_NAME.fetch(name.to_s.downcase.to_sym) do
@@ -80,6 +108,15 @@ module Herringbone
       end
     end
 
+    # Decompresses a page body, checking the result against the size the page header declares
+    #
+    # @param codec [Integer] Format::Codec id from the column chunk metadata
+    # @param data [String] compressed bytes
+    # @param uncompressed_size [Integer] expected decompressed size in bytes
+    # @return [String] decompressed bytes (binary)
+    # @raise [UnsupportedError] for a codec herringbone does not implement
+    # @raise [MissingCodecError] when the codec's gem cannot be loaded
+    # @raise [FormatError] when the decompressed size does not match +uncompressed_size+
     def decompress(codec, data, uncompressed_size)
       return "".b if uncompressed_size.zero? && data.empty?
       out = case codec
@@ -100,6 +137,13 @@ module Herringbone
       out
     end
 
+    # Compresses a page body
+    #
+    # @param codec [Integer] Format::Codec id
+    # @param data [String] bytes to compress
+    # @return [String] compressed bytes (binary)
+    # @raise [UnsupportedError] for a codec herringbone does not implement
+    # @raise [MissingCodecError] when the codec's gem cannot be loaded
     def compress(codec, data)
       case codec
       when Format::Codec::UNCOMPRESSED then data
@@ -115,6 +159,10 @@ module Herringbone
     end
 
     # Handles files whose gzip data consists of several concatenated members
+    #
+    # @param data [String] gzip data, one or more members
+    # @return [String] the members' decompressed bytes concatenated (binary)
+    # @raise [Zlib::GzipFile::Error] on corrupt gzip data
     def gunzip(data)
       io = StringIO.new(data)
       out = String.new(encoding: Encoding::BINARY)

@@ -7,6 +7,7 @@ module Herringbone
     module Plain
       module_function
 
+      # Fixed-width numeric types: pack/unpack directive and byte width (all little-endian).
       FORMATS = {
         Format::Type::INT32 => ["l<", 4],
         Format::Type::INT64 => ["q<", 8],
@@ -16,6 +17,14 @@ module Herringbone
 
       # Decodes +count+ values of +type+ from +data+ starting at +pos+.
       # Returns [values, new_pos].
+      # INT96 values come back as [nanoseconds_of_day, julian_day] pairs.
+      # @param data [String] binary page data
+      # @param pos [Integer] byte offset of the first value
+      # @param count [Integer] number of values to decode
+      # @param type [Integer] physical type, a Format::Type constant
+      # @param type_length [Integer, nil] byte width, required for FIXED_LEN_BYTE_ARRAY
+      # @return [Array(Array, Integer)] the decoded values and the offset just past them
+      # @raise [FormatError] if the data is truncated or the type is unknown
       def decode(data, pos, count, type, type_length = nil)
         case type
         when Format::Type::BOOLEAN
@@ -44,6 +53,12 @@ module Herringbone
         end
       end
 
+      # Decodes PLAIN BYTE_ARRAY values: each is a 4-byte little-endian length followed by the bytes.
+      # @param data [String] binary page data
+      # @param pos [Integer] byte offset of the first length prefix
+      # @param count [Integer] number of values to decode
+      # @return [Array(Array<String>, Integer)] binary slices of +data+ and the offset just past them
+      # @raise [FormatError] if a length prefix or value runs past the end of +data+
       def decode_byte_arrays(data, pos, count)
         out = Array.new(count)
         size = data.bytesize
@@ -60,6 +75,13 @@ module Herringbone
         [out, pos]
       end
 
+      # Encodes values of a physical type with PLAIN. Inverse of decode; INT96 values are
+      # [nanoseconds_of_day, julian_day] pairs and booleans are packed LSB-first, 8 per byte.
+      # @param values [Array] values in their physical Ruby form, without nulls
+      # @param type [Integer] physical type, a Format::Type constant
+      # @param type_length [Integer, nil] byte width, required for FIXED_LEN_BYTE_ARRAY
+      # @return [String] encoded bytes in ASCII-8BIT
+      # @raise [EncodeError] if a FIXED_LEN_BYTE_ARRAY value has the wrong size or the type is unknown
       def encode(values, type, type_length = nil)
         case type
         when Format::Type::BOOLEAN

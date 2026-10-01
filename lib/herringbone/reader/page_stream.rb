@@ -11,8 +11,17 @@ module Herringbone
 
       # The levels and values of one data page
       class Page
-        attr_reader :remaining, :converter
+        # @return [Integer] entries (levels) of the page not read yet
+        attr_reader :remaining
 
+        # @return [Proc, nil] physical value => Ruby value, still to be applied to #read_values
+        attr_reader :converter
+
+        # @param entries [Integer] number of entries (num_values of the page header, nulls included)
+        # @param defs [HybridDecoder, ArrayDecoder, nil] definition levels; nil when max level is 0
+        # @param reps [HybridDecoder, ArrayDecoder, nil] repetition levels; nil when max level is 0
+        # @param values [Object] value decoder responding to #read(n) (one of the decoders here)
+        # @param converter [Proc, nil] converter for the decoded values, nil when none is needed
         def initialize(entries, defs, reps, values, converter)
           @remaining = entries
           @defs = defs
@@ -23,6 +32,9 @@ module Herringbone
 
         # [definition_levels, repetition_levels] of the next +n+ entries (nil when a column has no
         # levels of that kind)
+        #
+        # @param n [Integer] entries wanted; capped at #remaining
+        # @return [Array(Array<Integer>, Array<Integer>)] definition and repetition levels
         def read_levels(n)
           n = @remaining if n > @remaining
           @remaining -= n
@@ -30,22 +42,36 @@ module Herringbone
         end
 
         # The next +n+ values, as physical values (apply #converter for Ruby values)
+        #
+        # @param n [Integer] number of non-null values
+        # @return [Array] decoded values
+        # @raise [FormatError] when the page holds fewer values
         def read_values(n)
           n.zero? ? [] : @values.read(n)
         end
 
         # Moves past the next +n+ values without returning them
+        #
+        # @param n [Integer] number of non-null values
+        # @return [void]
+        # @raise [FormatError] when the page holds fewer values
         def skip_values(n)
           return if n.zero?
           @values.respond_to?(:skip) ? @values.skip(n) : @values.read(n)
         end
 
         # The value decoder (for read(as: :numo), which asks it for bytes or Numo arrays)
+        #
+        # @return [Object] one of the decoders in PageStream
         def value_decoder = @values
 
         # Which of the next +n+ entries are defined (definition level == +max_def+), as a
         # Numo::Bit, or nil when the column has no definition levels. For columns without
         # repetition levels; used by read(as: :numo).
+        #
+        # @param n [Integer] entries wanted; capped at #remaining
+        # @param max_def [Integer] the column's max definition level
+        # @return [Numo::Bit, nil] 1 where the entry holds a value
         def read_validity_numo(n, max_def)
           n = @remaining if n > @remaining
           @remaining -= n
@@ -58,11 +84,15 @@ module Herringbone
 
       # A decoder over an Array that is already decoded (legacy encodings, booleans, deltas)
       class ArrayDecoder
+        # @param values [Array] all of the page's decoded levels or values
         def initialize(values)
           @values = values
           @i = 0
         end
 
+        # @param n [Integer] number of entries to hand out
+        # @return [Array] the next +n+ entries
+        # @raise [FormatError] when fewer than +n+ are left
         def read(n)
           raise FormatError, "Page has fewer values than its levels require" if @i + n > @values.size
           out = @values[@i, n]
@@ -73,6 +103,10 @@ module Herringbone
 
       # The RLE / bit-packed hybrid, decoded run by run
       class HybridDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first run header
+        # @param limit [Integer] offset just past the encoded runs
+        # @param width [Integer] bit width of each value
         def initialize(data, pos, limit, width)
           @data = data
           @pos = pos
@@ -87,6 +121,11 @@ module Herringbone
           @groups = 0 # bit-packed groups of 8 not unpacked yet
         end
 
+        # Bit-packed runs are unpacked up to CHUNK values at a time
+        #
+        # @param n [Integer] number of values to decode
+        # @return [Array<Integer>] the next +n+ values
+        # @raise [FormatError] when the runs end before +n+ values
         def read(n)
           out = []
           while n > 0
@@ -116,6 +155,11 @@ module Herringbone
         # For a bit width of 1: the next +n+ values as a Numo::Bit (read(as: :numo)). Runs are
         # collected as "0"/"1" characters, which costs less per run than Numo calls do (levels of
         # columns with scattered nulls come in many short runs).
+        #
+        # @param n [Integer] number of values to decode
+        # @return [Numo::Bit] the next +n+ values
+        # @raise [ArgumentError] when the bit width is not 1
+        # @raise [FormatError] when the runs end before +n+ values
         def read_flags(n)
           raise ArgumentError, "read_flags needs a bit width of 1" unless @width == 1
           out = String.new(capacity: n, encoding: Encoding::BINARY)
@@ -153,6 +197,11 @@ module Herringbone
         # The next +n+ values as a Numo array of +klass+ (read(as: :numo)): RLE runs are
         # filled and bit-packed runs unpacked by Numo, with no Ruby object per value. Leaves the
         # decoder in a state #read can continue from.
+        #
+        # @param n [Integer] number of values to decode
+        # @param klass [Class] Numo integer class to fill, e.g. Numo::UInt8 or Numo::Int32
+        # @return [Numo::NArray] the next +n+ values as a +klass+ array
+        # @raise [FormatError] when the runs end before +n+ values
         def read_numo(n, klass)
           out = klass.zeros(n)
           i = 0
@@ -186,6 +235,11 @@ module Herringbone
 
         private
 
+        # Reads run headers until a non-empty run starts: an RLE run (count and one value) or
+        # a bit-packed run (groups of 8 values)
+        #
+        # @return [void]
+        # @raise [FormatError] when there are no more runs before +limit+
         def next_run
           while @left.zero?
             raise FormatError, "RLE data exhausted" if @pos >= @limit
@@ -209,6 +263,10 @@ module Herringbone
 
       # PLAIN INT32 / INT64 / FLOAT / DOUBLE / INT96
       class FixedDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first value
+        # @param format [String] String#unpack directive of one value, e.g. "l<"
+        # @param width [Integer] bytes per value
         def initialize(data, pos, format, width)
           @data = data
           @pos = pos
@@ -216,6 +274,9 @@ module Herringbone
           @width = width
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<Integer>, Array<Float>] the next +n+ values
+        # @raise [FormatError] when the page holds fewer values
         def read(n)
           bytes = n * @width
           raise FormatError, "Truncated PLAIN data" if @pos + bytes > @data.bytesize
@@ -224,12 +285,19 @@ module Herringbone
           out
         end
 
+        # @param n [Integer] number of values to move past
+        # @return [void]
+        # @raise [FormatError] when the page holds fewer values
         def skip(n)
           raise FormatError, "Truncated PLAIN data" if @pos + n * @width > @data.bytesize
           @pos += n * @width
         end
 
         # The next +n+ values as their PLAIN (little-endian) bytes, for read(as: :numo)
+        #
+        # @param n [Integer] number of values
+        # @return [String] +n+ * width bytes
+        # @raise [FormatError] when the page holds fewer values
         def read_bytes(n)
           bytes = n * @width
           raise FormatError, "Truncated PLAIN data" if @pos + bytes > @data.bytesize
@@ -239,11 +307,17 @@ module Herringbone
         end
       end
 
+      # PLAIN INT96 (legacy Impala/Spark timestamps): 8 bytes of nanoseconds, 4 of Julian day
       class Int96Decoder < FixedDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first value
         def initialize(data, pos)
           super(data, pos, "Q<L<", 12)
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<Array(Integer, Integer)>] [nanoseconds of the day, Julian day] per value
+        # @raise [FormatError] when the page holds fewer values
         def read(n)
           bytes = n * 12
           raise FormatError, "Truncated INT96 data" if @pos + bytes > @data.bytesize
@@ -255,12 +329,18 @@ module Herringbone
 
       # PLAIN FIXED_LEN_BYTE_ARRAY
       class FixedBytesDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first value
+        # @param width [Integer] the column's type_length
         def initialize(data, pos, width)
           @data = data
           @pos = pos
           @width = width
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<String>] the next +n+ values as binary Strings
+        # @raise [FormatError] when the page holds fewer values
         def read(n)
           raise FormatError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
           out = Array.new(n) { |i| @data.byteslice(@pos + i * @width, @width) }
@@ -268,6 +348,9 @@ module Herringbone
           out
         end
 
+        # @param n [Integer] number of values to move past
+        # @return [void]
+        # @raise [FormatError] when the page holds fewer values
         def skip(n)
           raise FormatError, "Truncated FIXED_LEN_BYTE_ARRAY data" if @pos + n * @width > @data.bytesize
           @pos += n * @width
@@ -276,11 +359,16 @@ module Herringbone
 
       # PLAIN BYTE_ARRAY: 4-byte length, then the bytes
       class ByteArrayDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first length prefix
         def initialize(data, pos)
           @data = data
           @pos = pos
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<String>] the next +n+ values as binary Strings
+        # @raise [FormatError] when a length prefix or value runs past the page
         def read(n)
           data = @data
           size = data.bytesize
@@ -301,6 +389,10 @@ module Herringbone
         end
 
         # Walks the length prefixes without creating Strings
+        #
+        # @param n [Integer] number of values to move past
+        # @return [void]
+        # @raise [FormatError] when a length prefix or value runs past the page
         def skip(n)
           data = @data
           size = data.bytesize
@@ -316,11 +408,16 @@ module Herringbone
 
       # PLAIN BOOLEAN: one bit per value, LSB first
       class BooleanDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the first value; the rest of +data+ is unpacked at once
         def initialize(data, pos)
           @bits = data.byteslice(pos, data.bytesize - pos).unpack1("b*")
           @i = 0
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<Boolean>] the next +n+ values
+        # @raise [FormatError] when the page holds fewer values
         def read(n)
           raise FormatError, "Truncated BOOLEAN data" if @i + n > @bits.bytesize
           out = Array.new(n) { |k| @bits.getbyte(@i + k) == 49 }
@@ -329,6 +426,10 @@ module Herringbone
         end
 
         # The next +n+ values as a Numo::Bit (read(as: :numo))
+        #
+        # @param n [Integer] number of values to decode
+        # @return [Numo::Bit] 1 for true
+        # @raise [FormatError] when the page holds fewer values
         def read_numo(n)
           raise FormatError, "Truncated BOOLEAN data" if @i + n > @bits.bytesize
           out = Numo::UInt8.from_binary(@bits.byteslice(@i, n)).eq(49) # "0"/"1" characters
@@ -339,8 +440,13 @@ module Herringbone
 
       # RLE_DICTIONARY / PLAIN_DICTIONARY indices mapped to the (already converted) dictionary
       class DictionaryDecoder
+        # @return [Array] the chunk's dictionary values (converted, shared by all its pages)
         attr_reader :dictionary
 
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the bit width byte that precedes the RLE/bit-packed indices
+        # @param dictionary [Array] values the indices point into, already converted
+        # @param path [String] dotted column path, for error messages
         def initialize(data, pos, dictionary, path)
           @indices = HybridDecoder.new(data, pos + 1, data.bytesize, data.getbyte(pos).to_i)
           @dictionary = dictionary
@@ -348,10 +454,17 @@ module Herringbone
         end
 
         # Indices are decoded but not looked up
+        #
+        # @param n [Integer] number of values to move past
+        # @return [void]
+        # @raise [FormatError] when the indices run out
         def skip(n)
           @indices.read(n)
         end
 
+        # @param n [Integer] number of values to decode; must be positive
+        # @return [Array] the dictionary values at the next +n+ indices
+        # @raise [FormatError] when an index is out of range or the indices run out
         def read(n)
           indices = @indices.read(n)
           dict = @dictionary
@@ -360,6 +473,10 @@ module Herringbone
         end
 
         # The next +n+ indices as a Numo::Int32, bounds-checked (read(as: :numo))
+        #
+        # @param n [Integer] number of indices to decode
+        # @return [Numo::Int32] indices into #dictionary
+        # @raise [FormatError] when an index is out of range or the indices run out
         def read_indices_numo(n)
           indices = @indices.read_numo(n, Numo::Int32)
           raise FormatError, "Dictionary index out of range in #{@path}" if n.positive? && indices.max >= @dictionary.size
@@ -369,16 +486,25 @@ module Herringbone
 
       # RLE-encoded BOOLEAN values
       class RleBooleanDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the 4-byte length prefix of the RLE data
         def initialize(data, pos)
           len = data.byteslice(pos, 4).unpack1("V")
           @bits = HybridDecoder.new(data, pos + 4, pos + 4 + len, 1)
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<Boolean>] the next +n+ values
+        # @raise [FormatError] when the runs end before +n+ values
         def read(n)
           @bits.read(n).map! { |v| v == 1 }
         end
 
         # The next +n+ values as a Numo::Bit (read(as: :numo))
+        #
+        # @param n [Integer] number of values to decode
+        # @return [Numo::Bit] 1 for true
+        # @raise [FormatError] when the runs end before +n+ values
         def read_numo(n)
           @bits.read_flags(n)
         end
@@ -386,12 +512,18 @@ module Herringbone
 
       # DELTA_LENGTH_BYTE_ARRAY: all lengths first (Integers), then the bytes sliced as needed
       class DeltaLengthDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the DELTA_BINARY_PACKED lengths
+        # @raise [FormatError] when the lengths are malformed
         def initialize(data, pos)
           @lengths, @pos = Encodings::Delta.decode_binary_packed(data, pos, 32)
           @data = data
           @i = 0
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<String>] the next +n+ values as binary Strings
+        # @raise [FormatError] when there are too few lengths or a value runs past the page
         def read(n)
           raise FormatError, "DELTA_LENGTH_BYTE_ARRAY has too few values" if @i + n > @lengths.size
           data = @data
@@ -409,6 +541,9 @@ module Herringbone
 
       # DELTA_BYTE_ARRAY: prefix lengths and suffixes, each value built from the previous one
       class DeltaByteArrayDecoder
+        # @param data [String] binary page data
+        # @param pos [Integer] offset of the DELTA_BINARY_PACKED prefix lengths
+        # @raise [FormatError] when the prefix or suffix lengths are malformed
         def initialize(data, pos)
           @prefixes, pos = Encodings::Delta.decode_binary_packed(data, pos, 32)
           @suffixes = DeltaLengthDecoder.new(data, pos)
@@ -416,6 +551,10 @@ module Herringbone
           @i = 0
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<String>] the next +n+ values as binary Strings
+        # @raise [FormatError] when there are too few values or a prefix is longer than the
+        #   previous value
         def read(n)
           raise FormatError, "DELTA_BYTE_ARRAY has too few values" if @i + n > @prefixes.size
           suffixes = @suffixes.read(n)
@@ -433,6 +572,11 @@ module Herringbone
 
       # BYTE_STREAM_SPLIT: byte k of every value lives in stream k; values are gathered per call
       class ByteStreamSplitDecoder
+        # @param data [String] binary page data; the streams run to its end
+        # @param pos [Integer] offset of the first stream
+        # @param width [Integer] bytes per value (and number of streams)
+        # @param type [Integer] Format::Type of the column
+        # @param type_length [Integer, nil] value size in bytes for FIXED_LEN_BYTE_ARRAY, else unused
         def initialize(data, pos, width, type, type_length)
           @data = data
           @pos = pos
@@ -443,6 +587,9 @@ module Herringbone
           @i = 0
         end
 
+        # @param n [Integer] number of values to decode
+        # @return [Array<Integer>, Array<Float>, Array<String>] the next +n+ values, decoded as PLAIN
+        # @raise [FormatError] when the streams hold fewer values
         def read(n)
           raise FormatError, "Truncated BYTE_STREAM_SPLIT data" if @i + n > @count
           streams = Array.new(@width) { |k| @data.byteslice(@pos + k * @count + @i, n) }.join
@@ -452,6 +599,10 @@ module Herringbone
         end
 
         # The next +n+ values re-interleaved into PLAIN bytes by Numo (read(as: :numo))
+        #
+        # @param n [Integer] number of values
+        # @return [String] +n+ * width bytes in PLAIN layout
+        # @raise [FormatError] when the streams hold fewer values
         def read_bytes(n)
           raise FormatError, "Truncated BYTE_STREAM_SPLIT data" if @i + n > @count
           streams = Array.new(@width) { |k| @data.byteslice(@pos + k * @count + @i, n) }.join

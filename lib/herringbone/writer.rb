@@ -41,16 +41,21 @@ module Herringbone
   #
   # Statistics and page indexes (ColumnIndex/OffsetIndex) are always written.
   class Writer
+    # Marker at the start and end of every Parquet file
     MAGIC = "PAR1".b.freeze
+    # Shorthand for Format::Type (physical types)
     T = Format::Type
+    # Shorthand for Format::Encoding
     E = Format::Encoding
 
+    # Names accepted in the +encodings:+ option => Parquet encoding id
     ENCODING_NAMES = {
       plain: E::PLAIN, rle: E::RLE, delta_binary_packed: E::DELTA_BINARY_PACKED,
       delta_length_byte_array: E::DELTA_LENGTH_BYTE_ARRAY, delta_byte_array: E::DELTA_BYTE_ARRAY,
       byte_stream_split: E::BYTE_STREAM_SPLIT
     }.freeze
 
+    # Encoding id => physical types it may be used for, per the Parquet encodings spec
     VALID_ENCODINGS = {
       E::PLAIN => T::NAMES.keys,
       E::RLE => [T::BOOLEAN],
@@ -60,15 +65,41 @@ module Herringbone
       E::BYTE_STREAM_SPLIT => [T::INT32, T::INT64, T::FLOAT, T::DOUBLE, T::FIXED_LEN_BYTE_ARRAY]
     }.freeze
 
+    # Largest dictionary build_dictionary keeps; above it the chunk is written without a dictionary.
+    # Not checked for FLOAT/DOUBLE, and byte-array columns are dictionary-encoded by ByteValues,
+    # which does not apply this limit either.
     MAX_DICTIONARY_BYTES = 1024 * 1024
     # The row group byte size is first estimated after this many rows, then after every row group
     ESTIMATE_AFTER_ROWS = 1000
 
+    # @return [Schema] schema the rows are written with
     attr_reader :schema
 
     # Opens a writer on +io+. With a block, the file is finished (footer written) when the block
     # returns and the block's value is returned; if the block raises, the writer is aborted and no
     # footer is written. Without a block, call #close to finish. The IO is never closed.
+    #
+    # @param io [IO, #write] destination
+    # @param schema [Schema] schema of the rows
+    # @param options [Hash{Symbol => Object}] see the class description and #initialize
+    # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
+    # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
+    # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
+    # @option options [Integer] :page_bytes (1MB) approximate uncompressed data page size
+    # @option options [Integer] :page_rows (20_000) maximum rows per data page
+    # @option options [Integer] :data_page_version (1) 1 or 2
+    # @option options [Boolean, Array<String>] :dictionary (true) dictionary-encode all eligible columns,
+    #   none, or only the listed dotted column paths
+    # @option options [Hash{String => Symbol}] :encodings ({}) dotted column path => value encoding
+    #   for non-dictionary pages
+    # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
+    # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
+    #   columns to write split block bloom filters for
+    # @yield [writer] the open writer
+    # @yieldparam writer [Writer] writer to append rows to
+    # @yieldreturn [Object] returned by open
+    # @return [Writer, Object] the writer without a block, the block's value with one
+    # @raise [ArgumentError] for an invalid IO, schema or option
     def self.open(io, schema, **options)
       writer = new(io, schema, **options)
       return writer unless block_given?
@@ -82,6 +113,27 @@ module Herringbone
       result
     end
 
+    # Validates the options and writes the leading magic bytes to +io+.
+    #
+    # @param io [IO, #write] destination; switched to binmode when it supports that
+    # @param schema [Schema] schema of the rows
+    # @param compression [Symbol, Integer] codec name (see Herringbone.codecs) or Format::Codec id
+    # @param row_group_bytes [Integer] approximate buffered size that triggers a row group
+    # @param row_group_rows [Integer, nil] also flush a row group after this many rows
+    # @param page_bytes [Integer] approximate uncompressed data page size
+    # @param page_rows [Integer] maximum level entries per data page (pages of repeated columns
+    #   extend to the next row start)
+    # @param data_page_version [Integer] 1 or 2
+    # @param dictionary [Boolean, Array<String>] true for every column except BOOLEAN, FLOAT, DOUBLE
+    #   and those listed in +encodings+; false for none; or the dotted paths of the columns to encode
+    # @param encodings [Hash{String, Symbol => Symbol, Integer}] dotted column path => value encoding
+    #   (a name from ENCODING_NAMES or an encoding id) for non-dictionary pages
+    # @param metadata [Hash{#to_s => #to_s}] key/value metadata for the footer
+    # @param bloom_filters [Boolean, Array<String>, Hash{String => Boolean, Hash}, nil] see the class
+    #   description
+    # @raise [ArgumentError] for an invalid IO, schema or option
+    # @raise [MissingCodecError] when the codec's optional gem cannot be loaded
+    # @raise [UnsupportedError] when the codec is not supported
     def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
       page_bytes: 1024 * 1024, page_rows: 20_000, data_page_version: 1, dictionary: true, encodings: {},
       metadata: {}, bloom_filters: nil)
@@ -117,7 +169,14 @@ module Herringbone
     end
 
     # Appends a row: a Hash keyed by top-level field names (Strings or Symbols), an Array of values
-    # in schema order, or an object responding to #attributes (ActiveRecord) or #to_h (Struct, Data)
+    # in schema order, or an object responding to #attributes (ActiveRecord) or #to_h (Struct, Data).
+    # A row that fails to encode leaves nothing behind in the buffers. Flushes a row group when the
+    # buffered rows reach the size limits.
+    #
+    # @param row [Hash, Array, #attributes, #to_h] row to append
+    # @return [self]
+    # @raise [Error] when the writer is closed
+    # @raise [EncodeError] when a required field is nil or missing, or a value cannot be encoded
     def <<(row)
       raise Error, "Writer is closed" if @closed
       row = row_hash(row)
@@ -152,9 +211,13 @@ module Herringbone
     end
 
     # Number of rows written so far, including buffered ones
+    #
+    # @return [Integer]
     def rows_written = @total_rows + @buffered_rows
 
     # Writes any buffered rows as a row group
+    #
+    # @return [void]
     def flush_row_group
       return if @buffered_rows.zero?
       start = @pos
@@ -172,6 +235,10 @@ module Herringbone
       reset_buffers
     end
 
+    # Flushes buffered rows, then writes the page indexes and the footer and flushes the IO.
+    # Does nothing when already closed or aborted. The IO itself is not closed.
+    #
+    # @return [void]
     def close
       return if @closed
       flush_row_group
@@ -195,6 +262,8 @@ module Herringbone
 
     # Stops writing without finishing the file (no footer is written). Whatever was already written
     # to the IO stays there; discarding it is up to the caller.
+    #
+    # @return [void]
     def abort
       @closed = true
     end
@@ -205,6 +274,10 @@ module Herringbone
     # A text-mode IO (a pipe, or a File opened with "w") transcodes what is written when
     # Encoding.default_internal is set, as Rails does, and binary pages cannot be transcoded,
     # so the IO is switched to binary mode.
+    #
+    # @param io [Object] candidate destination
+    # @return [IO, #write] +io+, in binary mode when it supports #binmode
+    # @raise [ArgumentError] when +io+ does not respond to #write, or is a String or Pathname
     def check_io!(io)
       if io.respond_to?(:write) && !io.is_a?(String) && !(defined?(Pathname) && io.is_a?(Pathname))
         io.binmode if io.respond_to?(:binmode)
@@ -216,8 +289,20 @@ module Herringbone
 
     # Levels are kept as binary Strings (one byte per entry). Values are an Array for numeric and
     # boolean columns, and a compact ByteValues for BYTE_ARRAY / FIXED_LEN_BYTE_ARRAY columns.
+    #
+    # @!attribute defs
+    #   @return [String, Array<Integer>] definition levels (unpacked to an Array while a chunk is written)
+    # @!attribute reps
+    #   @return [String, Array<Integer>, nil] repetition levels, like +defs+; nil for non-repeated columns
+    # @!attribute values
+    #   @return [Array, ByteValues] non-null physical values
     ColumnBuffer = Struct.new(:defs, :reps, :values)
 
+    # Starts a new row group: fresh buffers per column, and the per-field write plan
+    # (field, name, Symbol name, buffer and encoder for flat fields, or nils for shredded ones).
+    #
+    # @return [void]
+    # @raise [UnsupportedError] when a column has more than 255 definition or repetition levels
     def reset_buffers
       @buffers = @schema.columns.map do |col|
         if col.max_definition_level > 255 || col.max_repetition_level > 255
@@ -236,6 +321,8 @@ module Herringbone
       @buffered_rows = 0
     end
 
+    # @param col [Schema::Column] column to buffer
+    # @return [ByteValues, Array] empty value store for the column
     def new_values_store(col)
       case col.type
       when T::BYTE_ARRAY then ByteValues.new(dictionary: use_dictionary?(col))
@@ -246,6 +333,8 @@ module Herringbone
 
     # Flushes when the buffered values reach row_group_bytes (or row_group_rows rows). The bytes per
     # row are estimated from the buffered values after the first rows, then refreshed per row group.
+    #
+    # @return [void]
     def check_row_group_size
       @bytes_per_row ||= estimate_bytes_per_row
       limit = row_limit_for(@bytes_per_row)
@@ -258,11 +347,15 @@ module Herringbone
       end
     end
 
+    # @param bytes_per_row [Integer] estimated buffered bytes per row
+    # @return [Integer] rows to buffer before the next size check: what fits in row_group_bytes,
+    #   at least ESTIMATE_AFTER_ROWS, at most row_group_rows
     def row_limit_for(bytes_per_row)
       by_bytes = [@row_group_bytes / [bytes_per_row, 1].max, ESTIMATE_AFTER_ROWS].max
       @row_group_rows ? [@row_group_rows, by_bytes].min : by_bytes
     end
 
+    # @return [Integer] memory held by the buffers divided by the buffered rows
     def estimate_bytes_per_row
       bytes = @schema.columns.sum do |col|
         buf = @buffers[col.index]
@@ -277,22 +370,39 @@ module Herringbone
       bytes / [@buffered_rows, 1].max
     end
 
+    # Writes to the IO and tracks the file offset, since the IO is never asked for its position
+    #
+    # @param bytes [String] binary data
+    # @return [void]
     def write_raw(bytes)
       @io.write(bytes)
       @pos += bytes.bytesize
     end
 
+    # @param path [String, Symbol] column path, for the error message
+    # @param enc [Symbol, String, Integer] encoding name from ENCODING_NAMES, or an encoding id
+    # @return [Integer] encoding id
+    # @raise [ArgumentError] for an unknown encoding name
     def encoding_id(path, enc)
       return enc if enc.is_a?(Integer)
       ENCODING_NAMES.fetch(enc.to_s.downcase.to_sym) { raise ArgumentError, "Unknown encoding #{enc.inspect} for #{path}" }
     end
 
+    # Reads a struct member, by String or Symbol key
+    #
+    # @param hash [Hash, #to_h, nil] struct value
+    # @param name [String] member name
+    # @return [Object, nil] member value, nil when +hash+ is nil or has no such key
+    # @raise [EncodeError] when +hash+ cannot be converted to a Hash
     def lookup(hash, name)
       return nil if hash.nil?
       hash = as_hash(hash, name) unless hash.is_a?(Hash)
       hash.fetch(name) { hash[name.to_sym] }
     end
 
+    # @param row [Hash, Array, #attributes, #to_h] row given to #<<
+    # @return [Hash] the row keyed by top-level field names
+    # @raise [EncodeError] when an Array has the wrong size or the row cannot be converted to a Hash
     def row_hash(row)
       case row
       when Hash then row
@@ -307,6 +417,10 @@ module Herringbone
       end
     end
 
+    # @param value [Hash, #to_h] value to convert
+    # @param what [String] description of the value, for the error message
+    # @return [Hash]
+    # @raise [EncodeError] when +value+ does not respond to #to_h
     def as_hash(value, what)
       return value if value.is_a?(Hash)
       raise EncodeError, "Expected a Hash for #{what}, got #{value.class}" unless value.respond_to?(:to_h)
@@ -314,6 +428,10 @@ module Herringbone
     end
 
     # Removes the entries a failed row left behind, so the buffers stay aligned
+    #
+    # @param marks [Array<Array(Integer, Integer, Integer)>, nil] sizes of defs, reps and values of
+    #   each nested buffer before the row, nil when there are none
+    # @return [void]
     def rollback_row(marks)
       @plan.each do |field, _, _, buf|
         next unless buf && buf.defs.bytesize > @buffered_rows
@@ -330,6 +448,14 @@ module Herringbone
     end
 
     # Record shredding: turns a nested value into (definition level, repetition level, value) entries
+    #
+    # @param field [Schema::Field] field the value belongs to
+    # @param value [Object, nil] Ruby value of the field
+    # @param parent_def [Integer] definition level recorded when +value+ is nil
+    # @param rep [Integer] repetition level of the first entry this value produces
+    # @return [void]
+    # @raise [EncodeError] when a required value is nil, a list or map value has the wrong type, a
+    #   map key is nil, or a leaf value cannot be encoded
     def shred(field, value, parent_def, rep)
       if value.nil?
         raise EncodeError, "Field #{field.node.path.join(".")} is required but got nil" unless field.optional
@@ -386,6 +512,14 @@ module Herringbone
       end
     end
 
+    # Writes one column chunk of the current row group: an optional dictionary page, then data pages.
+    # Bloom filters and page indexes are queued, to be written after the row group and before the
+    # footer.
+    #
+    # @param col [Schema::Column] column being written
+    # @param buffer [ColumnBuffer] the column's buffered levels and values
+    # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
+    # @raise [ArgumentError] when the configured encoding is not valid for the column's type
     def write_column_chunk(col, buffer)
       type = col.type
       path = col.dotted_path
@@ -489,8 +623,24 @@ module Herringbone
       chunk
     end
 
+    # What the page indexes need to know about a written data page
+    #
+    # @!attribute offset
+    #   @return [Integer] file offset of the page header
+    # @!attribute size
+    #   @return [Integer] page size in the file, header included
+    # @!attribute first_row
+    #   @return [Integer] index of the page's first row within the row group
+    # @!attribute nulls
+    #   @return [Integer] null entries in the page
+    # @!attribute non_null
+    #   @return [Integer] non-null values in the page
+    # @!attribute range
+    #   @return [Array(Object, Object), nil] [min, max] physical values, nil when there are none
     PageInfo = Struct.new(:offset, :size, :first_row, :nulls, :non_null, :range)
 
+    # @param pages [Array<PageInfo>] pages of a column chunk
+    # @return [Format::OffsetIndex]
     def offset_index_for(pages)
       Format::OffsetIndex.new(page_locations: pages.map do |p|
         Format::PageLocation.new(offset: p.offset, compressed_page_size: p.size, first_row_index: p.first_row)
@@ -498,6 +648,11 @@ module Herringbone
     end
 
     # nil when the column has no defined sort order, or a page's values have no min/max (all NaN)
+    #
+    # @param col [Schema::Column] column the pages belong to
+    # @param pages [Array<PageInfo>] pages of the column chunk
+    # @param order [Proc, Method, nil] sort key from #sort_key
+    # @return [Format::ColumnIndex, nil]
     def column_index_for(col, pages, order)
       return nil unless order
       return nil if pages.any? { |p| p.non_null.positive? && p.range.nil? }
@@ -510,6 +665,10 @@ module Herringbone
       )
     end
 
+    # @param ranges [Array<Array(Object, Object)>] [min, max] of each non-null page, in page order
+    # @param order [Proc, Method] sort key from #sort_key
+    # @return [Integer] Format::BoundaryOrder: ASCENDING when both mins and maxes never decrease
+    #   (or there are fewer than two pages), DESCENDING when they never increase, else UNORDERED
     def boundary_order(ranges, order)
       return Format::BoundaryOrder::ASCENDING if ranges.size < 2
       cmp = ->(a, b) { order.equal?(IDENTITY) ? a <=> b : order.call(a) <=> order.call(b) }
@@ -524,6 +683,8 @@ module Herringbone
     end
 
     # Page indexes go after the last row group: all column indexes, then all offset indexes
+    #
+    # @return [void]
     def write_page_indexes
       @page_indexes.each do |chunk, column_index, _|
         next unless column_index
@@ -541,17 +702,25 @@ module Herringbone
       @page_indexes.clear
     end
 
+    # Per-column settings accepted in the +bloom_filters:+ option
     BLOOM_FILTER_OPTIONS = %i[ndv fpp max_bytes].freeze
 
     # { dotted_path => { ndv:, fpp:, max_bytes: } } from the bloom_filters: option
-    def bloom_filter_config(option)
-      return {} if option.nil? || option == false
+    #
+    # @param requested [Boolean, Array<String>, Hash{String => Boolean, Hash, nil}, nil] true for every
+    #   column of a supported type, column paths, or column path => true / false / settings Hash.
+    #   A path may also be given as an Array of names. Settings are +ndv+, +fpp+ and +max_bytes+.
+    # @return [Hash{String => Hash{Symbol => Numeric, nil}}] settings by dotted path; empty when disabled
+    # @raise [ArgumentError] for an unknown column, a column type without bloom filter support, or
+    #   invalid settings
+    def bloom_filter_config(requested)
+      return {} if requested.nil? || requested == false
       columns = @schema.columns.to_h { |c| [c.dotted_path, c] }
-      if option == true
+      if requested == true
         return columns.select { |_, c| BloomFilter::TYPES.include?(c.type) }.transform_values { bloom_filter_settings({}) }
       end
-      option = Array(option).to_h { |path| [path, true] } unless option.is_a?(Hash)
-      option.each_with_object({}) do |(path, settings), config|
+      requested = Array(requested).to_h { |path| [path, true] } unless requested.is_a?(Hash)
+      requested.each_with_object({}) do |(path, settings), config|
         path = path.is_a?(Array) ? path.join(".") : path.to_s
         col = columns[path] or raise ArgumentError, "bloom_filters: no such column #{path}"
         next if settings.nil? || settings == false
@@ -564,6 +733,11 @@ module Herringbone
       end
     end
 
+    # @param settings [Hash{Symbol => Object}] +ndv+, +fpp+ and +max_bytes+, all optional
+    # @param path [String, nil] column path, for error messages
+    # @return [Hash{Symbol => Numeric, nil}] +ndv+ (nil to count distinct values), +fpp+ and
+    #   +max_bytes+ with defaults filled in
+    # @raise [ArgumentError] for unknown keys, a non-positive ndv, or an fpp outside (0, 1)
     def bloom_filter_settings(settings, path = nil)
       unknown = settings.keys - BLOOM_FILTER_OPTIONS
       raise ArgumentError, "bloom_filters: unknown option #{unknown.join(", ")} for #{path}" unless unknown.empty?
@@ -577,6 +751,12 @@ module Herringbone
     # A filter holding the chunk's values: +dict_values+ (already distinct) for dictionary-encoded
     # chunks, +values+ otherwise. Each distinct value is hashed once, and the filter is sized from
     # the configured ndv or from the number of distinct values.
+    #
+    # @param col [Schema::Column] column the filter is for
+    # @param settings [Hash{Symbol => Numeric, nil}] from #bloom_filter_settings
+    # @param dict_values [Array, nil] dictionary of the chunk, when dictionary-encoded
+    # @param values [Array, nil] the chunk's non-null physical values, used without a dictionary
+    # @return [BloomFilter]
     def build_bloom_filter(col, settings, dict_values, values)
       hashes = if dict_values
         BloomFilter.hash_physical_all(dict_values, col.type)
@@ -590,6 +770,8 @@ module Herringbone
     end
 
     # Bloom filters go right after the row group's column chunks, in column order
+    #
+    # @return [void]
     def write_bloom_filters
       @pending_bloom_filters.each do |meta, filter|
         bytes = filter.encode
@@ -600,6 +782,9 @@ module Herringbone
       @pending_bloom_filters.clear
     end
 
+    # @param col [Schema::Column] column to check
+    # @return [Boolean] whether the +dictionary:+ option asks for this column to be dictionary-encoded
+    #   (never for BOOLEAN)
     def use_dictionary?(col)
       return false if col.type == T::BOOLEAN
       case @dictionary
@@ -609,7 +794,13 @@ module Herringbone
       end
     end
 
-    # Returns [dictionary_values, indices] or nil when a dictionary is not worthwhile
+    # Returns [dictionary_values, indices] or nil when a dictionary is not worthwhile: more than about
+    # half the values are distinct, or (except for floats) the dictionary exceeds MAX_DICTIONARY_BYTES
+    #
+    # @param values [Array] non-null physical values of the chunk
+    # @param type [Integer] physical type
+    # @param type_length [Integer, nil] FIXED_LEN_BYTE_ARRAY width
+    # @return [Array(Array, Array<Integer>), nil]
     def build_dictionary(values, type, type_length)
       # Floats are keyed by bit pattern so that -0.0 and 0.0 (and NaNs) stay distinct
       if type == T::FLOAT || type == T::DOUBLE
@@ -633,6 +824,10 @@ module Herringbone
 
     # Splits a column buffer into pages of roughly @page_bytes bytes. Repeated columns
     # are only cut where a new row starts.
+    #
+    # @param buf [ColumnBuffer] column buffer with levels as Arrays
+    # @param value_bytes [Integer] estimated encoded size of all the chunk's values
+    # @return [Array<Array(Integer, Integer)>] [from, to) ranges of level entries, one per page
     def page_ranges(buf, value_bytes)
       n = buf.defs.size
       bytes = n + value_bytes
@@ -653,6 +848,8 @@ module Herringbone
       ranges
     end
 
+    # @param col [Schema::Column] column to check
+    # @return [Integer, nil] PLAIN-encoded bytes per value, nil for BYTE_ARRAY (variable width)
     def value_width(col)
       case col.type
       when T::BOOLEAN then 1
@@ -663,6 +860,15 @@ module Herringbone
       end
     end
 
+    # Encodes a page's values. RLE_DICTIONARY values are the dictionary indices, prefixed with the
+    # bit width byte; RLE is only used for BOOLEAN and carries the 4-byte length prefix.
+    #
+    # @param values [Array] physical values, or dictionary indices
+    # @param encoding [Integer] encoding id
+    # @param type [Integer] physical type
+    # @param type_length [Integer, nil] FIXED_LEN_BYTE_ARRAY width
+    # @param dict_size [Integer, nil] number of dictionary entries, for RLE_DICTIONARY
+    # @return [String] encoded binary page values
     def encode_values(values, encoding, type, type_length, dict_size)
       case encoding
       when E::PLAIN then Encodings::Plain.encode(values, type, type_length)
@@ -683,6 +889,12 @@ module Herringbone
     end
 
     # Writes a page, returning the uncompressed size including the header
+    #
+    # @param header [Format::PageHeader] header; sizes and CRC32 are filled in here
+    # @param body [String] uncompressed page body
+    # @param compressed [String, nil] bytes to write as the page body, when already prepared (v2 data
+    #   pages, whose levels stay uncompressed); +body+ is compressed otherwise
+    # @return [Integer]
     def write_page(header, body, compressed = nil)
       compressed ||= Compression.compress(@codec, body)
       header.uncompressed_page_size ||= body.bytesize
@@ -694,6 +906,14 @@ module Herringbone
       encoded.bytesize + header.uncompressed_page_size
     end
 
+    # A DATA_PAGE: length-prefixed repetition and definition levels, then the values, all compressed
+    #
+    # @param n [Integer] number of level entries (values including nulls)
+    # @param rep_bytes [String] RLE-encoded repetition levels, empty when the column has none
+    # @param def_bytes [String] RLE-encoded definition levels, empty when the column has none
+    # @param encoded [String] encoded values
+    # @param encoding [Integer] encoding id of the values
+    # @return [Integer] uncompressed size including the header
     def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding)
       body = String.new(encoding: Encoding::BINARY)
       body << [rep_bytes.bytesize].pack("V") << rep_bytes unless rep_bytes.empty?
@@ -709,6 +929,16 @@ module Herringbone
       write_page(header, body)
     end
 
+    # A DATA_PAGE_V2: levels without length prefixes and uncompressed, then the compressed values
+    #
+    # @param n [Integer] number of level entries (values including nulls)
+    # @param nulls [Integer] null entries
+    # @param rows [Integer] rows in the page
+    # @param rep_bytes [String] RLE-encoded repetition levels, empty when the column has none
+    # @param def_bytes [String] RLE-encoded definition levels, empty when the column has none
+    # @param encoded [String] encoded values
+    # @param encoding [Integer] encoding id of the values
+    # @return [Integer] uncompressed size including the header
     def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding)
       compressed = Compression.compress(@codec, encoded)
       header = Format::PageHeader.new(
@@ -724,9 +954,20 @@ module Herringbone
       write_page(header, "".b, rep_bytes + def_bytes + compressed)
     end
 
+    # Statistics and column index bounds longer than this are truncated, see #truncate_min
     STAT_TRUNCATE_BYTES = 64
+    # Sort key for types whose Ruby ordering already matches Parquet's; compared by identity to
+    # skip calling it
     IDENTITY = ->(v) { v }
 
+    # Chunk statistics: null count, plus min/max (flagged exact unless truncated) when the column
+    # has a sort order and non-NaN values
+    #
+    # @param col [Schema::Column] column the chunk belongs to
+    # @param defs [Array<Integer>] definition levels of the chunk
+    # @param values [Array] distinct or all non-null physical values of the chunk
+    # @param order [Proc, Method, nil] sort key from #sort_key
+    # @return [Format::Statistics]
     def statistics_for(col, defs, values, order)
       max_def = col.max_definition_level
       nulls = max_def.zero? ? 0 : defs.size - defs.count(max_def)
@@ -745,6 +986,9 @@ module Herringbone
 
     # A key giving the Parquet sort order of the column's physical values (IDENTITY when Ruby's own
     # comparison already matches), or nil when the order is undefined (INT96)
+    #
+    # @param col [Schema::Column] column to order
+    # @return [Proc, Method, nil]
     def sort_key(col)
       kind, _, signed = Types.logical_of(col.node)
       case col.type
@@ -763,7 +1007,13 @@ module Herringbone
       end
     end
 
-    # [min, max] of +values+ in column order, ignoring NaNs; nil if there is nothing to compare
+    # [min, max] of +values+ in column order, ignoring NaNs; nil if there is nothing to compare.
+    # A zero float bound is normalized to -0.0 (min) / 0.0 (max), as the spec asks.
+    #
+    # @param col [Schema::Column] column the values belong to
+    # @param values [Array] physical values
+    # @param order [Proc, Method] sort key from #sort_key
+    # @return [Array(Object, Object), nil]
     def value_range(col, values, order)
       floats = col.type == T::FLOAT || col.type == T::DOUBLE
       if floats
@@ -780,6 +1030,9 @@ module Herringbone
       [min, max]
     end
 
+    # @param col [Schema::Column] column the value belongs to
+    # @param value [Object] physical value
+    # @return [String] the value PLAIN-encoded, as statistics store it (byte arrays without length)
     def stat_bytes(col, value)
       case col.type
       when T::BOOLEAN then value ? "\x01".b : "\x00".b
@@ -793,10 +1046,17 @@ module Herringbone
 
     # Long byte-array bounds are truncated: a prefix is still a lower bound for the minimum, and
     # a prefix with its last byte incremented is an upper bound for the maximum
+    #
+    # @param bytes [String] encoded minimum
+    # @return [String] at most STAT_TRUNCATE_BYTES bytes
     def truncate_min(bytes)
       (bytes.bytesize > STAT_TRUNCATE_BYTES) ? bytes.byteslice(0, STAT_TRUNCATE_BYTES) : bytes
     end
 
+    # @param bytes [String] encoded maximum
+    # @return [String] at most STAT_TRUNCATE_BYTES bytes, with the last byte that is not 0xFF
+    #   incremented (trailing 0xFF bytes dropped); +bytes+ unchanged when it fits, or when the
+    #   whole prefix is 0xFF
     def truncate_max(bytes)
       return bytes if bytes.bytesize <= STAT_TRUNCATE_BYTES
       prefix = bytes.byteslice(0, STAT_TRUNCATE_BYTES).bytes

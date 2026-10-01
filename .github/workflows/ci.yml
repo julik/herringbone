@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Standard
+    name: Standard + yard-lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -22,6 +22,7 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
       - run: bundle exec rake standard
+      - run: bundle exec rake yard:lint
 
   # Oldest supported Ruby, with the optional native Snappy gem (the runners have cmake to build
   # it); the pure-Ruby Snappy is covered by the "Without IO::Buffer" and "Without ... gems" jobs
