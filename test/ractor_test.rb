@@ -26,6 +26,8 @@ class RactorTest < Minitest::Test
   end
 
   def test_concurrent_writers_and_readers
+    # Ruby 3.0 does not let other Ractors read instance variables of modules, even frozen ones
+    skip "Ractors need Ruby 3.1" if RUBY_VERSION < "3.1"
     readable = FIXTURES.map { |name| fixture_path(name) }.select { |path| readable?(path) }
     written = 2.times.map { |i| File.join(@dir, "written_#{i}.parquet").freeze }
     codecs = Ractor.make_shareable(WriterHelpers::CODECS.dup)

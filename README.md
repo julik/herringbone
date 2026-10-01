@@ -46,7 +46,7 @@ require "zstd-ruby"
 require "numo/narray"
 ```
 
-Herringbone works from any Ractor. Pass a schema to a Ractor with `Ractor.make_shareable(schema)`.
+On Ruby 3.1 and later, Herringbone works from any Ractor. Pass a schema to a Ractor with `Ractor.make_shareable(schema)`.
 
 ## Reading
 

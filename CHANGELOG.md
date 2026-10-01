@@ -9,7 +9,7 @@
 - `Herringbone::SchemaMismatch` (an `EncodeError`) explains a row that doesn't fit an inferred
   schema and stops the write; `EncodeError` has `row`, `column` and `value`.
 - `herringbone inspect --format=html` opens the page in the browser when run in a terminal.
-- Reading and writing work from any Ractor, and schemas can be passed to Ractors with
+- Reading and writing work from any Ractor on Ruby 3.1+, and schemas can be passed to Ractors with
   `Ractor.make_shareable(schema)`.
 - **Breaking:** `herringbone inspect` takes `--format=text|json|html` instead of `--json`/`--html`.
 - **Breaking:** the optional gems (`zstd-ruby`, `brotli`, `snappy`, `xxhash`, `numo-narray-alt`)
