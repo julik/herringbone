@@ -149,7 +149,10 @@ end
 
 `Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
 first 1000 rows unless `schema:` is given; fields declared in a block replace inferred ones:
-`Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows) { json :payload })`.
+`Herringbone.write(io, rows) { json :payload }`. The rows are iterated once, holding back only
+those first 1000, so lazy Enumerators and cursors that can't be rewound work. A later row that
+doesn't fit the inferred types raises `Herringbone::SchemaMismatch`, which explains what was
+inferred and how to declare the column, and leaves the file unfinished.
 
 The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
 pipe), sequentially, and never seeks, rewinds or closes it (it does switch it to binary mode). If
@@ -200,6 +203,24 @@ Writer options:
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
 | `metadata` | `{}` | footer key/value metadata, read back with `reader.metadata` |
 | `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => { ndv:, fpp:, max_bytes: } }` |
+
+### Coming from CSV
+
+`SimpleWriter` writes like the CSV gem: name the columns, then append Arrays. The types are
+inferred from the first 1000 rows, as above.
+
+```ruby
+File.open("people.parquet", "wb") do |file|
+  Herringbone::SimpleWriter.open(file) do |sw|
+    sw.headers!(:id, :name, :age)
+    sw << [123, "John", 12]
+    sw << { id: 124, name: "Jane" } # Hashes work too
+  end
+end
+```
+
+Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
+`Herringbone::SimpleWriter.new(io) { string :code }` (then call `close` when done).
 
 ### Statistics, page indexes and bloom filters
 
