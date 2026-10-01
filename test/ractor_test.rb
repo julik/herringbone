@@ -26,14 +26,15 @@ class RactorTest < Minitest::Test
   end
 
   def test_concurrent_writers_and_readers
-    readable = FIXTURES.map { |name| fixture_path(name) }
+    readable = FIXTURES.map { |name| fixture_path(name) }.select { |path| readable?(path) }
     written = 2.times.map { |i| File.join(@dir, "written_#{i}.parquet").freeze }
     codecs = Ractor.make_shareable(WriterHelpers::CODECS.dup)
 
     schemas = Ractor.make_shareable([WriterHelpers::ALL_TYPES_SCHEMA, WriterHelpers::NESTED_SCHEMA])
-    nested = Ractor.make_shareable(WriterHelpers.nested_rows(50))
+    # Rows are copied into each Ractor: Ruby 3.0 cannot make a Time shareable
+    nested = WriterHelpers.nested_rows(50)
     writers = written.each_with_index.map do |path, i|
-      rows = Ractor.make_shareable(WriterHelpers.all_types_rows(200 + i))
+      rows = WriterHelpers.all_types_rows(200 + i)
       Ractor.new(path, i, rows, nested, schemas, codecs) do |path, i, rows, nested, (all_types, nested_schema), codecs|
         opts = {bloom_filters: ["str", "i64"], row_group_rows: 64, data_page_version: i + 1, dictionary: i.zero?}
         File.open(path, "wb") { |f| Herringbone.write(f, rows, schema: all_types, **opts) }
@@ -96,6 +97,13 @@ class RactorTest < Minitest::Test
   end
 
   private
+
+  # Whether the codecs of the file's column chunks are available
+  def readable?(path)
+    meta = File.open(path, "rb") { |f| Herringbone::Reader.new(f).file_metadata }
+    meta.row_groups.flat_map { |rg| rg.columns.map { |c| Herringbone::Compression::NAMES[c.meta_data.codec] } }
+      .all? { |codec| WriterHelpers::CODECS.include?(codec) }
+  end
 
   def fixture_path(name)
     [File.join(FIXTURES_DIR, "parquet-testing", name), File.join(FIXTURES_DIR, "generated", name)]
