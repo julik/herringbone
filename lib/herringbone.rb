@@ -129,7 +129,7 @@ module Herringbone
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].
-  # :zstd and :brotli are listed when the zstd-ruby / brotli gems can be loaded.
+  # :zstd and :brotli are listed when the zstd-ruby / brotli gems are loaded.
   #
   # @return [Array<Symbol>] codec names accepted by the writer's +compression:+ option
   def codecs

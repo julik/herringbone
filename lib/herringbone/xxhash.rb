@@ -3,9 +3,9 @@
 module Herringbone
   # XXH64 (seed 0), the hash Parquet bloom filters use.
   #
-  # When the optional "xxhash" gem (a C extension) can be loaded it is used, which is 20-40x
-  # faster; otherwise hashing is pure Ruby. The gem is only a speedup, so nothing fails without
-  # it. +XXHash.backend = :ruby+ forces pure Ruby (for tests and benchmarks).
+  # When the optional "xxhash" gem (a C extension) is loaded (+require "xxhash"+) it is used,
+  # which is 20-40x faster; otherwise hashing is pure Ruby. The gem is only a speedup, so nothing
+  # fails without it. +XXHash.backend = :ruby+ forces pure Ruby (for tests and benchmarks).
   #
   # The pure-Ruby version keeps every 64-bit value as two 32-bit halves, and multiplies by the
   # XXH64 primes split into 16-bit pieces, so that no intermediate result leaves the Fixnum range.
@@ -286,8 +286,7 @@ module Herringbone
 
     module_eval(Generator.source, __FILE__, __LINE__)
 
-    @native = nil # nil: not resolved yet, false: pure Ruby, else the native module
-    @native_lib = nil
+    @native = nil # nil: native when loaded, false: pure Ruby, else the native module
 
     class << self
       # XXH64 of a String's bytes, as an unsigned 64-bit Integer
@@ -296,7 +295,7 @@ module Herringbone
       # @return [Integer] the hash, 0...2^64
       def xxh64(bytes)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         native ? native.xxh64(bytes, 0) : ruby_xxh64(bytes)
       end
 
@@ -307,7 +306,7 @@ module Herringbone
       # @return [Integer] the hash, 0...2^64
       def xxh64_u64(lane)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         return native.xxh64([lane].pack("Q<"), 0) if native
         ruby_xxh64_lane((lane >> 32) & M32, lane & M32)
       end
@@ -318,7 +317,7 @@ module Herringbone
       # @return [Integer] the hash, 0...2^64
       def xxh64_u32(word)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         return native.xxh64([word].pack("L<"), 0) if native
         ruby_xxh64_u32(word & M32)
       end
@@ -329,7 +328,7 @@ module Herringbone
       # @return [Array<Integer>] the hashes, in the same order
       def xxh64_u64_all(lanes)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         if native
           packed = lanes.pack("Q<*")
           Array.new(lanes.size) { |i| native.xxh64(packed.byteslice(i << 3, 8), 0) }
@@ -344,7 +343,7 @@ module Herringbone
       # @return [Array<Integer>] the hashes, in the same order
       def xxh64_u32_all(words)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         if native
           packed = words.pack("L<*")
           Array.new(words.size) { |i| native.xxh64(packed.byteslice(i << 2, 4), 0) }
@@ -359,7 +358,7 @@ module Herringbone
       # @return [Array<Integer>] the hashes, in the same order
       def xxh64_all(strings)
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         native ? strings.map { |s| native.xxh64(s, 0) } : strings.map { |s| ruby_xxh64(s) }
       end
 
@@ -368,57 +367,43 @@ module Herringbone
       # @return [Symbol] +:native+ or +:ruby+
       def backend
         native = @native
-        native = resolve_backend if native.nil?
+        native = native_library if native.nil?
         native ? :native : :ruby
       end
 
-      # :ruby forces pure Ruby, :native requires the xxhash gem (UnsupportedError if it cannot be
-      # loaded), nil goes back to the default: native when available
+      # :ruby forces pure Ruby, :native the xxhash gem (UnsupportedError if it is not loaded), nil
+      # goes back to the default: native when loaded
       #
       # @param name [Symbol, nil] +:ruby+, +:native+ or nil
       # @return [void]
-      # @raise [UnsupportedError] for +:native+ when the gem cannot be loaded
+      # @raise [UnsupportedError] for +:native+ when the gem is not loaded
       # @raise [ArgumentError] for any other name
       def backend=(name)
         @native = case name
         when :ruby then false
         when :native
-          native_library || raise(UnsupportedError, "The \"#{NATIVE_GEM}\" gem could not be loaded")
+          native_library || raise(UnsupportedError, "The \"#{NATIVE_GEM}\" gem is not loaded (require \"#{NATIVE_GEM}\")")
         when nil then nil
         else raise ArgumentError, "Unknown XXHash backend #{name.inspect} (expected :ruby, :native or nil)"
         end
       end
 
-      # Whether the native xxhash gem can be loaded (whatever the selected backend)
+      # Whether the native xxhash gem is loaded (whatever the selected backend)
       #
-      # @return [Boolean] true when the gem is loadable
+      # @return [Boolean] true when the gem is loaded
       def native_available?
         !!native_library
       end
 
       private
 
-      # Picks the default backend on first use: native when the gem loads, pure Ruby otherwise
-      #
-      # @return [Module, false] the native module, or false for pure Ruby
-      def resolve_backend
-        @native = native_library || false
-      end
-
-      # Requires the xxhash gem once and memoizes the result (a failed require is not retried)
+      # Not memoized, so that it works the same in every Ractor and once the gem is required later
       #
       # @return [Module, false] the gem's module to call +xxh64(data, seed)+ on, or false when it
-      #   cannot be loaded
+      #   is not loaded
       def native_library
-        if @native_lib.nil?
-          @native_lib = begin
-            require NATIVE_GEM
-            defined?(::XXhash::XXhashInternal) ? ::XXhash::XXhashInternal : ::XXhash
-          rescue LoadError
-            false
-          end
-        end
-        @native_lib
+        return ::XXhash::XXhashInternal if defined?(::XXhash::XXhashInternal)
+        defined?(::XXhash.xxh64) ? ::XXhash : false
       end
     end
   end

@@ -8,6 +8,11 @@
 # Every case runs in a forked child so peak memory is measured in isolation. The input rows are
 # generated once in the parent (not timed) and shared with the children copy-on-write.
 require "herringbone"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "parquet"
 require "get_process_mem"
 require "tmpdir"

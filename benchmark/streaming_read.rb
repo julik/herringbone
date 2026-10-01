@@ -10,6 +10,11 @@
 # Reading runs in a forked child so peak memory is measured in isolation.
 $LOAD_PATH.unshift(File.expand_path(ENV["HERRINGBONE_LIB"])) if ENV["HERRINGBONE_LIB"]
 require "herringbone"
+# Herringbone uses the optional gems only when they are loaded
+%w[zstd-ruby snappy xxhash].each do |lib|
+  require lib
+rescue LoadError
+end
 require "get_process_mem"
 require "tmpdir"
 require_relative "dataset"

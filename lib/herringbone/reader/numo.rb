@@ -27,9 +27,6 @@ module Herringbone
       # Shorthand for Format::Type.
       T = Format::Type
 
-      @loaded = false
-      @mutex = Mutex.new
-
       # How a top-level field becomes a Numo array.
       #   kind:      :fixed (a numeric or boolean leaf), :list (list of numbers) or :object
       #   klass:     the Numo class of the result without nulls
@@ -46,29 +43,19 @@ module Herringbone
 
       module_function
 
-      # Requires Numo once per process (thread-safe); a no-op after the first success.
       # @return [void]
-      # @raise [UnsupportedError] if neither numo-narray-alt nor numo-narray can be loaded
+      # @raise [UnsupportedError] if Numo is not loaded
       def load!
-        return if @loaded
-        @mutex.synchronize do
-          next if @loaded
-          begin
-            require_library
-          rescue LoadError => e
-            raise UnsupportedError, "as: :numo needs the \"numo-narray-alt\" gem (or \"numo-narray\"), " \
-              "which could not be loaded (#{e.message}). Add `gem \"numo-narray-alt\"` to your Gemfile " \
-              "to read columns into Numo arrays."
-          end
-          @loaded = true
-        end
+        return if loaded?
+        raise UnsupportedError, "as: :numo needs the \"numo-narray-alt\" gem (or \"numo-narray\"), which " \
+          "is not loaded. Add `gem \"numo-narray-alt\"` to your Gemfile and `require \"numo/narray\"` " \
+          "to read columns into Numo arrays."
       end
 
-      # Separate from load! so tests can stub it to simulate a missing gem.
-      # @return [Boolean] true if the library was loaded by this call
-      # @raise [LoadError] if "numo/narray" is not installed
-      def require_library
-        require "numo/narray"
+      # A separate method so tests can stub it to simulate a missing gem.
+      # @return [Boolean] whether "numo/narray" is loaded
+      def loaded?
+        defined?(::Numo::NArray) ? true : false
       end
 
       # Picks how +field+ is converted: a numeric or boolean leaf, a list of numbers with a single
@@ -200,9 +187,14 @@ module Herringbone
         out
       end
 
-      # Width => Numo vector of 1 << j for each bit j, built lazily; dotting a bit matrix with it
-      # turns rows of bits into integers. Int64 above 30 bits so the sums cannot overflow.
-      POWERS = Hash.new { |h, w| h[w] = ((w > 30) ? Numo::Int64 : Numo::Int32).cast(Array.new(w) { |j| 1 << j }) }
+      # Numo vector of 1 << j for each bit j of +width+, memoized per Ractor; dotting a bit matrix
+      # with it turns rows of bits into integers. Int64 above 30 bits so the sums cannot overflow.
+      # @param width [Integer] bits per value
+      # @return [Numo::Int32, Numo::Int64] the powers of two
+      def powers(width)
+        cache = Ractor.current[:herringbone_numo_powers] ||= {}
+        cache[width] ||= ((width > 30) ? Numo::Int64 : Numo::Int32).cast(Array.new(width) { |j| 1 << j })
+      end
 
       # +count+ bit-packed values of +width+ bits (LSB first) from +data+ at +pos+ as a Numo
       # array, without a Ruby object per value
@@ -224,7 +216,7 @@ module Herringbone
         end
         # Row i of the [count, width] bit matrix holds value i's bits, least significant first
         bits = Numo::Bit.from_binary(bytes, [count * width]).reshape(count, width)
-        pow = POWERS[width]
+        pow = powers(width)
         pow.class.cast(bits).dot(pow)
       end
     end

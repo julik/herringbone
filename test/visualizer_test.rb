@@ -131,16 +131,12 @@ class VisualizerTest < Minitest::Test
   end
 
   def test_works_without_codec_gems
-    Herringbone::Compression.instance_variable_set(:@libraries, {})
-    missing = ->(path) { raise LoadError, "cannot load such file -- #{path}" }
-    Herringbone::Compression.stub(:require_library, missing) do
+    Herringbone::Compression.stub(:loaded_library, nil) do
       %w[codec_zstd codec_brotli enc_delta_mixed_v2_zstd].each do |f|
         html = render(File.join(FIXTURES_DIR, "generated", "#{f}.parquet"))
         check_html(html, f)
       end
     end
-  ensure
-    Herringbone::Compression.instance_variable_set(:@libraries, {})
   end
 
   def test_to_html_is_titled_with_the_file_name

@@ -8,12 +8,12 @@ module Herringbone
       module_function
 
       # Fixed-width numeric types: pack/unpack directive and byte width (all little-endian).
-      FORMATS = {
+      FORMATS = Ractor.make_shareable({
         Format::Type::INT32 => ["l<", 4],
         Format::Type::INT64 => ["q<", 8],
         Format::Type::FLOAT => ["e", 4],
         Format::Type::DOUBLE => ["E", 8]
-      }.freeze
+      })
 
       # Decodes +count+ values of +type+ from +data+ starting at +pos+.
       # Returns [values, new_pos].

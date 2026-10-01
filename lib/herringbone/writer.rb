@@ -56,14 +56,14 @@ module Herringbone
     }.freeze
 
     # Encoding id => physical types it may be used for, per the Parquet encodings spec
-    VALID_ENCODINGS = {
+    VALID_ENCODINGS = Ractor.make_shareable({
       E::PLAIN => T::NAMES.keys,
       E::RLE => [T::BOOLEAN],
       E::DELTA_BINARY_PACKED => [T::INT32, T::INT64],
       E::DELTA_LENGTH_BYTE_ARRAY => [T::BYTE_ARRAY],
       E::DELTA_BYTE_ARRAY => [T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY],
       E::BYTE_STREAM_SPLIT => [T::INT32, T::INT64, T::FLOAT, T::DOUBLE, T::FIXED_LEN_BYTE_ARRAY]
-    }.freeze
+    })
 
     # Largest dictionary build_dictionary keeps; above it the chunk is written without a dictionary.
     # Byte-array columns are dictionary-encoded by ByteValues, which applies its own
@@ -132,7 +132,7 @@ module Herringbone
     # @param bloom_filters [Boolean, Array<String>, Hash{String => Boolean, Hash}, nil] see the class
     #   description
     # @raise [ArgumentError] for an invalid IO, schema or option
-    # @raise [MissingCodecError] when the codec's optional gem cannot be loaded
+    # @raise [MissingCodecError] when the codec's optional gem is not loaded
     # @raise [UnsupportedError] when the codec is not supported
     def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
       page_bytes: 1024 * 1024, page_rows: 20_000, data_page_version: 1, dictionary: true, encodings: {},
@@ -314,10 +314,12 @@ module Herringbone
           col.max_repetition_level.positive? ? String.new(encoding: Encoding::BINARY) : nil,
           new_values_store(col))
       end
+      # Column#encoder builds its Proc on every call
+      @encoders = @schema.columns.map(&:encoder)
       # Top-level, non-repeated leaves are written directly, everything else is shredded
       @plan = @schema.fields.map do |field|
         flat = field.leaf? && field.column.max_repetition_level.zero?
-        [field, field.name, field.name.to_sym, flat ? @buffers[field.column.index] : nil, flat ? field.column.encoder : nil]
+        [field, field.name, field.name.to_sym, flat ? @buffers[field.column.index] : nil, flat ? @encoders[field.column.index] : nil]
       end
       @nested_buffers = @plan.reject { |p| p[3] }.flat_map { |p| p[0].leaves.map { |c| @buffers[c.index] } }
       @buffered_rows = 0
@@ -488,7 +490,7 @@ module Herringbone
         buf.defs << d
         buf.reps&.<< rep
         begin
-          buf.values << field.column.encoder.call(value)
+          buf.values << @encoders[field.column.index].call(value)
         rescue ArgumentError, TypeError, NoMethodError, RangeError => e
           raise EncodeError.new("Cannot write #{value.inspect} to #{field.column.dotted_path}: #{e.message}", column: field.column.dotted_path, value: value)
         end
@@ -968,7 +970,7 @@ module Herringbone
     STAT_TRUNCATE_BYTES = 64
     # Sort key for types whose Ruby ordering already matches Parquet's; compared by identity to
     # skip calling it
-    IDENTITY = ->(v) { v }
+    IDENTITY = Ractor.make_shareable(->(v) { v })
 
     # Chunk statistics: null count, plus min/max (flagged exact unless truncated) when the column
     # has a sort order and non-NaN values

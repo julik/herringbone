@@ -401,12 +401,12 @@ module Herringbone
       class << self
         # @return [Array<Field>] declared fields, sorted by id
         def fields
-          @fields ||= []
+          @fields || []
         end
 
         # @return [Hash{Integer => Field}] declared fields by id, for decoding
         def fields_by_id
-          @fields_by_id ||= fields.to_h { |f| [f.id, f] }
+          @fields_by_id || {}
         end
 
         # Declares a field and defines its accessor
@@ -417,9 +417,9 @@ module Herringbone
         #   or a Struct subclass
         # @return [void]
         def field(id, name, type)
-          fields << Field.new(id, name, type, :"@#{name}")
-          fields.sort_by!(&:id)
-          @fields_by_id = nil
+          # Shareable, so that structs can be decoded in any Ractor
+          @fields = Ractor.make_shareable((fields + [Field.new(id, name, type, :"@#{name}")]).sort_by(&:id))
+          @fields_by_id = Ractor.make_shareable(@fields.to_h { |f| [f.id, f] })
           attr_accessor name
         end
 

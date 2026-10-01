@@ -363,20 +363,14 @@ class NumoMissingTest < Minitest::Test
     io = StringIO.new("".b)
     Herringbone.write(io, [{a: 1}])
     reader = Herringbone::Reader.new(StringIO.new(io.string))
-    loaded = NumoColumns.instance_variable_get(:@loaded)
-    NumoColumns.instance_variable_set(:@loaded, false)
-    missing = -> { raise LoadError, "cannot load such file -- numo/narray" }
-    NumoColumns.stub(:require_library, missing) do
+    NumoColumns.stub(:loaded?, false) do
       [-> { reader.read(as: :numo) }, -> { reader.each_batch(as: :numo) {} }].each do |call|
         error = assert_raises(Herringbone::UnsupportedError) { call.call }
         assert_match(/needs the "numo-narray-alt" gem \(or "numo-narray"\)/, error.message)
-        assert_match(/cannot load such file -- numo\/narray/, error.message)
-        assert_match(/Add `gem "numo-narray-alt"` to your Gemfile/, error.message)
+        assert_match(/Add `gem "numo-narray-alt"` to your Gemfile and `require "numo\/narray"`/, error.message)
       end
     end
     assert_equal [{"a" => 1}], reader.read, "other read modes do not need Numo"
-  ensure
-    NumoColumns.instance_variable_set(:@loaded, loaded)
   end
 
   def test_rejects_unknown_as
