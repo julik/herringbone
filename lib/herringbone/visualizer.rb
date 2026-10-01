@@ -16,6 +16,7 @@ module Herringbone
   #
   #   File.open("data.parquet", "rb") { |io| Herringbone::Inspector.new(io).to_html }
   class Visualizer
+    # highlight.js build loaded by the page to colour the footer JSON; optional.
     HIGHLIGHT_JS = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
     # The design and idea of this page come from Parquet X-ray; credited at the top of every page
     CREDIT_URL = "https://huggingface.co/spaces/cfahlgren1/parquet-xray"
@@ -26,9 +27,15 @@ module Herringbone
     # Footer JSON is embedded only when the footer is smaller than this
     MAX_FOOTER_JSON = 512 * 1024
 
+    # PageType names to their Thrift ids, the page type code the embedded JS expects in page rows
+    # (unknown page types are passed on as their raw Integer).
     PAGE_TYPES = {DATA_PAGE: 0, INDEX_PAGE: 1, DICTIONARY_PAGE: 2, DATA_PAGE_V2: 3}.freeze
 
     # +inspector+ is an Inspector. +title+ defaults to the file's name.
+    # @param inspector [Inspector] inspector over the file to render
+    # @param title [String, nil] page title; defaults to the file's name
+    # @param max_pages [Integer] page budget for per-page detail (see MAX_PAGES)
+    # @raise [ArgumentError] if +inspector+ is not an Inspector
     def initialize(inspector, title: nil, max_pages: MAX_PAGES)
       raise ArgumentError, "Expected a Herringbone::Inspector, got #{inspector.class}" unless inspector.is_a?(Inspector)
       @inspector = inspector
@@ -36,6 +43,8 @@ module Herringbone
       @max_pages = max_pages
     end
 
+    # Builds the page. Walks every page header of the file (and reads the page indexes).
+    # @return [String] a complete, self-contained HTML document
     def to_html
       json = JSON.generate(payload).gsub("<", "\\u003c").gsub("\u2028", "\\u2028").gsub("\u2029", "\\u2029")
       name = @title || @inspector.name || "Parquet file"
@@ -48,6 +57,8 @@ module Herringbone
     private
 
     # The data embedded in the page
+    # @return [Hash{Symbol => Object}] file, schema, columns, row groups (with chunks and pages),
+    #   key/value metadata and footer JSON, ready for JSON.generate
     def payload
       i = @inspector
       budget = @max_pages
@@ -75,6 +86,8 @@ module Herringbone
       }
     end
 
+    # Inspector#summary plus the display name and whether per-page detail was truncated.
+    # @return [Hash{Symbol => Object}] file-level facts for the page header
     def file_info
       s = @inspector.summary
       name = @title || @inspector.name || "(IO)"
@@ -82,6 +95,10 @@ module Herringbone
         index_mismatches: @inspector.column_chunks.sum { |c| c.index_mismatches.size })
     end
 
+    # One leaf column with its totals over all row groups.
+    # @param col [Schema::Column] leaf column
+    # @param t [Hash{Symbol => Object}] the column's entry from Inspector#column_totals
+    # @return [Hash{Symbol => Object}] column row, keyed with the short names the JS uses
     def column_info(col, t)
       node = col.node
       {
@@ -96,6 +113,11 @@ module Herringbone
       }
     end
 
+    # One column chunk: its metadata, statistics and index ranges and, when +with_pages+, its page
+    # rows, ColumnIndex and OffsetIndex.
+    # @param c [Inspector::ColumnChunkInfo] chunk to describe
+    # @param with_pages [Boolean] whether to include per-page detail (false once over the page budget)
+    # @return [Hash{Symbol => Object}] JSON-safe chunk entry, nil members omitted
     def chunk_info(c, with_pages)
       st = c.statistics
       h = {
@@ -133,6 +155,8 @@ module Herringbone
       Inspector.jsonable(h.compact)
     end
 
+    # @param st [Inspector::Stats] chunk statistics
+    # @return [Hash{Symbol => Object}] statistics with min/max in display form, nil members omitted
     def stats_info(st)
       {
         min: disp(st.min), max: disp(st.max), nulls: st.null_count, distinct: st.distinct_count,
@@ -142,6 +166,8 @@ module Herringbone
 
     # [type, offset, header_size, compressed, uncompressed, values, nulls, rows, first_row, encoding,
     #  min, max, crc, extra]; crc is 0 (none), 1 (present, not verified), 2 (verified ok) or 3 (mismatch)
+    # @param p [Inspector::PageInfo] page header to describe
+    # @return [Array] the page row, compact so pages of large files stay small
     def page_row(p)
       st = p.statistics
       extra = if p.type == :DATA_PAGE_V2
@@ -153,13 +179,17 @@ module Herringbone
       elsif p.dictionary?
         p.is_sorted ? "sorted" : nil
       end
-      [PAGE_TYPES.fetch(p.type, 1), p.offset, p.header_size, p.compressed_size, p.uncompressed_size, p.num_values,
+      [PAGE_TYPES.fetch(p.type) { p.type }, p.offset, p.header_size, p.compressed_size, p.uncompressed_size, p.num_values,
         p.num_nulls, p.num_rows, p.first_row_index, p.encoding, st && disp(st.min), st && disp(st.max),
         CRC_STATES.fetch(p.checksum) { p.crc.nil? ? 0 : 1 }, extra]
     end
 
+    # PageInfo#checksum states to the crc codes of page_row (1, present but unverified, is the fallback).
     CRC_STATES = {absent: 0, ok: 2, mismatch: 3}.freeze
 
+    # A page statistics vs ColumnIndex disagreement as a compact row.
+    # @param m [Hash{Symbol => Object}] entry from Inspector::ColumnChunkInfo#index_mismatches
+    # @return [Array] [page, field, value in page header, value in column index]; min/max in display form
     def mismatch_row(m)
       values = [m[:page_value], m[:index_value]]
       values = values.map { |v| disp(v) } if m[:field] == :min || m[:field] == :max
@@ -167,6 +197,8 @@ module Herringbone
     end
 
     # Display form of a decoded statistics value: strings quoted, the rest as text
+    # @param v [Object, nil] decoded value (String, numeric, Time, Date, Array, ...)
+    # @return [String, nil] at most 160 characters, nil for nil
     def disp(v)
       s = case v
       when nil then return nil
@@ -183,12 +215,16 @@ module Herringbone
       (s.size > 160) ? "#{s[0, 159]}…" : s
     end
 
+    # The footer FileMetaData pretty-printed, or nil when it exceeds MAX_FOOTER_JSON bytes.
+    # @return [String, nil] JSON text
     def footer_json
       return nil if @inspector.footer_size > MAX_FOOTER_JSON
       JSON.pretty_generate(Inspector.jsonable(raw(@inspector.metadata.to_h)))
     end
 
     # Footer structs as plain data; binary statistics as hex, long strings shortened
+    # @param v [Object] a value from FileMetaData#to_h (Hash, Array, String or scalar)
+    # @return [Object] +v+ with every String passed through Inspector.text and cut at 300 characters
     def raw(v)
       case v
       when Hash then v.to_h { |k, x| [k, raw(x)] }
@@ -200,10 +236,14 @@ module Herringbone
       end
     end
 
+    # @param s [Object] text to put into HTML (converted with to_s)
+    # @return [String] +s+ with &, <, > and double quotes escaped
     def escape_html(s)
       s.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;").gsub('"', "&quot;")
     end
 
+    # The page: HTML, CSS and JS, with %%TITLE%%, %%HIGHLIGHT_JS%%, %%CREDIT_URL%% and %%DATA%%
+    # placeholders filled in by to_html.
     TEMPLATE = <<~'HTML'
       <!doctype html>
       <html lang="en">

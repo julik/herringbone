@@ -5,6 +5,8 @@ module Herringbone
   # It still carries an "experimental" warning, which is silenced once here: the gem only uses
   # new/for/copy/get_string/free, and falls back to String operations where it is missing.
   module IOBufferSupport
+    # true when IO::Buffer has the methods the decompressors use and HERRINGBONE_NO_IO_BUFFER is
+    # not set in the environment (which forces the String fallback)
     AVAILABLE = begin
       if defined?(IO::Buffer) && IO::Buffer.method_defined?(:copy) && IO::Buffer.method_defined?(:get_string)
         previous = Warning[:experimental]

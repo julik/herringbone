@@ -22,15 +22,29 @@ module Herringbone
   #              TZInfo::Timezone), or anything responding to #at such as an
   #              ActiveSupport::TimeZone (Time.zone), which yields ActiveSupport::TimeWithZone.
   class Reader
+    # The 4 bytes a Parquet file starts and ends with
     MAGIC = "PAR1"
+    # Rows per batch in #each_batch when no size is given
     DEFAULT_BATCH_SIZE = 1024
+    # Accepted values of the +keys:+ option
     KEY_MODES = %i[string symbol].freeze
+    # Accepted values of the +as:+ option
     AS_MODES = %i[rows columns numo].freeze
 
-    # The schema, and the file's FileMetaData (the decoded Thrift footer)
-    attr_reader :schema, :file_metadata
+    # @return [Schema] the schema, built from the footer's flattened SchemaElements
+    attr_reader :schema
+
+    # @return [Format::FileMetaData] the file's FileMetaData (the decoded Thrift footer)
+    attr_reader :file_metadata
 
     # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...)
+    #
+    # @param io [IO, StringIO] random-access source of the Parquet bytes; the caller closes it
+    # @param keys [Symbol, String] +:string+ or +:symbol+, the key type of row and struct Hashes
+    # @param time_zone [String, Integer, Object, nil] zone timestamps are returned in (see the
+    #   class docs); nil keeps them in UTC
+    # @raise [ArgumentError] when +io+ cannot seek and read, or +keys+ / +time_zone+ are invalid
+    # @raise [FormatError] when the footer is missing or cannot be decoded
     def initialize(io, keys: :string, time_zone: nil)
       unless io.respond_to?(:seek) && io.respond_to?(:read)
         raise ArgumentError, "Herringbone::Reader expects an IO that supports #seek and #read " \
@@ -46,10 +60,19 @@ module Herringbone
       @schema = Schema.from_elements(@file_metadata.schema)
     end
 
+    # Total number of rows, as stated in the footer (some writers store 0)
+    #
+    # @return [Integer] the footer's num_rows
     def num_rows = @file_metadata.num_rows
+
+    # The row groups listed in the footer
+    #
+    # @return [Array<Format::RowGroup>] row group metadata, in file order
     def row_groups = @file_metadata.row_groups
 
     # The footer's key/value metadata as a Hash (what the writer's metadata: option stores)
+    #
+    # @return [Hash{String => String, nil}] key => value; empty when the footer has none
     def metadata
       (@file_metadata.key_value_metadata || []).to_h { |kv| [kv.key, kv.value] }
     end
@@ -69,13 +92,29 @@ module Herringbone
     # remaining rows are checked one by one. Filtered columns need not be in +columns+.
     # from: skips the first rows of the file (jumping over pages with the page index), and
     # limit: stops after yielding that many rows.
+    #
+    # @param size [Integer] maximum number of rows per batch
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return;
+    #   nil returns all of them
+    # @param as [Symbol] +:rows+, +:columns+ or +:numo+, the shape of each batch
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @param limit [Integer, nil] maximum number of rows to yield in total
+    # @yield [batch] once per batch
+    # @yieldparam batch [Array<Hash>, Hash{String, Symbol => Array}, Hash{String, Symbol => Numo::NArray}]
+    #   row Hashes (+:rows+), or field name => values of the batch (+:columns+, +:numo+)
+    # @yieldreturn [void]
+    # @return [Reader, Enumerator] self, or an Enumerator of batches when no block is given
+    # @raise [ArgumentError] for a non-positive +size+, unknown +as+, negative +from+ / +limit+,
+    #   or an unknown column in +columns+ or +where+
+    # @raise [UnsupportedError] with +as: :numo+ when no Numo gem can be loaded
     def each_batch(size = DEFAULT_BATCH_SIZE, columns: nil, as: :rows, where: nil, from: nil, limit: nil)
       return enum_for(:each_batch, size, columns: columns, as: as, where: where, from: from, limit: limit) unless block_given?
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
       raise ArgumentError, "as: must be :rows, :columns or :numo, got #{as.inspect}" unless AS_MODES.include?(as)
       raise ArgumentError, "limit: must not be negative" if limit&.negative?
-      return self if limit&.zero?
+      return validate_read_options(columns, where, from) if limit&.zero?
       if as == :numo
         each_numo_batch(size, columns, where, from, limit) { |batch| yield batch }
         return self
@@ -165,6 +204,12 @@ module Herringbone
     # What a read with +where:+ / +from:+ would touch, without reading any data: an Array of
     # { row_group:, rows:, ranges: [[first_row, end_row), ...] } for the row groups that are
     # read. Row groups ruled out entirely are left out.
+    #
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, as in #each_batch
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @return [Array<Hash{Symbol => Object}>] +{row_group: Integer, rows: Integer,
+    #   ranges: Array<Array(Integer, Integer)>}+ per row group that would be read
+    # @raise [ArgumentError] for a negative +from+ or an unknown column in +where+
     def scan_plan(where: nil, from: nil)
       filter = (where && !where.empty?) ? Filter.new(@schema, where) : nil
       plan_rows(filter, from).map do |rg_index, ranges|
@@ -174,6 +219,17 @@ module Herringbone
 
     # Yields each row as a Hash of top-level field name => value. Takes the options of each_batch
     # except as:.
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return;
+    #   nil returns all of them
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @param limit [Integer, nil] maximum number of rows to yield
+    # @yield [row] once per row
+    # @yieldparam row [Hash{String, Symbol => Object}] top-level field name => value
+    # @yieldreturn [void]
+    # @return [Reader, Enumerator] self, or an Enumerator of rows when no block is given
+    # @raise [ArgumentError] for a negative +from+ / +limit+ or an unknown column
     def each_row(columns: nil, where: nil, from: nil, limit: nil, &block)
       return enum_for(:each_row, columns: columns, where: where, from: from, limit: limit) unless block
       each_batch(columns: columns, where: where, from: from, limit: limit) { |rows| rows.each(&block) }
@@ -183,11 +239,24 @@ module Herringbone
     # Reads the whole file (or the selected rows) at once: an Array of row Hashes, or with
     # as: :columns a Hash of top-level field name => Array of values, or with as: :numo a Hash of
     # top-level field name => Numo array. Takes the options of each_batch.
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return;
+    #   nil returns all of them
+    # @param as [Symbol] +:rows+, +:columns+ or +:numo+, the shape of the result
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @param limit [Integer, nil] maximum number of rows to return
+    # @return [Array<Hash>, Hash{String, Symbol => Array}, Hash{String, Symbol => Numo::NArray}]
+    #   row Hashes (+:rows+), or field name => all values (+:columns+, +:numo+)
+    # @raise [ArgumentError] for an unknown +as+, negative +from+ / +limit+ or an unknown column
+    # @raise [UnsupportedError] with +as: :numo+ when no Numo gem can be loaded
     def read(columns: nil, as: :rows, where: nil, from: nil, limit: nil)
       if as == :numo
         raise ArgumentError, "limit: must not be negative" if limit&.negative?
         out = nil
-        unless limit&.zero?
+        if limit&.zero?
+          validate_read_options(columns, where, from)
+        else
           # One batch (num_rows is not trusted: some writers store 0), so the column types are
           # decided from all the rows read
           each_numo_batch(1 << 62, columns, where, from, limit) { |batch| out = batch }
@@ -206,7 +275,13 @@ module Herringbone
     end
 
     # Internal (used by reads with where:/from:): [ColumnIndex or nil, OffsetIndex or nil] of a
-    # leaf column in a row group
+    # leaf column in a row group. Cached per chunk; a missing or damaged index reads as nil.
+    #
+    # @param row_group_index [Integer] position of the row group in the footer
+    # @param column [Schema::Column, String, Array<String>] leaf column, or its dotted / Array path
+    # @return [Array(Format::ColumnIndex, Format::OffsetIndex)] either element may be nil
+    # @raise [ArgumentError] when +column+ does not name a leaf column
+    # @raise [IndexError] when the row group does not exist
     def page_index(row_group_index, column)
       column = @schema.column(column) unless column.is_a?(Schema::Column)
       raise ArgumentError, "No such leaf column" unless column
@@ -218,6 +293,9 @@ module Herringbone
       end
     end
 
+    # Short summary for the console, without the schema
+    #
+    # @return [String] row count, row group count and the writer's created_by
     def inspect
       "#<#{self.class.name} rows=#{num_rows} row_groups=#{row_groups.size} created_by=#{@file_metadata.created_by.inspect}>"
     end
@@ -227,6 +305,17 @@ module Herringbone
     # as: :numo. Flat numeric/boolean output columns go through NumoCursors (no Ruby object per
     # value); the other output columns, and every column a where: filter needs, are assembled as
     # Ruby values like as: :columns and converted when a batch is complete.
+    #
+    # @param size [Integer] maximum number of rows per batch
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @param limit [Integer, nil] maximum number of rows to yield in total
+    # @yield [batch] once per batch
+    # @yieldparam batch [Hash{String, Symbol => Numo::NArray}] field name => values of the batch
+    # @yieldreturn [void]
+    # @return [void]
+    # @raise [UnsupportedError] when no Numo gem can be loaded
     def each_numo_batch(size, columns, where, from, limit)
       NumoColumns.load!
       symbolize = @symbolize
@@ -308,7 +397,25 @@ module Herringbone
       flush.call if pending_rows.positive?
     end
 
+    # Checks the columns:, where: and from: options of a read that returns no rows (limit: 0),
+    # so it raises for bad options like any other read
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @return [Reader] self
+    # @raise [ArgumentError] for an unknown column, a bad condition or a negative +from+
+    def validate_read_options(columns, where, from)
+      select_fields(columns)
+      Filter.new(@schema, where) if where && !where.empty?
+      raise ArgumentError, "from: must not be negative" if Integer(from || 0).negative?
+      self
+    end
+
     # read(as: :numo) of no rows: an empty array of each column's type
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return
+    # @return [Hash{String, Symbol => Numo::NArray}] field name => zero-length Numo array
     def numo_empty(columns)
       NumoColumns.load!
       fields = select_fields(columns)
@@ -320,6 +427,12 @@ module Herringbone
 
     # [[row_group_index, [[first_row, end_row), ...]], ...] to read, after ruling out row groups
     # (statistics, bloom filters) and pages (page index), and skipping the first +from+ rows
+    #
+    # @param filter [Filter, nil] the where: conditions, if any
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @return [Array<Array(Integer, Array<Array(Integer, Integer)>)>] row group index and its
+    #   half-open row ranges, for row groups that have rows left to read
+    # @raise [ArgumentError] for a negative +from+
     def plan_rows(filter, from)
       from = Integer(from || 0)
       raise ArgumentError, "from: must not be negative" if from.negative?
@@ -340,6 +453,12 @@ module Herringbone
       plan
     end
 
+    # Decodes one Thrift struct stored elsewhere in the file (ColumnIndex, OffsetIndex)
+    #
+    # @param klass [Class] Format struct class to decode with (responds to .decode)
+    # @param offset [Integer, nil] file offset of the struct
+    # @param length [Integer, nil] byte length of the struct
+    # @return [Object, nil] the decoded +klass+ instance, or nil when absent, truncated or corrupt
     def read_struct(klass, offset, length)
       return nil unless offset && length&.positive?
       @io.seek(offset)
@@ -350,15 +469,31 @@ module Herringbone
       nil # a damaged index only means pages cannot be skipped
     end
 
+    # The top-level fields named by a +columns:+ option
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] field names; nil selects all
+    # @return [Array<Schema::Field>] the fields, in the order requested
+    # @raise [ArgumentError] when a name is not a top-level field
     def select_fields(columns)
       return @schema.fields unless columns
       Array(columns).map { |c| @schema.field(c) or raise ArgumentError, "No such column #{c.inspect}" }
     end
 
+    # Hash keys for the given fields (frozen, deduplicated Strings, or Symbols)
+    #
+    # @param fields [Array<Schema::Field>] top-level fields being returned
+    # @param symbolize [Boolean] whether to key by Symbol instead of String
+    # @return [Array<String>, Array<Symbol>] one key per field
     def row_keys(fields, symbolize)
       fields.map { |f| symbolize ? f.name.to_sym : -f.name }
     end
 
+    # Turns column-wise batch data into row Hashes
+    #
+    # @param names [Array<String>, Array<Symbol>] Hash key per output field
+    # @param data [Array<Array>] values per output field, each holding +k+ entries
+    # @param k [Integer] number of rows in the batch
+    # @return [Array<Hash>] +k+ row Hashes
     def build_rows(names, data, k)
       return Array.new(k) { {} } if names.empty?
       return data.first.map { |v| {names.first => v} } if names.size == 1
@@ -375,6 +510,9 @@ module Herringbone
     end
 
     # The column's value converter, with the time zone applied to timestamps
+    #
+    # @param column [Schema::Column] leaf column being read
+    # @return [Proc, nil] physical value => Ruby value, or nil when values are used as decoded
     def converter_for(column)
       base = column.converter
       zc = @zone_converter
@@ -384,15 +522,25 @@ module Herringbone
 
     # Timestamps that denote an instant (UTC-adjusted TIMESTAMP, INT96). Local timestamps
     # (isAdjustedToUTC = false) are wall-clock values and are left as they are.
+    #
+    # @param column [Schema::Column] leaf column to check
+    # @return [Boolean] true when the time zone applies to this column's values
     def instant_column?(column)
       return true if column.type == Format::Type::INT96
       kind, _unit, utc = Types.logical_of(column.node)
       kind == :timestamp && utc
     end
 
+    # A UTC offset string: "+02", "+0200", "+02:00" or "+02:00:00" (sign required)
     OFFSET_PATTERN = /\A([+-])(\d\d)(?::?(\d\d)(?::?(\d\d))?)?\z/
 
     # A lambda turning a UTC Time into the zone, or nil for UTC
+    #
+    # @param zone [String, Integer, Object, nil] the +time_zone:+ option: a UTC offset (String or
+    #   seconds), a zone name (ActiveSupport or TZInfo), an object responding to #at or
+    #   #utc_to_local, or nil
+    # @return [Proc, nil] Time => Time (or ActiveSupport::TimeWithZone), nil for UTC
+    # @raise [ArgumentError] for an unknown, unsupported or out-of-range zone
     def zone_converter(zone)
       case zone
       when nil then nil
@@ -428,14 +576,20 @@ module Herringbone
       raise ArgumentError, "Invalid time_zone #{zone.inspect}: #{e.message}"
     end
 
+    # Reads and decodes the footer: the FileMetaData Thrift struct, its 4-byte little-endian
+    # length and the closing magic.
+    #
+    # @return [Format::FileMetaData] the decoded footer
+    # @raise [FormatError] when the file is too short, lacks the magic or the footer is corrupt
+    # @raise [UnsupportedError] for an encrypted file (+PARE+ magic)
     def read_footer
       @io.seek(0, IO::SEEK_END)
       size = @io.pos
       raise FormatError, "File too small to be Parquet (#{size} bytes)" if size < 12
       @io.seek(size - 8)
       tail = @io.read(8)
-      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
       raise UnsupportedError, "Encrypted Parquet files are not supported" if tail.byteslice(4, 4) == "PARE"
+      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
       footer_len = tail.unpack1("V")
       raise FormatError, "Footer length #{footer_len} exceeds file size" if footer_len + 12 > size
       @io.seek(size - 8 - footer_len)
@@ -448,6 +602,8 @@ module Herringbone
     # Rebuilds nested values of one top-level field from the levels of its leaf columns
     # (the "record assembly" half of the Dremel algorithm).
     class Assembler
+      # @param field [Schema::Field] top-level field to assemble
+      # @param symbolize [Boolean] whether struct Hashes are keyed by Symbol instead of String
       def initialize(field, symbolize = false)
         @field = field
         @symbolize = symbolize
@@ -456,6 +612,12 @@ module Herringbone
 
       # Assembles +n+ values of the field from +chunks+ (leaf column index =>
       # [defs, reps, values] holding exactly those rows)
+      #
+      # @param n [Integer] number of rows in +chunks+
+      # @param chunks [Hash{Integer => Array(Array<Integer>, Array<Integer>, Array)}] leaf column
+      #   index => [definition levels, repetition levels, values]; levels may be nil
+      # @return [Array] +n+ assembled values (nil, scalars, Arrays, Hashes)
+      # @raise [FormatError] when the levels do not add up to +n+ rows
       def read_rows(n, chunks)
         @defs = {}
         @reps = {}
@@ -493,6 +655,9 @@ module Herringbone
       private
 
       # Fast path for a top-level list of primitives (the most common nested shape)
+      #
+      # @param field [Schema::Field] list field whose element is a leaf with repetition level 1
+      # @return [Array<Array, nil>] one list (or nil) per row
       def read_simple_list(field)
         col = field.element.column
         defs = @defs[col.index]
@@ -532,10 +697,19 @@ module Herringbone
         out
       end
 
+      # Hash key for a struct member, memoized
+      #
+      # @param field [Schema::Field] struct child
+      # @return [String, Symbol] frozen name, or Symbol when symbolizing
       def key_for(field)
         @keys[field] ||= @symbolize ? field.name.to_sym : -field.name
       end
 
+      # Assembles one value of +field+ at the current entry cursors, recursing into children
+      #
+      # @param field [Schema::Field] field to assemble
+      # @return [Object, nil] scalar, Hash (struct, map), Array (list) or nil
+      # @raise [FormatError] when the definition levels run out
       def read(field)
         c = field.first_leaf.index
         kind = field.kind
@@ -590,6 +764,10 @@ module Herringbone
         end
       end
 
+      # Moves every leaf of +field+ past one entry (a null or empty value takes a single entry)
+      #
+      # @param field [Schema::Field] field whose leaves to advance
+      # @return [void]
       def skip(field)
         field.leaves.each { |col| @ei[col.index] += 1 }
       end

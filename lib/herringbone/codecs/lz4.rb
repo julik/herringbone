@@ -5,17 +5,26 @@ module Herringbone
     # Pure-Ruby LZ4: raw block format (Parquet LZ4_RAW), Hadoop-framed blocks
     # (Parquet's deprecated LZ4) and a decoder for the LZ4 frame format.
     module LZ4
+      # Raised for corrupt, truncated or unsupported LZ4 input.
       class Error < StandardError; end
 
+      # Shortest match a sequence can encode; the token's match length is stored minus this.
       MIN_MATCH = 4
       LAST_LITERALS = 5 # the last 5 bytes of a block are always literals
       MFLIMIT = 12      # the last match must start at least 12 bytes before the end
+      # Largest backward distance a 2-byte match offset can express.
       MAX_OFFSET = 65_535
+      # Size of the compressor's hash table, in bits (16384 entries).
       HASH_LOG = 14
+      # Right shift that keeps the top HASH_LOG bits of the 32-bit multiplicative hash.
       HASH_SHIFT = 32 - HASH_LOG
+      # Controls how fast the compressor skips ahead through input without matches (as in the reference).
       SKIP_STRENGTH = 6
+      # Magic number at the start of an LZ4 frame (little-endian).
       FRAME_MAGIC = 0x184D2204
+      # Hadoop block header: big-endian 32-bit uncompressed size and compressed size.
       HADOOP_PREFIX = 8
+      # Shorthand for Encoding::BINARY.
       BINARY = Encoding::BINARY
       # String#unpack1 accepts offset: since Ruby 3.1
       UNPACK_OFFSET = begin
@@ -28,6 +37,10 @@ module Herringbone
       module_function
 
       # Decompress a raw LZ4 block that must expand to exactly uncompressed_size bytes.
+      # @param input [String] raw LZ4 block
+      # @param uncompressed_size [Integer] exact decompressed size, from the page header
+      # @return [String] decompressed bytes in ASCII-8BIT
+      # @raise [Error] if the block is corrupt or does not decode to +uncompressed_size+ bytes
       def decompress_block(input, uncompressed_size)
         src = binary(input)
         out = String.new(capacity: uncompressed_size, encoding: BINARY)
@@ -40,6 +53,10 @@ module Herringbone
 
       # Parquet LZ4 (codec 5). Tries Hadoop framing, then the LZ4 frame format,
       # then a bare raw block (Arrow falls back hadoop -> raw; some writers emitted frames).
+      # @param input [String] compressed page data
+      # @param uncompressed_size [Integer] exact decompressed size, from the page header
+      # @return [String] decompressed bytes in ASCII-8BIT
+      # @raise [Error] if none of the three layouts decodes
       def decompress_hadoop(input, uncompressed_size)
         src = binary(input)
         result = try_hadoop(src, uncompressed_size)
@@ -58,6 +75,10 @@ module Herringbone
 
       # Decode LZ4 frame format data (one or more frames, skippable frames ignored).
       # Checksums are skipped, not verified.
+      # @param input [String] one or more concatenated LZ4 frames
+      # @param max_size [Integer] upper bound on the decompressed size
+      # @return [String] decompressed bytes in ASCII-8BIT, possibly shorter than +max_size+
+      # @raise [Error] on bad magic, truncation, unsupported frame features or output over +max_size+
       def decompress_frame(input, max_size)
         src = binary(input)
         n = src.bytesize
@@ -79,6 +100,8 @@ module Herringbone
       end
 
       # Compress into a single raw LZ4 block.
+      # @param input [String] bytes to compress
+      # @return [String] raw LZ4 block in ASCII-8BIT
       def compress_block(input)
         src = binary(input)
         n = src.bytesize
@@ -144,6 +167,8 @@ module Herringbone
       end
 
       # Single Hadoop-framed block: [BE uncompressed size][BE compressed size][raw block]
+      # @param input [String] bytes to compress
+      # @return [String] Hadoop-framed LZ4 data in ASCII-8BIT
       def compress_hadoop(input)
         src = binary(input)
         block = compress_block(src)
@@ -152,18 +177,31 @@ module Herringbone
 
       # -- internals --
 
+      # @param str [String] input in any encoding
+      # @return [String] +str+ itself if already binary, otherwise a binary copy
       def binary(str)
         (str.encoding == BINARY) ? str : str.b
       end
 
+      # @param src [String] binary input
+      # @param i [Integer] byte offset
+      # @return [Integer] unsigned little-endian 32-bit value at +i+
       def le32(src, i)
         src.byteslice(i, 4).unpack1("V")
       end
 
+      # Same as le32 but via getbyte, for Rubies without unpack1(offset:).
+      # @param src [String] binary input
+      # @param i [Integer] byte offset
+      # @return [Integer] unsigned little-endian 32-bit value at +i+
       def u32(src, i)
         src.getbyte(i) | (src.getbyte(i + 1) << 8) | (src.getbyte(i + 2) << 16) | (src.getbyte(i + 3) << 24)
       end
 
+      # Appends the extension of a literal or match length: 255-bytes followed by the remainder.
+      # @param out [String] binary output buffer, appended to
+      # @param len [Integer] length minus the 15 already stored in the token
+      # @return [String] +out+
       def write_length(out, len)
         if len >= 255
           out << ("\xFF".b * (len / 255))
@@ -172,6 +210,12 @@ module Herringbone
         out << len
       end
 
+      # Appends the final, literals-only sequence that terminates every block.
+      # @param out [String] binary output buffer, appended to
+      # @param src [String] binary input
+      # @param anchor [Integer] offset of the first pending literal in +src+
+      # @param lit_len [Integer] number of trailing literal bytes (may be zero)
+      # @return [String, nil] +out+, or nil when there are no literals
       def emit_last_literals(out, src, anchor, lit_len)
         out << (((lit_len < 15) ? lit_len : 15) << 4)
         write_length(out, lit_len - 15) if lit_len >= 15
@@ -180,6 +224,13 @@ module Herringbone
 
       # Decode one raw block from src[ip...iend], appending to out (which may already
       # hold earlier data that matches can reference). out may not grow beyond limit.
+      # @param src [String] binary input
+      # @param ip [Integer] offset of the block in +src+
+      # @param iend [Integer] offset just past the block
+      # @param out [String] binary output buffer, appended to
+      # @param limit [Integer] maximum total byte size of +out+
+      # @return [Integer] input offset where decoding stopped
+      # @raise [Error] if the block is truncated, has an invalid offset or overflows +limit+
       def decode_block(src, ip, iend, out, limit)
         while ip < iend
           token = src.getbyte(ip)
@@ -237,6 +288,9 @@ module Herringbone
       end
 
       # Arrow-compatible Hadoop frame parsing; returns nil if the data does not fit the framing.
+      # @param src [String] binary input
+      # @param uncompressed_size [Integer] exact decompressed size expected over all blocks
+      # @return [String, nil] decompressed bytes, or nil if +src+ is not valid Hadoop-framed LZ4
       def try_hadoop(src, uncompressed_size)
         n = src.bytesize
         return nil if n < HADOOP_PREFIX
@@ -262,6 +316,15 @@ module Herringbone
         out
       end
 
+      # Decodes the descriptor and data blocks of one LZ4 frame (after its magic number),
+      # skipping content size and checksums.
+      # @param src [String] binary input
+      # @param ip [Integer] offset of the frame descriptor (just past the magic)
+      # @param n [Integer] byte size of +src+
+      # @param out [String] binary output buffer, appended to
+      # @param limit [Integer] maximum total byte size of +out+
+      # @return [Integer] offset just past the frame
+      # @raise [Error] on truncation, an unsupported version or dictionary, or output over +limit+
       def decode_frame(src, ip, n, out, limit)
         raise Error, "Truncated LZ4 frame descriptor" if ip + 3 > n
         flg = src.getbyte(ip)

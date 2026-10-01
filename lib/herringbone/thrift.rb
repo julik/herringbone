@@ -5,30 +5,52 @@ module Herringbone
   # Structs are described declaratively (see Herringbone::Thrift::Struct) so that
   # both the reader and the writer are driven by the same field tables.
   module Thrift
+    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode
     class Error < StandardError; end
 
-    # Compact protocol wire types
+    # Compact protocol wire type: end of a struct's fields
     T_STOP = 0
+    # Compact protocol wire type: boolean true (the value lives in the field header)
     T_TRUE = 1
+    # Compact protocol wire type: boolean false (the value lives in the field header)
     T_FALSE = 2
+    # Compact protocol wire type: signed 8-bit integer, one raw byte
     T_BYTE = 3
+    # Compact protocol wire type: 16-bit integer, zigzag varint
     T_I16 = 4
+    # Compact protocol wire type: 32-bit integer, zigzag varint
     T_I32 = 5
+    # Compact protocol wire type: 64-bit integer, zigzag varint
     T_I64 = 6
+    # Compact protocol wire type: little-endian IEEE 754 double, 8 bytes
     T_DOUBLE = 7
+    # Compact protocol wire type: varint length followed by raw bytes
     T_BINARY = 8
+    # Compact protocol wire type: list (size and element type header, then the elements)
     T_LIST = 9
+    # Compact protocol wire type: set (encoded like a list)
     T_SET = 10
+    # Compact protocol wire type: map (only skipped, Parquet metadata has none)
     T_MAP = 11
+    # Compact protocol wire type: nested struct, terminated by T_STOP
     T_STRUCT = 12
 
     # Declared field types used in struct definitions
     # :bool, :byte, :i16, :i32, :i64, :double, :binary, :string, [:list, elem], StructClass
+    #
+    # Maps the scalar declared types to the wire type written for them. +:bool+ maps to T_TRUE,
+    # but the writer picks T_TRUE or T_FALSE from the value.
     WIRE_TYPES = {
       bool: T_TRUE, byte: T_BYTE, i16: T_I16, i32: T_I32, i64: T_I64,
       double: T_DOUBLE, binary: T_BINARY, string: T_BINARY
     }.freeze
 
+    # Wire type written for a declared field type
+    #
+    # @param type [Symbol, Array, Class] a scalar type from WIRE_TYPES, a +[:list, elem]+ Array,
+    #   or a Struct subclass
+    # @return [Integer] one of the T_* wire type constants (T_TRUE for +:bool+)
+    # @raise [KeyError] for an unknown scalar type Symbol
     def self.wire_type_for(type)
       case type
       when Symbol then WIRE_TYPES.fetch(type)
@@ -38,6 +60,13 @@ module Herringbone
     end
 
     # Whether a value of wire type +wire+ can be read as declared +type+
+    #
+    # Integer widths are interchangeable (any of i16/i32/i64 on the wire is read for any declared
+    # integer type), and a set is accepted where a list is declared.
+    #
+    # @param wire [Integer] wire type from the field or list header
+    # @param type [Symbol, Array, Class] declared field type (see WIRE_TYPES)
+    # @return [Boolean] true when the value can be decoded as +type+, false when it must be skipped
     def self.compatible?(wire, type)
       case type
       when :bool then wire == T_TRUE || wire == T_FALSE
@@ -50,14 +79,22 @@ module Herringbone
       end
     end
 
+    # Decodes compact protocol data from a String, keeping a byte position into it
     class Reader
+      # @return [Integer] byte offset of the next byte to read
       attr_reader :pos
 
+      # @param buf [String] the encoded data (binary)
+      # @param pos [Integer] byte offset to start reading at
       def initialize(buf, pos = 0)
         @buf = buf
         @pos = pos
       end
 
+      # Reads one raw byte
+      #
+      # @return [Integer] the byte, 0..255
+      # @raise [Error] at the end of the buffer
       def read_byte
         b = @buf.getbyte(@pos)
         raise Error, "Unexpected end of Thrift data at #{@pos}" unless b
@@ -65,6 +102,10 @@ module Herringbone
         b
       end
 
+      # Reads an unsigned LEB128 varint
+      #
+      # @return [Integer] the decoded non-negative value
+      # @raise [Error] when the varint runs past the buffer or is longer than 64 bits allow
       def read_varint
         result = 0
         shift = 0
@@ -77,11 +118,19 @@ module Herringbone
         end
       end
 
+      # Reads a zigzag-encoded varint (how i16, i32, i64 and field id deltas are stored)
+      #
+      # @return [Integer] the decoded signed value
+      # @raise [Error] when the varint runs past the buffer
       def read_zigzag
         n = read_varint
         (n >> 1) ^ -(n & 1)
       end
 
+      # Reads a length-prefixed byte string
+      #
+      # @return [String] a slice of the buffer (with the buffer's encoding)
+      # @raise [Error] when the length runs past the end of the buffer
       def read_binary
         len = read_varint
         raise Error, "Binary length #{len} exceeds buffer" if @pos + len > @buf.bytesize
@@ -90,6 +139,9 @@ module Herringbone
         s
       end
 
+      # Reads an 8-byte little-endian double
+      #
+      # @return [Float, nil] the value (nil when fewer than 8 bytes are left: this is not checked)
       def read_double
         v = @buf.byteslice(@pos, 8).unpack1("E")
         @pos += 8
@@ -97,6 +149,13 @@ module Herringbone
       end
 
       # Reads a struct of the given class, returning an instance.
+      #
+      # Fields the class does not declare, or whose wire type does not match the declared type,
+      # are skipped, so newer writers' additions do not break reading.
+      #
+      # @param klass [Class] a Thrift::Struct subclass
+      # @return [Struct] an instance of +klass+ with the fields that were present set
+      # @raise [Error] on truncated or malformed data
       def read_struct(klass)
         obj = klass.new
         fields = klass.fields_by_id
@@ -118,6 +177,14 @@ module Herringbone
         obj
       end
 
+      # Reads one value of wire type +wire+ as declared +type+
+      #
+      # @param wire [Integer] wire type from the field or list header
+      # @param type [Symbol, Array, Class] declared type; +:string+ makes binary values UTF-8,
+      #   an Array or Struct subclass gives the element type or struct to read
+      # @return [Object] true/false, an Integer (bytes are signed), a Float, a String, an Array
+      #   (or nil, see #read_list) or a Struct
+      # @raise [Error] on an unsupported wire type or truncated data
       def read_value(wire, type)
         case wire
         when T_TRUE then true
@@ -137,6 +204,13 @@ module Herringbone
         end
       end
 
+      # Reads a list or set, whose header holds the size (or 15 and a varint size) and the
+      # element wire type
+      #
+      # @param type [Array] declared list type, +[:list, elem_type]+
+      # @return [Array, nil] the elements, or nil (with the list skipped) when the element wire
+      #   type does not match +elem_type+
+      # @raise [Error] on truncated or malformed data
       def read_list(type)
         header = read_byte
         size = header >> 4
@@ -158,6 +232,11 @@ module Herringbone
         end
       end
 
+      # Advances past a value of wire type +wire+ without decoding it
+      #
+      # @param wire [Integer] wire type of the value to skip
+      # @return [void]
+      # @raise [Error] on an unknown wire type (including T_STOP) or truncated data
       def skip(wire)
         case wire
         when T_TRUE, T_FALSE then nil
@@ -193,13 +272,21 @@ module Herringbone
       end
     end
 
+    # Encodes compact protocol data by appending to a binary String
     class Writer
+      # @return [String] the encoded data so far
       attr_reader :buf
 
+      # @param buf [String] binary String to append to
       def initialize(buf = String.new(capacity: 1024, encoding: Encoding::BINARY))
         @buf = buf
       end
 
+      # Writes an unsigned LEB128 varint
+      #
+      # @param n [Integer] non-negative value
+      # @return [void]
+      # @raise [Error] when +n+ is negative
       def write_varint(n)
         raise Error, "Negative varint" if n.negative?
         while n >= 0x80
@@ -209,15 +296,29 @@ module Herringbone
         @buf << n
       end
 
+      # Writes a signed integer as a zigzag varint
+      #
+      # @param n [Integer] signed value
+      # @return [void]
       def write_zigzag(n)
         write_varint(n.negative? ? ((-n) << 1) - 1 : n << 1)
       end
 
+      # Writes a length-prefixed byte string
+      #
+      # @param s [String] value whose bytes are written (in any encoding)
+      # @return [void]
       def write_binary(s)
         write_varint(s.bytesize)
         @buf << s.b
       end
 
+      # Writes the non-nil fields of a struct in field id order, then T_STOP. Field ids are
+      # written as a delta in the header when it is 1..15, else as a separate zigzag varint.
+      # Booleans are carried by the header's wire type alone.
+      #
+      # @param obj [Struct] instance of a Thrift::Struct subclass
+      # @return [void]
       def write_struct(obj)
         last_id = 0
         obj.class.fields.each do |field|
@@ -241,6 +342,12 @@ module Herringbone
         @buf << T_STOP
       end
 
+      # Writes one value of a declared type. Not for +:bool+, whose value goes in a field or
+      # list header (see #write_struct and #write_list).
+      #
+      # @param type [Symbol, Array, Class] declared type (see WIRE_TYPES)
+      # @param value [Object] Integer, Float, String, Array or Struct matching +type+
+      # @return [void]
       def write_value(type, value)
         case type
         when :byte then @buf << (value & 0xFF)
@@ -252,6 +359,12 @@ module Herringbone
         end
       end
 
+      # Writes a list: a header with the size (inline when below 15) and element wire type,
+      # then the elements. Booleans in lists are written as full bytes.
+      #
+      # @param elem_type [Symbol, Array, Class] declared element type
+      # @param values [Array] the elements
+      # @return [void]
       def write_list(elem_type, values)
         elem_wire = Thrift.wire_type_for(elem_type)
         if values.size < 15
@@ -270,20 +383,39 @@ module Herringbone
       end
     end
 
+    # A field declared on a Thrift::Struct subclass
+    #
+    # @!attribute [rw] id
+    #   @return [Integer] Thrift field id
+    # @!attribute [rw] name
+    #   @return [Symbol] accessor name
+    # @!attribute [rw] type
+    #   @return [Symbol, Array, Class] declared type (see WIRE_TYPES)
+    # @!attribute [rw] ivar
+    #   @return [Symbol] instance variable holding the value (+:@name+)
     Field = ::Struct.new(:id, :name, :type, :ivar)
 
     # Base class for Thrift structs. Subclasses declare fields with
     #   field 1, :name, :i32
     class Struct
       class << self
+        # @return [Array<Field>] declared fields, sorted by id
         def fields
           @fields ||= []
         end
 
+        # @return [Hash{Integer => Field}] declared fields by id, for decoding
         def fields_by_id
           @fields_by_id ||= fields.to_h { |f| [f.id, f] }
         end
 
+        # Declares a field and defines its accessor
+        #
+        # @param id [Integer] Thrift field id from parquet.thrift
+        # @param name [Symbol] accessor name
+        # @param type [Symbol, Array, Class] declared type: a WIRE_TYPES key, +[:list, elem]+
+        #   or a Struct subclass
+        # @return [void]
         def field(id, name, type)
           fields << Field.new(id, name, type, :"@#{name}")
           fields.sort_by!(&:id)
@@ -291,12 +423,22 @@ module Herringbone
           attr_accessor name
         end
 
+        # Decodes an instance from +buf+ starting at +pos+
+        #
+        # @param buf [String] encoded data
+        # @param pos [Integer] byte offset of the struct in +buf+
+        # @return [Array(Struct, Integer)] the instance and the offset just past it
+        # @raise [Error] on truncated or malformed data
         def decode(buf, pos = 0)
           reader = Reader.new(buf, pos)
           [reader.read_struct(self), reader.pos]
         end
       end
 
+      # @param attrs [Hash{Symbol => Object}] initial field values, by accessor name
+      # @option attrs [Object] :any_declared_field value for that field (nil leaves it unset); the
+      #   keys are whatever fields the subclass declares
+      # @raise [ArgumentError] for a name that is not a declared field
       def initialize(**attrs)
         attrs.each do |k, v|
           raise ArgumentError, "Unknown field #{k} for #{self.class}" unless respond_to?(:"#{k}=")
@@ -304,12 +446,16 @@ module Herringbone
         end
       end
 
+      # @return [String] the compact protocol encoding (binary)
       def encode
         w = Writer.new
         w.write_struct(self)
         w.buf
       end
 
+      # Set fields as a Hash, with nested structs (also inside lists) converted too
+      #
+      # @return [Hash{Symbol => Object}] values by field name, nil fields left out
       def to_h
         self.class.fields.each_with_object({}) do |f, h|
           v = instance_variable_get(f.ivar)
@@ -322,10 +468,15 @@ module Herringbone
         end
       end
 
+      # Structs are equal when they are of the same class and have the same field values
+      #
+      # @param other [Object] object to compare with
+      # @return [Boolean] true when +other+ is an equal struct
       def ==(other)
         other.class == self.class && other.to_h == to_h
       end
 
+      # @return [String] short class name and the set fields
       def inspect
         "#<#{self.class.name.split("::").last} #{to_h.map { |k, v| "#{k}=#{v.inspect}" }.join(" ")}>"
       end

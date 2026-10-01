@@ -180,6 +180,21 @@ class ScanTest < Minitest::Test
     assert_equal [], r.read(where: {id: "not a number"})
   end
 
+  def test_limit_zero_still_validates_arguments
+    r = reader
+    [:rows, :columns].each do |as|
+      assert_raises(ArgumentError, as) { r.read(as: as, columns: %w[nope], limit: 0) }
+      assert_raises(ArgumentError, as) { r.read(as: as, where: {nope: 1}, limit: 0) }
+      assert_raises(ArgumentError, as) { r.read(as: as, from: -1, limit: 0) }
+      assert_raises(ArgumentError, as) { r.each_batch(as: as, columns: %w[nope], limit: 0) { nil } }
+      assert_raises(ArgumentError, as) { r.each_batch(as: as, where: {nope: 1}, limit: 0).to_a }
+    end
+    assert_raises(ArgumentError) { r.each_row(from: -1, limit: 0) { nil } }
+    assert_equal [], r.read(columns: %w[id], where: {id: 1}, from: 1, limit: 0)
+    assert_equal({id: []}, r.read(as: :columns, columns: %w[id], limit: 0))
+    assert_equal [], r.each_batch(limit: 0).to_a
+  end
+
   def test_filter_columns_need_not_be_projected
     r = reader
     got = r.read(columns: %w[email], where: {id: 7})

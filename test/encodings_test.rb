@@ -118,6 +118,13 @@ class RLEEncodingTest < Minitest::Test
     data = ["000001010011100101110111"].pack("B*")
     assert_equal (0..7).to_a, RLE.decode_legacy_bit_packed(data, 0, 3, 8)
   end
+
+  def test_legacy_bit_packed_rejects_truncated_data
+    data = ["000001010011100101110111"].pack("B*")
+    assert_raises(Herringbone::FormatError) { RLE.decode_legacy_bit_packed(data, 0, 3, 9) }
+    assert_raises(Herringbone::FormatError) { RLE.decode_legacy_bit_packed(data, 1, 3, 8) }
+    assert_raises(Herringbone::FormatError) { RLE.decode_legacy_bit_packed(data, 10, 3, 8) }
+  end
 end
 
 class DeltaEncodingTest < Minitest::Test
@@ -235,6 +242,36 @@ class DeltaEncodingTest < Minitest::Test
   def test_byte_array_rejects_bad_prefix
     enc = Delta.encode_binary_packed([3], 32) + Delta.encode_length_byte_array(["x"])
     assert_raises(Herringbone::FormatError) { Delta.decode_byte_array(enc, 0, 1) }
+  end
+
+  def test_byte_array_rejects_negative_prefix
+    enc = Delta.encode_binary_packed([0, -1], 32) + Delta.encode_length_byte_array(["abc", "x"])
+    assert_raises(Herringbone::FormatError) { Delta.decode_byte_array(enc, 0, 2) }
+  end
+
+  def test_page_decoder_rejects_negative_prefix
+    enc = Delta.encode_binary_packed([0, -1], 32) + Delta.encode_length_byte_array(["abc", "x"])
+    decoder = Herringbone::Reader::PageStream::DeltaByteArrayDecoder.new(enc, 0)
+    assert_raises(Herringbone::FormatError) { decoder.read(2) }
+  end
+
+  def test_length_byte_array_decodes_fewer_values_than_encoded
+    values = Array.new(100) { |i| "v" * (i % 37) }
+    enc = Delta.encode_length_byte_array(values)
+    [0, 1, 2, 33, 99].each do |count|
+      dec, pos = Delta.decode_length_byte_array(enc, 0, count)
+      assert_equal values.first(count), dec
+      assert_equal enc.bytesize - values.drop(count).sum(&:bytesize), pos
+    end
+  end
+
+  def test_byte_array_decodes_fewer_values_than_encoded
+    values = Array.new(100) { |i| format("key-%05d", i * 7919 % 1000) }
+    enc = Delta.encode_byte_array(values)
+    [0, 1, 2, 33, 99].each do |count|
+      dec, = Delta.decode_byte_array(enc, 0, count)
+      assert_equal values.first(count), dec
+    end
   end
 end
 

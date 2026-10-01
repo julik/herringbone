@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module Herringbone
+  # Pure-Ruby compression codecs for Parquet pages: Snappy, and LZ4 (raw blocks and the Hadoop framing).
+  # Compression dispatches to these; GZIP uses Zlib and ZSTD/BROTLI use external gems.
   module Codecs
     # Pure-Ruby implementation of the raw Snappy block format (as used by Parquet),
     # see https://github.com/google/snappy/blob/main/format_description.txt
@@ -13,21 +15,29 @@ module Herringbone
     # 32-bit loads are done with four getbyte calls rather than unpack1(offset:) to stay
     # compatible with Ruby 3.0 - the speed difference on MRI is marginal.
     module Snappy
+      # Raised for corrupt or truncated Snappy input, and for input too large to compress.
       class Error < StandardError; end
 
+      # The compressor works on independent 64 KiB fragments, as the reference implementation does.
       BLOCK_SIZE = 1 << 16
+      # Size of the match-finder hash table, in bits (16384 entries).
       HASH_BITS = 14
+      # Right shift that keeps the top HASH_BITS bits of the 32-bit multiplicative hash.
       HASH_SHIFT = 32 - HASH_BITS
+      # Multiplier of the reference implementation's 4-byte hash.
       HASH_MUL = 0x1e35a7bd
       INPUT_MARGIN = 15 # bytes at the block end never searched for matches, as in the reference
+      # The length preamble is a 32-bit varint, so no block may decompress to more than this.
       MAX_UNCOMPRESSED = (1 << 32) - 1
 
+      # Name of the optional native gem, passed to +require+.
       NATIVE_GEM = "snappy"
 
       module_function
 
       # @param input [String] raw snappy block
       # @return [String] decompressed bytes in ASCII-8BIT
+      # @raise [Error] if the block is corrupt or truncated
       def decompress(input)
         src = (input.encoding == Encoding::BINARY) ? input : input.b
         if (lib = native)
@@ -42,12 +52,17 @@ module Herringbone
       end
 
       # The backend in use: :native (the snappy gem) or :ruby
+      # @return [Symbol] +:native+ or +:ruby+
       def backend
         native ? :native : :ruby
       end
 
       # For tests and benchmarks: :ruby forces pure Ruby, :native requires the snappy gem
       # (UnsupportedError if it cannot be loaded), nil goes back to the default
+      # @param name [Symbol, nil] +:ruby+, +:native+ or nil
+      # @return [void]
+      # @raise [UnsupportedError] if +:native+ is requested and the gem cannot be loaded
+      # @raise [ArgumentError] for any other backend name
       def backend=(name)
         @native = case name
         when :ruby then false
@@ -58,11 +73,15 @@ module Herringbone
         end
       end
 
+      # The native library to use, resolved (and memoized) on first call unless forced by backend=.
+      # @return [Module, nil] the +::Snappy+ module, or nil when the pure-Ruby code should run
       def native
         @native = native_library || false if @native.nil?
         @native || nil
       end
 
+      # Tries to load the snappy gem once and memoizes the result.
+      # @return [Module, false] the +::Snappy+ module, or false if it is missing or lacks inflate/deflate
       def native_library
         if @native_lib.nil?
           @native_lib = begin
@@ -76,6 +95,9 @@ module Herringbone
       end
 
       # Decompresses into a preallocated IO::Buffer: copies do not allocate intermediate Strings.
+      # @param src [String] raw snappy block in ASCII-8BIT
+      # @return [String] decompressed bytes in ASCII-8BIT
+      # @raise [Error] if the block is corrupt or truncated
       def decompress_io_buffer(src)
         n = src.bytesize
         expected, pos = read_varint(src, n)
@@ -146,6 +168,10 @@ module Herringbone
         inbuf&.free
       end
 
+      # Decompresses by appending to a String; the fallback when IO::Buffer is not available.
+      # @param src [String] raw snappy block in ASCII-8BIT
+      # @return [String] decompressed bytes in ASCII-8BIT
+      # @raise [Error] if the block is corrupt or truncated
       def decompress_string(src)
         n = src.bytesize
         expected, pos = read_varint(src, n)
@@ -210,13 +236,15 @@ module Herringbone
 
       # @param input [String] bytes to compress
       # @return [String] raw snappy block in ASCII-8BIT
+      # @raise [Error] if the input is larger than MAX_UNCOMPRESSED
       def compress(input)
         src = (input.encoding == Encoding::BINARY) ? input : input.b
+        n = src.bytesize
+        # Checked for libsnappy too: it would truncate the 32-bit length preamble without complaint
+        raise Error, "input too large for snappy" if n > MAX_UNCOMPRESSED
         if (lib = native)
           return lib.deflate(src)
         end
-        n = src.bytesize
-        raise Error, "input too large for snappy" if n > MAX_UNCOMPRESSED
 
         out = String.new(capacity: 32 + n + n / 6, encoding: Encoding::BINARY)
         write_varint(out, n)
@@ -232,6 +260,11 @@ module Herringbone
         out
       end
 
+      # Reads the uncompressed-length preamble (a little-endian base-128 varint) at the start of +src+.
+      # @param src [String] raw snappy block
+      # @param n [Integer] byte size of +src+
+      # @return [Array(Integer, Integer)] the declared uncompressed length and the offset just past the varint
+      # @raise [Error] if the varint is truncated, longer than 5 bytes or exceeds MAX_UNCOMPRESSED
       def read_varint(src, n)
         value = 0
         shift = 0
@@ -249,6 +282,10 @@ module Herringbone
         [value, pos]
       end
 
+      # Appends +value+ as a little-endian base-128 varint (the length preamble).
+      # @param out [String] binary output buffer, appended to
+      # @param value [Integer] non-negative length to encode
+      # @return [String] +out+
       def write_varint(out, value)
         while value >= 0x80
           out << ((value & 0x7f) | 0x80)
@@ -261,6 +298,12 @@ module Herringbone
       # positions relative to `base`; matches never cross the block boundary.
       # The 4-byte little-endian word at every position of the block is unpacked up front
       # (in C, via String#unpack) so hashing and match checks are single Array lookups.
+      # @param src [String] whole input in ASCII-8BIT
+      # @param base [Integer] offset of the fragment in +src+
+      # @param len [Integer] fragment length, at most BLOCK_SIZE
+      # @param out [String] binary output buffer, appended to
+      # @param table [Array<Integer>] zeroed hash table of 1 << HASH_BITS fragment-relative positions
+      # @return [void]
       def compress_block(src, base, len, out, table)
         ip_end = base + len
         next_emit = base
@@ -331,12 +374,24 @@ module Herringbone
 
       # words[k][j] is the 4-byte little-endian value at base + 4 * j + k, so the word at
       # relative position i is words[i & 3][i >> 2]
+      # @param src [String] whole input in ASCII-8BIT
+      # @param base [Integer] offset of the fragment in +src+
+      # @param len [Integer] fragment length
+      # @return [Array<Array<Integer>>] four arrays of 32-bit words, one per byte phase
       def block_words(src, base, len)
         Array.new(4) { |k| src.byteslice(base + k, len - k).unpack("V*") }
       end
 
       # Like match_length, but compares 4 bytes at a time using the unpacked block words,
       # which avoids allocating substrings for the (common) short matches.
+      # Falls back to match_length once a match reaches 64 bytes.
+      # @param words [Array<Array<Integer>>] fragment words from block_words
+      # @param src [String] whole input in ASCII-8BIT
+      # @param base [Integer] offset of the fragment in +src+
+      # @param s1 [Integer] absolute offset of the earlier occurrence
+      # @param s2 [Integer] absolute offset of the current position (s1 < s2)
+      # @param limit [Integer] absolute offset not to read past (the fragment end)
+      # @return [Integer] number of equal bytes starting at s1 and s2
       def match_length_words(words, src, base, s1, s2, limit)
         start = s2
         r1 = s1 - base
@@ -358,6 +413,11 @@ module Herringbone
 
       # Number of equal bytes at s1 and s2 (s1 < s2), not reading past limit. Gallops
       # with byteslice comparisons (memcmp) to avoid per-byte loops on long matches.
+      # @param src [String] whole input in ASCII-8BIT
+      # @param s1 [Integer] absolute offset of the earlier occurrence
+      # @param s2 [Integer] absolute offset of the current position
+      # @param limit [Integer] absolute offset not to read past
+      # @return [Integer] number of equal bytes
       def match_length(src, s1, s2, limit)
         start = s2
         return 0 if s2 >= limit || src.getbyte(s1) != src.getbyte(s2)
@@ -381,6 +441,13 @@ module Herringbone
         s2 - start
       end
 
+      # Appends a literal element: the tag (with a 1-4 byte length extension for long literals)
+      # followed by the bytes themselves. Does nothing for an empty literal.
+      # @param out [String] binary output buffer, appended to
+      # @param src [String] whole input in ASCII-8BIT
+      # @param pos [Integer] offset of the literal bytes in +src+
+      # @param len [Integer] number of literal bytes
+      # @return [String, nil] +out+, or nil when +len+ is zero
       def emit_literal(out, src, pos, len)
         return if len == 0
         n = len - 1
@@ -399,6 +466,11 @@ module Herringbone
       end
 
       # Offsets are always < 64KB (matches stay within a block), so 4-byte offsets are never needed.
+      # Long matches are split into copies of at most 64 bytes, never leaving a remainder under 4.
+      # @param out [String] binary output buffer, appended to
+      # @param offset [Integer] backward distance to the match source, 1...65536
+      # @param len [Integer] match length, at least 4
+      # @return [String] +out+
       def emit_copy(out, offset, len)
         while len >= 68
           emit_copy_upto64(out, offset, 64)
@@ -411,6 +483,12 @@ module Herringbone
         emit_copy_upto64(out, offset, len)
       end
 
+      # Appends one copy element: the 2-byte form (1-byte offset) when len is 4..11 and offset < 2048,
+      # otherwise the 3-byte form with a 2-byte offset.
+      # @param out [String] binary output buffer, appended to
+      # @param offset [Integer] backward distance to the match source, 1...65536
+      # @param len [Integer] copy length, 4..64
+      # @return [String] +out+
       def emit_copy_upto64(out, offset, len)
         if len < 12 && offset < 2048
           out << (1 | ((len - 4) << 2) | ((offset >> 8) << 5)) << (offset & 0xff)

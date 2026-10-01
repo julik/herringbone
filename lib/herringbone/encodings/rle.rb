@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module Herringbone
+  # Decoders and encoders for the Parquet value and level encodings: PLAIN, the RLE / bit-packed
+  # hybrid, the DELTA_* family and BYTE_STREAM_SPLIT. They work on binary Strings and byte offsets,
+  # and know nothing about pages or columns.
   module Encodings
     # Bit packing (LSB-first, as used by Parquet) and the RLE / bit-packed hybrid encoding
     # used for repetition/definition levels, dictionary indices and RLE booleans.
@@ -9,6 +12,11 @@ module Herringbone
 
       # Unpacks +count+ values of +width+ bits each, starting at byte +offset+ of +data+.
       # Missing trailing bytes are treated as zeroes.
+      # @param data [String] binary input
+      # @param offset [Integer] byte offset of the first packed value
+      # @param count [Integer] number of values to unpack
+      # @param width [Integer] bits per value, 0..64
+      # @return [Array<Integer>] +count+ unsigned values
       def unpack_bits(data, offset, count, width)
         return Array.new(count, 0) if width.zero?
         nbytes = (count * width + 7) / 8
@@ -22,7 +30,7 @@ module Herringbone
 
         # Pad to a whole number of 32-bit words plus one spare word, so reads never go out of range
         pad = (-chunk.bytesize % 4) + 4
-        words = (pad.zero? ? chunk : chunk + ("\0" * pad)).unpack("V*")
+        words = (chunk + ("\0" * pad)).unpack("V*")
         mask = (1 << width) - 1
         out = Array.new(count)
         bitpos = 0
@@ -41,6 +49,10 @@ module Herringbone
       end
 
       # Slow path for widths above 32 bits (used by DELTA_BINARY_PACKED with 64-bit values)
+      # @param chunk [String] packed bytes, starting at the first value
+      # @param count [Integer] number of values to unpack
+      # @param width [Integer] bits per value, 33..64
+      # @return [Array<Integer>] +count+ unsigned values
       def unpack_wide(chunk, count, width)
         mask = (1 << width) - 1
         out = Array.new(count)
@@ -61,6 +73,9 @@ module Herringbone
       end
 
       # Packs +values+ with +width+ bits each; the value count is padded up to a multiple of 8.
+      # @param values [Array<Integer>] non-negative integers that fit in +width+ bits
+      # @param width [Integer] bits per value
+      # @return [String] packed bytes in ASCII-8BIT, +width+ bytes per group of 8 values
       def pack_bits(values, width)
         return "".b if width.zero? || values.empty?
         n = values.size
@@ -93,6 +108,11 @@ module Herringbone
         out
       end
 
+      # Reads an unsigned LEB128 varint (hybrid run headers, DELTA_BINARY_PACKED headers).
+      # @param data [String] binary input
+      # @param pos [Integer] byte offset of the varint
+      # @return [Array(Integer, Integer)] the decoded value and the offset just past it
+      # @raise [FormatError] if the input ends inside the varint
       def read_uleb(data, pos)
         result = 0
         shift = 0
@@ -106,6 +126,10 @@ module Herringbone
         end
       end
 
+      # Appends +n+ as an unsigned LEB128 varint.
+      # @param out [String] binary output buffer, appended to
+      # @param n [Integer] non-negative integer to encode
+      # @return [String] +out+
       def write_uleb(out, n)
         while n >= 0x80
           out << ((n & 0x7F) | 0x80)
@@ -116,6 +140,13 @@ module Herringbone
 
       # Decodes the RLE/bit-packed hybrid from +data+ between +pos+ and +limit+,
       # returning exactly +count+ values (missing values are an error).
+      # @param data [String] binary input
+      # @param pos [Integer] byte offset of the first run header
+      # @param limit [Integer] byte offset just past the encoded data
+      # @param width [Integer] bits per value
+      # @param count [Integer] number of values to decode
+      # @return [Array<Integer>] exactly +count+ values
+      # @raise [FormatError] if the runs end before +count+ values were produced
       def decode_hybrid(data, pos, limit, width, count)
         out = []
         value_bytes = (width + 7) / 8
@@ -145,6 +176,10 @@ module Herringbone
 
       # Encodes +values+ with the RLE/bit-packed hybrid. Repeated runs of 8+ equal values
       # become RLE runs, everything else goes into bit-packed groups of 8.
+      # Output has no length prefix; callers that need one (levels in data page v1) add it.
+      # @param values [Array<Integer>] non-negative integers that fit in +width+ bits
+      # @param width [Integer] bits per value
+      # @return [String] encoded runs in ASCII-8BIT
       def encode_hybrid(values, width)
         out = String.new(encoding: Encoding::BINARY)
         n = values.size
@@ -181,6 +216,13 @@ module Herringbone
         out
       end
 
+      # Appends values[from...to] as one bit-packed run, zero-padded to whole groups of 8.
+      # @param out [String] binary output buffer, appended to
+      # @param values [Array<Integer>] all values being encoded
+      # @param from [Integer] index of the first literal value
+      # @param to [Integer] index just past the last literal value
+      # @param width [Integer] bits per value
+      # @return [String] +out+
       def flush_literals(out, values, from, to, width)
         count = to - from
         groups = (count + 7) / 8
@@ -188,13 +230,23 @@ module Herringbone
         out << pack_bits(values[from, count], width)
       end
 
+      # Number of bits needed to store values up to +max_value+ (0 for 0).
+      # @param max_value [Integer, nil] largest value to encode; nil counts as 0
+      # @return [Integer] bit width
       def bit_width(max_value)
         max_value.to_i.bit_length
       end
 
       # Legacy BIT_PACKED level encoding (deprecated): MSB-first bit order, no header.
+      # @param data [String] binary input
+      # @param pos [Integer] byte offset of the packed levels
+      # @param width [Integer] bits per value
+      # @param count [Integer] number of values to decode
+      # @return [Array<Integer>] +count+ levels
+      # @raise [FormatError] if +data+ ends before +count+ levels
       def decode_legacy_bit_packed(data, pos, width, count)
         nbytes = (count * width + 7) / 8
+        raise FormatError, "Truncated BIT_PACKED levels" if pos + nbytes > data.bytesize
         bits = data.byteslice(pos, nbytes).unpack1("B*")
         Array.new(count) { |i| bits[i * width, width].to_i(2) }
       end

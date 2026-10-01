@@ -15,13 +15,21 @@ module Herringbone
   # arithmetic is written once with the small code generators below, whose output is inlined into
   # the hashing methods: no method calls or allocations in the hot paths.
   module XXHash
+    # 64-bit mask
     M = 0xFFFF_FFFF_FFFF_FFFF
+    # XXH64 PRIME64_1
     P1 = 11_400_714_785_074_694_791
+    # XXH64 PRIME64_2
     P2 = 14_029_467_366_897_019_727
+    # XXH64 PRIME64_3
     P3 = 1_609_587_929_392_839_161
+    # XXH64 PRIME64_4
     P4 = 9_650_029_242_287_828_579
+    # XXH64 PRIME64_5
     P5 = 2_870_177_450_012_600_261
+    # 32-bit mask
     M32 = 0xFFFF_FFFF
+    # unpack format splitting the input into little-endian 32-bit words
     WORDS = "V*" # frozen, unlike a literal in the generated code
 
     # Gem providing the native implementation
@@ -35,8 +43,14 @@ module Herringbone
       # Shifts are written as multiplications and divisions by powers of two, which YARV has
       # specialized instructions for (<< and >> on Integers are method calls).
       #
-      # (hi:lo) = (hi:lo) * c mod 2**64. Products are at most 48 bits wide: the low halves are
+      # (hi:lo) = (hi:lo) * c mod 2^64. Products are at most 48 bits wide: the low halves are
       # multiplied by 16-bit pieces of c, and only the low 32 bits of the cross terms are kept.
+      #
+      # @param hi [String] variable holding the high 32 bits
+      # @param lo [String] variable holding the low 32 bits
+      # @param c [Integer] unsigned 64-bit constant multiplier
+      # @param hi_zero [Boolean] whether +hi+ is known to be 0, which drops its cross terms
+      # @return [String] Ruby source (uses t0 and t1 as scratch)
       def mul(hi, lo, c, hi_zero: false)
         ch = c >> 32
         cl = c & M32
@@ -51,6 +65,11 @@ module Herringbone
       end
 
       # Rotate (hi:lo) left by r bits (0 < r < 32)
+      #
+      # @param hi [String] variable holding the high 32 bits
+      # @param lo [String] variable holding the low 32 bits
+      # @param r [Integer] rotation in bits, 1..31
+      # @return [String] Ruby source (uses t0 as scratch)
       def rotl(hi, lo, r)
         mask = (1 << (32 - r)) - 1
         <<~RUBY
@@ -61,6 +80,12 @@ module Herringbone
       end
 
       # (hi:lo) += (a_hi:a_lo), where the addend is two expressions (constants or variables)
+      #
+      # @param hi [String] variable holding the high 32 bits
+      # @param lo [String] variable holding the low 32 bits
+      # @param a_hi [String, Integer] expression for the addend's high 32 bits
+      # @param a_lo [String, Integer] expression for the addend's low 32 bits
+      # @return [String] Ruby source
       def add(hi, lo, a_hi, a_lo)
         <<~RUBY
           #{lo} += #{a_lo}
@@ -69,43 +94,82 @@ module Herringbone
         RUBY
       end
 
+      # (hi:lo) += c, mod 2^64
+      #
+      # @param hi [String] variable holding the high 32 bits
+      # @param lo [String] variable holding the low 32 bits
+      # @param c [Integer] unsigned 64-bit constant addend
+      # @return [String] Ruby source
       def add_const(hi, lo, c)
         add(hi, lo, c >> 32, c & M32)
       end
 
       # Assigns the 64-bit constant c to (hi:lo)
+      #
+      # @param hi [String] variable for the high 32 bits
+      # @param lo [String] variable for the low 32 bits
+      # @param c [Integer] unsigned 64-bit constant
+      # @return [String] Ruby source
       def set(hi, lo, c)
         "#{hi} = #{c >> 32}\n#{lo} = #{c & M32}\n"
       end
 
       # XXH64 round with a zero accumulator: (hi:lo) = rotl(lane * P2, 31) * P1
+      #
+      # @param hi [String] variable holding the lane's high 32 bits, replaced by the result's
+      # @param lo [String] variable holding the lane's low 32 bits, replaced by the result's
+      # @return [String] Ruby source
       def round0(hi, lo)
         mul(hi, lo, P2) + rotl(hi, lo, 31) + mul(hi, lo, P1)
       end
 
       # Stripe round: acc = rotl(acc + lane * P2, 31) * P1, with the lane in (xh:xl)
+      #
+      # @param hi [String] variable holding the accumulator's high 32 bits
+      # @param lo [String] variable holding the accumulator's low 32 bits
+      # @param xh [String] variable holding the lane's high 32 bits (clobbered)
+      # @param xl [String] variable holding the lane's low 32 bits (clobbered)
+      # @return [String] Ruby source
       def round(hi, lo, xh, xl)
         mul(xh, xl, P2) + add(hi, lo, xh, xl) + rotl(hi, lo, 31) + mul(hi, lo, P1)
       end
 
       # h ^= rotl(v * P2, 31) * P1; h = h * P1 + P4, with v in (vh:vl) (left unchanged)
+      #
+      # @param hi [String] variable holding h's high 32 bits
+      # @param lo [String] variable holding h's low 32 bits
+      # @param vh [String] variable holding the accumulator v's high 32 bits
+      # @param vl [String] variable holding the accumulator v's low 32 bits
+      # @return [String] Ruby source (uses xh and xl as scratch)
       def merge_round(hi, lo, vh, vl)
         "xh = #{vh}\nxl = #{vl}\n" + round0("xh", "xl") +
           "#{hi} ^= xh\n#{lo} ^= xl\n" + mul(hi, lo, P1) + add_const(hi, lo, P4)
       end
 
       # Consumes an 8-byte lane in (xh:xl)
+      #
+      # @param hi [String] variable holding the hash's high 32 bits
+      # @param lo [String] variable holding the hash's low 32 bits
+      # @return [String] Ruby source
       def lane8(hi, lo)
         round0("xh", "xl") + "#{hi} ^= xh\n#{lo} ^= xl\n" + rotl(hi, lo, 27) + mul(hi, lo, P1) + add_const(hi, lo, P4)
       end
 
       # Consumes a 4-byte word in xl
+      #
+      # @param hi [String] variable holding the hash's high 32 bits
+      # @param lo [String] variable holding the hash's low 32 bits
+      # @return [String] Ruby source (sets xh)
       def lane4(hi, lo)
         "xh = 0\n" + mul("xh", "xl", P1, hi_zero: true) + "#{hi} ^= xh\n#{lo} ^= xl\n" +
           rotl(hi, lo, 23) + mul(hi, lo, P2) + add_const(hi, lo, P3)
       end
 
-      # Consumes one byte in xl (as it is below 2**16, byte * P5 needs no splitting)
+      # Consumes one byte in xl (as it is below 2^16, byte * P5 needs no splitting)
+      #
+      # @param hi [String] variable holding the hash's high 32 bits
+      # @param lo [String] variable holding the hash's low 32 bits
+      # @return [String] Ruby source
       def lane1(hi, lo)
         <<~RUBY + rotl(hi, lo, 11) + mul(hi, lo, P1)
           t0 = xl * #{P5 & M32}
@@ -115,12 +179,20 @@ module Herringbone
       end
 
       # Final mix; evaluates to the hash as one Integer
+      #
+      # @param hi [String] variable holding the hash's high 32 bits
+      # @param lo [String] variable holding the hash's low 32 bits
+      # @return [String] Ruby source whose last expression is the 64-bit hash
       def avalanche(hi, lo)
         "#{lo} ^= #{hi} / 2\n" + mul(hi, lo, P2) +
           "#{lo} ^= (#{hi} & 0x1FFFFFFF) * 8 | #{lo} / 536870912\n#{hi} ^= #{hi} / 536870912\n" +
           mul(hi, lo, P3) + "#{lo} ^= #{hi}\n(#{hi} << 32) | #{lo}\n"
       end
 
+      # Source of the pure-Ruby hashing methods, evaluated into XXHash: +ruby_xxh64(bytes)+,
+      # +ruby_xxh64_lane(xh, xl)+ (8 bytes as two 32-bit halves) and +ruby_xxh64_u32(xl)+ (4 bytes)
+      #
+      # @return [String] Ruby source defining the three singleton methods
       def source
         g = self
         <<~RUBY
@@ -219,6 +291,9 @@ module Herringbone
 
     class << self
       # XXH64 of a String's bytes, as an unsigned 64-bit Integer
+      #
+      # @param bytes [String] data to hash (its encoding is ignored)
+      # @return [Integer] the hash, 0...2^64
       def xxh64(bytes)
         native = @native
         native = resolve_backend if native.nil?
@@ -227,6 +302,9 @@ module Herringbone
 
       # XXH64 of 8 bytes given as a little-endian 64-bit Integer (an INT64 or DOUBLE's PLAIN
       # encoding), signed or unsigned: only its low 64 bits are used
+      #
+      # @param lane [Integer] value whose low 64 bits are hashed
+      # @return [Integer] the hash, 0...2^64
       def xxh64_u64(lane)
         native = @native
         native = resolve_backend if native.nil?
@@ -235,6 +313,9 @@ module Herringbone
       end
 
       # XXH64 of 4 bytes given as a little-endian 32-bit Integer (INT32, FLOAT), signed or unsigned
+      #
+      # @param word [Integer] value whose low 32 bits are hashed
+      # @return [Integer] the hash, 0...2^64
       def xxh64_u32(word)
         native = @native
         native = resolve_backend if native.nil?
@@ -243,6 +324,9 @@ module Herringbone
       end
 
       # Hashes of many 64-bit Integers (low 64 bits of each)
+      #
+      # @param lanes [Array<Integer>] values to hash, signed or unsigned
+      # @return [Array<Integer>] the hashes, in the same order
       def xxh64_u64_all(lanes)
         native = @native
         native = resolve_backend if native.nil?
@@ -255,6 +339,9 @@ module Herringbone
       end
 
       # Hashes of many 32-bit Integers (low 32 bits of each)
+      #
+      # @param words [Array<Integer>] values to hash, signed or unsigned
+      # @return [Array<Integer>] the hashes, in the same order
       def xxh64_u32_all(words)
         native = @native
         native = resolve_backend if native.nil?
@@ -267,6 +354,9 @@ module Herringbone
       end
 
       # Hashes of many Strings
+      #
+      # @param strings [Array<String>] values whose bytes are hashed
+      # @return [Array<Integer>] the hashes, in the same order
       def xxh64_all(strings)
         native = @native
         native = resolve_backend if native.nil?
@@ -274,6 +364,8 @@ module Herringbone
       end
 
       # :native when the xxhash gem is used, :ruby otherwise
+      #
+      # @return [Symbol] +:native+ or +:ruby+
       def backend
         native = @native
         native = resolve_backend if native.nil?
@@ -282,6 +374,11 @@ module Herringbone
 
       # :ruby forces pure Ruby, :native requires the xxhash gem (UnsupportedError if it cannot be
       # loaded), nil goes back to the default: native when available
+      #
+      # @param name [Symbol, nil] +:ruby+, +:native+ or nil
+      # @return [void]
+      # @raise [UnsupportedError] for +:native+ when the gem cannot be loaded
+      # @raise [ArgumentError] for any other name
       def backend=(name)
         @native = case name
         when :ruby then false
@@ -293,16 +390,25 @@ module Herringbone
       end
 
       # Whether the native xxhash gem can be loaded (whatever the selected backend)
+      #
+      # @return [Boolean] true when the gem is loadable
       def native_available?
         !!native_library
       end
 
       private
 
+      # Picks the default backend on first use: native when the gem loads, pure Ruby otherwise
+      #
+      # @return [Module, false] the native module, or false for pure Ruby
       def resolve_backend
         @native = native_library || false
       end
 
+      # Requires the xxhash gem once and memoizes the result (a failed require is not retried)
+      #
+      # @return [Module, false] the gem's module to call +xxh64(data, seed)+ on, or false when it
+      #   cannot be loaded
       def native_library
         if @native_lib.nil?
           @native_lib = begin

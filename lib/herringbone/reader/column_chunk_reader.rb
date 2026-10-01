@@ -14,22 +14,35 @@ module Herringbone
     # The declared total_compressed_size of the chunk is not relied on (some old writers
     # under-report it): pages are read until the chunk's num_values have been seen.
     class ColumnChunkReader
+      # Shorthand for the physical type constants
       T = Format::Type
+      # Shorthand for the encoding constants
       E = Format::Encoding
 
       # Bytes read past a page body, so that the next page header usually needs no extra read
       READ_AHEAD = 64 * 1024
+      # Bytes read for a page header whose size is not known; grown 4x while decoding fails
       HEADER_GUESS = 1024
+      # Largest header read attempted before a page header is declared corrupt
       MAX_HEADER = 64 * 1024 * 1024
 
+      # @return [Schema::Column] the leaf column this chunk belongs to
       attr_reader :column
 
       # With +lazy+, values of data pages that are not dictionary-encoded are returned as
       # physical values, and #page_converter is what still has to be applied to them. This keeps
       # a decoded page small (Integers instead of Time or BigDecimal objects) when only a slice
       # of it is needed at a time.
+      #
+      # @return [Proc, nil] converter of the last page returned by #next_page, nil when none
       attr_reader :page_converter
 
+      # @param io [IO, StringIO] the file, read with #seek and #read
+      # @param chunk [Format::ColumnChunk] the chunk's footer entry
+      # @param column [Schema::Column] the leaf column the chunk stores
+      # @param converter [Proc, nil] physical value => Ruby value, applied to values and dictionaries
+      # @param lazy [Boolean] leave non-dictionary values physical in #next_page (see #page_converter)
+      # @raise [UnsupportedError] for chunks without metadata (encrypted) or stored in another file
       def initialize(io, chunk, column, converter: column.converter, lazy: false)
         @io = io
         @chunk = chunk
@@ -55,6 +68,10 @@ module Herringbone
       end
 
       # All pages concatenated: [definition_levels, repetition_levels, values]
+      #
+      # @return [Array(Array<Integer>, Array<Integer>, Array)] levels are nil when the column's
+      #   max level is 0
+      # @raise [FormatError] when a page is corrupt or overruns the file
       def read
         defs = @max_def.positive? ? [] : nil
         reps = @max_rep.positive? ? [] : nil
@@ -69,6 +86,10 @@ module Herringbone
       end
 
       # The next data page as [defs, reps, values], or nil after the last one
+      #
+      # @return [Array(Array<Integer>, Array<Integer>, Array), nil] levels are nil when the
+      #   column's max level is 0; values hold the non-null entries
+      # @raise [FormatError] when a page is corrupt or overruns the file
       def next_page
         page = next_stream or return nil
         n = page.remaining
@@ -89,6 +110,11 @@ module Herringbone
 
       # The next data page as a PageStream::Page that decodes its levels and values on demand,
       # or nil after the last one. Values come out physical; apply Page#converter to them.
+      # Dictionary pages are read on the way.
+      #
+      # @return [PageStream::Page, nil] the next data page
+      # @raise [FormatError] when a page header is corrupt or a page overruns the file
+      # @raise [UnsupportedError] for an unsupported encoding or compression codec
       def next_stream
         while more_pages?
           header, body = read_page
@@ -112,11 +138,17 @@ module Herringbone
         raise FormatError, "Corrupt page header in #{@column.dotted_path}: #{e.message}"
       end
 
-      # The chunk's data page locations from its OffsetIndex (enables #jump_to_page)
+      # @return [Array<Format::PageLocation>, nil] the chunk's data page locations from its
+      #   OffsetIndex (enables #jump_to_page)
       attr_accessor :locations
 
       # Continues reading at data page +index+ of the OffsetIndex. The dictionary page (which
       # the OffsetIndex does not list) is read first if it has not been yet.
+      #
+      # @param index [Integer] position of the page in #locations
+      # @return [void]
+      # @raise [ArgumentError] when no #locations are set
+      # @raise [IndexError] when +index+ is outside #locations
       def jump_to_page(index)
         raise ArgumentError, "No OffsetIndex for #{@column.dotted_path}" unless @locations
         load_dictionary
@@ -125,18 +157,29 @@ module Herringbone
       end
 
       # Whether all of the chunk's values have been returned
+      #
+      # @return [Boolean] true once num_values entries have been seen
       def done? = @seen >= @total
 
+      # @return [Integer] entries (levels, nulls included) of the data pages returned so far
       attr_reader :seen
+
+      # @return [Integer] the chunk's num_values from its ColumnMetaData
       attr_reader :total
 
       private
 
+      # Whether another data page is due: up to the last OffsetIndex location after a jump,
+      # otherwise until num_values entries have been seen
+      #
+      # @return [Boolean] true when #next_stream should read on
       def more_pages?
         @page_number ? @page_number < @locations.size : @seen < @total
       end
 
       # Reads the dictionary page at the start of the chunk, if there is one
+      #
+      # @return [void]
       def load_dictionary
         return if @dictionary || @dictionary_checked
         @dictionary_checked = true
@@ -150,6 +193,9 @@ module Herringbone
       end
 
       # Reads the page header at @pos and the page body after it
+      #
+      # @return [Array(Format::PageHeader, String)] the header and the (still compressed) body
+      # @raise [FormatError] for a negative page size or a page that overruns the file
       def read_page
         # With an OffsetIndex the page's size (header included) is known, so read exactly that
         loc = @page_number && @locations[@page_number]
@@ -178,6 +224,11 @@ module Herringbone
 
       # Returns [buffer, offset] where buffer[offset..] holds at least +need+ bytes from file
       # position +pos+ (fewer only at EOF), reading +len+ bytes when the buffer does not cover it.
+      #
+      # @param pos [Integer] file offset wanted
+      # @param len [Integer] bytes to read when the buffer has to be refilled
+      # @param need [Integer] bytes that must be available from +pos+ to reuse the buffer
+      # @return [Array(String, Integer)] binary buffer and the offset of +pos+ in it
       def window(pos, len, need = len)
         off = pos - @buf_pos
         return [@buf, off] if off >= 0 && off + need <= @buf.bytesize
@@ -188,12 +239,23 @@ module Herringbone
         [@buf, 0]
       end
 
+      # Decompresses a page body with the chunk's codec
+      #
+      # @param body [String] compressed bytes
+      # @param size [Integer] uncompressed size from the page header
+      # @return [String] uncompressed bytes
+      # @raise [UnsupportedError] for an unsupported codec, naming the column
       def decompress(body, size)
         Compression.decompress(@meta.codec, body, size)
       rescue UnsupportedError => e
         raise e, "#{e.message} (column #{@column.dotted_path})"
       end
 
+      # Decodes a dictionary page (always PLAIN) and keeps its converted values
+      #
+      # @param header [Format::PageHeader] the dictionary page header
+      # @param body [String] the compressed page body
+      # @return [Array] the dictionary values
       def read_dictionary(header, body)
         dh = header.dictionary_page_header
         data = decompress(body, header.uncompressed_page_size)
@@ -202,6 +264,11 @@ module Herringbone
         @dictionary = vals
       end
 
+      # A DATA_PAGE: the whole body is compressed, levels come first with their own length prefix
+      #
+      # @param header [Format::PageHeader] the data page header
+      # @param body [String] the compressed page body
+      # @return [PageStream::Page] the page, decoded on demand
       def data_page_v1(header, body)
         dh = header.data_page_header
         n = dh.num_values
@@ -214,6 +281,11 @@ module Herringbone
         PageStream::Page.new(n, defs, reps, values, conv)
       end
 
+      # A DATA_PAGE_V2: levels are stored uncompressed before the (optionally compressed) values
+      #
+      # @param header [Format::PageHeader] the data page header
+      # @param body [String] the page body
+      # @return [PageStream::Page] the page, decoded on demand
       def data_page_v2(header, body)
         dh = header.data_page_header_v2
         n = dh.num_values
@@ -230,9 +302,20 @@ module Herringbone
         PageStream::Page.new(n, defs, reps, values, conv)
       end
 
+      # Bit width of levels up to a max level (memoized Integer#bit_length)
       RLE_WIDTH = Hash.new { |h, k| h[k] = k.bit_length }
 
       # [decoder, position after the levels]
+      #
+      # @param data [String] the uncompressed page
+      # @param pos [Integer] offset of the levels in +data+
+      # @param encoding [Integer] Format::Encoding of the levels (RLE or BIT_PACKED)
+      # @param max [Integer] max level of the column, which sets the bit width
+      # @param n [Integer] number of entries in the page
+      # @return [Array(PageStream::HybridDecoder, Integer), Array(PageStream::ArrayDecoder, Integer)]
+      #   the decoder and the offset just past the levels
+      # @raise [FormatError] when the RLE length prefix is cut off
+      # @raise [UnsupportedError] for any other level encoding
       def level_decoder(data, pos, encoding, max, n)
         width = RLE_WIDTH[max]
         case encoding
@@ -248,11 +331,20 @@ module Herringbone
         end
       end
 
+      # Physical type => [String#unpack directive, byte width] for PLAIN fixed-width values
       FIXED_FORMATS = {
         T::INT32 => ["l<", 4], T::INT64 => ["q<", 8], T::FLOAT => ["e", 4], T::DOUBLE => ["E", 8]
       }.freeze
 
       # [value decoder, converter still to apply to its values (nil for dictionary pages)]
+      #
+      # @param data [String] the uncompressed values section
+      # @param pos [Integer] offset of the values in +data+
+      # @param encoding [Integer] Format::Encoding of the values
+      # @return [Array(Object, Proc)] a PageStream decoder (responds to #read) and the converter,
+      #   which may be nil
+      # @raise [FormatError] for a dictionary-encoded page in a chunk without a dictionary page
+      # @raise [UnsupportedError] for an encoding not valid for the column's type, or unknown
       def value_decoder(data, pos, encoding)
         type = @column.type
         decoder = case encoding

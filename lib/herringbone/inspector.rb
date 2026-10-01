@@ -21,8 +21,11 @@ module Herringbone
   # inspector no longer needs the IO. The IO is never closed. After #verify_checksums, page CRC
   # results are included in every output.
   class Inspector
+    # Shorthand for the Parquet physical type constants
     T = Format::Type
+    # Magic bytes at the start and end of every (unencrypted) Parquet file
     MAGIC = "PAR1"
+    # Size of the read-ahead window used by #read_at, in bytes
     WINDOW = 64 * 1024
 
     # Just enough of parquet.thrift's BloomFilterHeader to learn the filter's size
@@ -30,29 +33,50 @@ module Herringbone
       field 1, :num_bytes, :i32
     end
 
-    # Decoded min/max statistics (from a column chunk, a page header or a page index entry)
+    # Decoded min/max statistics (from a column chunk, a page header or a page index entry).
+    # +min+/+max+ are converted with the column's type converter (hex Strings when they could
+    # not be decoded); +min_exact+/+max_exact+ mirror is_min_value_exact/is_max_value_exact;
+    # +source+ says which Thrift fields they came from and +caveat+ why they may be unreliable.
     Stats = Struct.new(:min, :max, :null_count, :distinct_count, :min_exact, :max_exact, :source, :caveat,
       keyword_init: true) do
+      # @return [Hash{Symbol => Object}] the set members, JSON-safe (see Inspector.jsonable)
       def to_h = Inspector.jsonable(super.compact)
     end
 
     # One page header of a column chunk. +checksum+ is nil until the CRCs are verified
-    # (Inspector#verify_checksums), then :ok, :mismatch or :absent (the page has no CRC).
+    # (Inspector#verify_checksums), then :ok, :mismatch or :absent (the page has no CRC);
+    # +actual_crc+ is then the CRC32 of the page's stored bytes (nil when it has no CRC).
+    # +index+ is the page's position in the chunk, +offset+ where its header starts; +type+ is
+    # a PageType name such as :DATA_PAGE (the raw Integer when unknown). +first_row_index+ and,
+    # for v1 pages of repeated columns, +num_rows+ are only known from the OffsetIndex.
     PageInfo = Struct.new(:index, :type, :offset, :header_size, :compressed_size, :uncompressed_size,
       :num_values, :num_nulls, :num_rows, :first_row_index, :encoding, :definition_level_encoding,
       :repetition_level_encoding, :definition_levels_byte_length, :repetition_levels_byte_length,
-      :is_compressed, :is_sorted, :statistics, :crc, :checksum, keyword_init: true) do
+      :is_compressed, :is_sorted, :statistics, :crc, :checksum, :actual_crc, keyword_init: true) do
+      # @return [Integer] bytes taken by the page in the file: header plus compressed body
       def total_size = header_size + compressed_size
+
+      # @return [Integer] file offset just past the page's body
       def end_offset = offset + total_size
+
+      # @return [Integer] file offset where the page's body (after the header) starts
       def body_offset = offset + header_size
+
+      # @return [Boolean] whether this is a dictionary page
       def dictionary? = type == :DICTIONARY_PAGE
+
+      # @return [Boolean] whether this is a v1 or v2 data page
       def data? = type == :DATA_PAGE || type == :DATA_PAGE_V2
 
       # The CRC from the header as an unsigned 32-bit value (Thrift stores it as a signed i32)
+      # @return [Integer, nil] nil when the header has no CRC
       def expected_crc = crc && (crc & 0xFFFF_FFFF)
 
+      # @return [Hash{Symbol => Object}] the set members, JSON-safe; +:crc+ becomes a Boolean
+      #   saying whether the header has a CRC, +:actual_crc+ is left out
       def to_h
         h = super
+        h.delete(:actual_crc)
         h[:statistics] = statistics&.to_h
         h[:crc] = !crc.nil?
         Inspector.jsonable(h.compact)
@@ -62,13 +86,19 @@ module Herringbone
     # ColumnIndex of one column chunk, with min/max decoded per page (nil for all-null pages)
     ColumnIndexInfo = Struct.new(:offset, :length, :null_pages, :min_values, :max_values, :boundary_order,
       :null_counts, :repetition_level_histograms, :definition_level_histograms, keyword_init: true) do
+      # @return [Hash{Symbol => Object}] the set members, JSON-safe (see Inspector.jsonable)
       def to_h = Inspector.jsonable(super.compact)
     end
 
+    # One OffsetIndex entry: where a data page starts, its size (header included) and the index
+    # of its first row within the row group
     PageLocation = Struct.new(:offset, :compressed_page_size, :first_row_index, keyword_init: true)
 
+    # OffsetIndex of one column chunk: its own +offset+/+length+ in the file, the PageLocations
+    # of its data pages and the optional per-page unencoded BYTE_ARRAY sizes
     OffsetIndexInfo = Struct.new(:offset, :length, :page_locations, :unencoded_byte_array_data_bytes,
       keyword_init: true) do
+      # @return [Hash{Symbol => Object}] the set members, with +:page_locations+ as Hashes
       def to_h
         h = super
         h[:page_locations] = page_locations.map(&:to_h)
@@ -80,6 +110,10 @@ module Herringbone
     class ColumnChunkInfo
       attr_reader :inspector, :row_group, :column, :chunk, :meta, :error
 
+      # @param inspector [Inspector] owner, used to read page headers and indexes lazily
+      # @param row_group [RowGroupInfo] row group the chunk belongs to
+      # @param column [Schema::Column] leaf column the chunk stores
+      # @param chunk [Format::ColumnChunk] chunk as decoded from the footer
       def initialize(inspector, row_group, column, chunk)
         @inspector = inspector
         @row_group = row_group
@@ -88,39 +122,64 @@ module Herringbone
         @meta = chunk.meta_data
       end
 
+      # @return [String] dotted path of the column, e.g. +"address.city"+
       def path = @column.dotted_path
+
+      # @return [Integer] position of the column among the schema's leaf columns
       def column_index_number = @column.index
+
+      # @return [Symbol, Integer] codec name such as :SNAPPY (the raw Integer when unknown)
       def codec = Format::Codec::NAMES[@meta.codec] || @meta.codec
+
+      # @return [Array<String>] encoding names listed in the column metadata
       def encodings = (@meta.encodings || []).map { |e| Inspector.encoding_name(e) }
+
+      # @return [Integer] values in the chunk, nulls and repeated entries included
       def num_values = @meta.num_values
+
+      # @return [Integer] total_compressed_size from the column metadata (page headers included)
       def compressed_size = @meta.total_compressed_size
+
+      # @return [Integer] total_uncompressed_size from the column metadata (page headers included)
       def uncompressed_size = @meta.total_uncompressed_size
+
+      # @return [Integer] offset of the first data page, as declared in the column metadata
       def data_page_offset = @meta.data_page_offset
+
+      # @return [String, nil] path of the file holding the chunk when it is not stored in this one
       def external_file = @chunk.file_path
 
+      # @return [Float, nil] uncompressed size divided by compressed size; nil when nothing is compressed
       def compression_ratio
         compressed_size.to_i.positive? ? uncompressed_size.to_f / compressed_size : nil
       end
 
       # Some writers store 0 when there is no dictionary page, and some store a data_page_offset
       # of 0 for empty chunks (which would point at the magic bytes)
+      # @return [Integer, nil] the declared dictionary page offset, nil when absent or implausible
       def dictionary_page_offset
         d = @meta.dictionary_page_offset
         (d && d >= 4 && (d < @meta.data_page_offset.to_i || @meta.data_page_offset.to_i < 4)) ? d : nil
       end
 
       # Where the chunk's first page starts
+      # @return [Integer] file offset
       def start_offset = dictionary_page_offset || data_page_offset
 
       # The end according to the metadata; some writers under-report it (see #end_offset)
+      # @return [Integer] file offset just past the chunk
       def declared_end_offset = start_offset + compressed_size
 
       # The end of the last page actually found (the declared end if the pages could not be walked)
+      # @return [Integer] file offset just past the chunk, never before #declared_end_offset
       def end_offset
         last = pages.last
         last ? [last.end_offset, declared_end_offset].max : declared_end_offset
       end
 
+      # Page counts per page type and encoding, from the column metadata's encoding_stats
+      # @return [Array<Hash{Symbol => Object}>] each { page_type:, encoding:, count: }; empty when
+      #   the writer stored none
       def encoding_stats
         (@meta.encoding_stats || []).map do |s|
           {page_type: Format::PageType::NAMES[s.page_type] || s.page_type,
@@ -128,23 +187,30 @@ module Herringbone
         end
       end
 
+      # Chunk-level statistics from the column metadata, decoded (memoized)
+      # @return [Stats, nil] nil when the chunk has no statistics
       def statistics
         return @statistics if defined?(@statistics)
         @statistics = @inspector.decode_statistics(@meta.statistics, @column)
       end
 
+      # @return [Hash{Symbol => Object}, nil] the SizeStatistics (unencoded byte array sizes and
+      #   level histograms) as a Hash, nil when absent
       def size_statistics
         s = @meta.size_statistics
         s&.to_h
       end
 
+      # @return [Hash{String => String}] the chunk's own key/value metadata (rarely used by writers)
       def key_value_metadata
         (@meta.key_value_metadata || []).to_h { |kv| [kv.key, kv.value] }
       end
 
+      # @return [Integer, nil] file offset of the chunk's bloom filter, nil when it has none
       def bloom_filter_offset = @meta.bloom_filter_offset
 
       # Bytes taken by the bloom filter (header + bitset); read from its header when the footer has no length
+      # @return [Integer, nil] nil when there is no bloom filter or its header can't be decoded
       def bloom_filter_length
         return nil unless bloom_filter_offset
         return @meta.bloom_filter_length if @meta.bloom_filter_length
@@ -152,11 +218,15 @@ module Herringbone
         @bloom_filter_length = @inspector.bloom_filter_size(bloom_filter_offset)
       end
 
+      # @return [Array(Integer, Integer), nil] [offset, length] of the chunk's ColumnIndex, nil when
+      #   it has none
       def column_index_range
         o = @chunk.column_index_offset
         (o && @chunk.column_index_length) ? [o, @chunk.column_index_length] : nil
       end
 
+      # @return [Array(Integer, Integer), nil] [offset, length] of the chunk's OffsetIndex, nil when
+      #   it has none
       def offset_index_range
         o = @chunk.offset_index_offset
         (o && @chunk.offset_index_length) ? [o, @chunk.offset_index_length] : nil
@@ -164,6 +234,7 @@ module Herringbone
 
       # All page headers, in file order. Errors while walking (corrupt or truncated headers) end
       # the walk; #error then says what went wrong and #pages holds the pages found before it.
+      # @return [Array<PageInfo>]
       def pages
         @pages ||= begin
           list, @error = @inspector.walk_pages(self)
@@ -172,22 +243,32 @@ module Herringbone
         end
       end
 
+      # @return [Array<PageInfo>] the v1 and v2 data pages, in file order
       def data_pages = pages.select(&:data?)
+
+      # @return [PageInfo, nil] the dictionary page, nil when the chunk has none
       def dictionary_page = pages.find(&:dictionary?)
 
       # Number of entries in the dictionary (from its page header)
+      # @return [Integer, nil] nil when the chunk has no dictionary page
       def dictionary_size = dictionary_page&.num_values
 
+      # The chunk's ColumnIndex, read and decoded on first use
+      # @return [ColumnIndexInfo, nil] nil when there is none or it is corrupt
       def column_index
         return @column_index if defined?(@column_index)
         @column_index = @inspector.read_column_index(self)
       end
 
+      # The chunk's OffsetIndex, read and decoded on first use
+      # @return [OffsetIndexInfo, nil] nil when there is none or it is corrupt
       def offset_index
         return @offset_index if defined?(@offset_index)
         @offset_index = @inspector.read_offset_index(self)
       end
 
+      # Null count from the chunk statistics, else the sum over the data page headers
+      # @return [Integer, nil] nil when neither the statistics nor every data page has it
       def null_count
         return statistics.null_count if statistics&.null_count
         counts = data_pages.map(&:num_nulls)
@@ -196,6 +277,7 @@ module Herringbone
 
       # Reads every page body (compressed bytes, as stored) and checks it against the CRC in its
       # page header. Sets PageInfo#checksum on each page and returns the pages' statuses.
+      # @return [Array<Symbol>] :ok, :mismatch or :absent per page, in #pages order
       def verify_checksums
         pages.map { |p| p.checksum = @inspector.page_checksum(p) }
       end
@@ -207,10 +289,14 @@ module Herringbone
       # A ColumnIndex bound that is wider than the page's (e.g. a truncated string prefix) is
       # allowed; one that is narrower, or a differing null count, is reported. Empty when the
       # chunk has no ColumnIndex or its pages carry no statistics.
+      # @return [Array<Hash{Symbol => Object}>]
       def index_mismatches
         @index_mismatches ||= @inspector.compare_page_index(self)
       end
 
+      # Everything known about the chunk, including its pages and page indexes (reads them if
+      # they were not read yet)
+      # @return [Hash{Symbol => Object}] JSON-safe; keys without a value are left out
       def to_h
         Inspector.jsonable({
           path: path,
@@ -251,6 +337,7 @@ module Herringbone
         }.compact)
       end
 
+      # @return [String] short description: path, row group, codec and sizes
       def inspect
         "#<#{self.class.name} #{path} rg=#{@row_group.index} #{codec} #{compressed_size}/#{uncompressed_size} bytes>"
       end
@@ -258,6 +345,10 @@ module Herringbone
       private
 
       # Page row counts come from the offset index when there is one (v1 pages don't carry them)
+      # Sets +first_row_index+ on the data pages the index points at, and +num_rows+ where the
+      # page header did not provide it.
+      # @param list [Array<PageInfo>] pages of this chunk, updated in place
+      # @return [void]
       def apply_offset_index(list)
         oi = offset_index or return
         by_offset = list.select(&:data?).to_h { |p| [p.offset, p] }
@@ -275,6 +366,11 @@ module Herringbone
     class RowGroupInfo
       attr_reader :index, :row_group, :columns
 
+      # @param inspector [Inspector] owner, passed on to the column chunks
+      # @param index [Integer] position of the row group in the file
+      # @param row_group [Format::RowGroup] row group as decoded from the footer
+      # @param first_row [Integer] file-wide index of the row group's first row
+      # @raise [FormatError] when the row group has more column chunks than the schema has leaves
       def initialize(inspector, index, row_group, first_row)
         @index = index
         @row_group = row_group
@@ -286,21 +382,41 @@ module Herringbone
         end
       end
 
+      # @return [Integer] rows in the row group
       def num_rows = @row_group.num_rows
+      # @return [Integer] file-wide index of the row group's first row
       attr_reader :first_row
+
+      # @return [Integer] total_byte_size from the footer (uncompressed size of all column data)
       def total_byte_size = @row_group.total_byte_size
+
+      # @return [Integer] total_compressed_size from the footer, else the sum over the chunks
       def compressed_size = @row_group.total_compressed_size || @columns.sum(&:compressed_size)
+
+      # @return [Integer] sum of the chunks' total_uncompressed_size
       def uncompressed_size = @columns.sum { |c| c.uncompressed_size.to_i }
+
+      # @return [Integer, nil] lowest start offset of the row group's chunks; nil without chunks
       def start_offset = @columns.map(&:start_offset).min
+
+      # @return [Integer, nil] highest end offset of the row group's chunks; nil without chunks
       def end_offset = @columns.map(&:end_offset).max
+
+      # @param path [String, Array<String>] dotted path (+"a.b"+) or path segments (+["a", "b"]+)
+      # @return [ColumnChunkInfo, nil] the chunk of that column, nil when there is none
       def column(path) = @columns.find { |c| c.path == path.to_s || c.column.path == Array(path) }
 
+      # The row group's declared sort order
+      # @return [Array<Hash{Symbol => Object}>] each { column:, descending:, nulls_first: }, where
+      #   +column+ is the column's path (its index when out of range)
       def sorting_columns
         (@row_group.sorting_columns || []).map do |s|
           {column: @columns[s.column_idx]&.path || s.column_idx, descending: s.descending, nulls_first: s.nulls_first}
         end
       end
 
+      # Everything known about the row group, with each column chunk's #to_h
+      # @return [Hash{Symbol => Object}] JSON-safe; keys without a value are left out
       def to_h
         Inspector.jsonable({
           index: index,
@@ -318,6 +434,7 @@ module Herringbone
         }.compact)
       end
 
+      # @return [String] short description: index, row count and number of columns
       def inspect
         "#<#{self.class.name} #{index} rows=#{num_rows} columns=#{@columns.size}>"
       end
@@ -330,6 +447,10 @@ module Herringbone
 
     # +io+ is a random-access IO (responds to #seek and #read, e.g. File.open(path, "rb")). It is
     # left open.
+    # @param io [IO] random-access IO positioned anywhere; only the footer is read here
+    # @raise [ArgumentError] when +io+ does not support #seek and #read
+    # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
+    # @raise [UnsupportedError] when the file is encrypted (PARE magic)
     def initialize(io)
       @io = io
       unless @io.respond_to?(:read) && @io.respond_to?(:seek)
@@ -341,12 +462,22 @@ module Herringbone
       @schema = Schema.from_elements(@metadata.schema)
     end
 
+    # @return [Integer] row count declared in the footer
     def num_rows = @metadata.num_rows
+
+    # @return [String, nil] the writer's created_by string, e.g. +"parquet-cpp-arrow version 15.0.0"+
     def created_by = @metadata.created_by
+
+    # @return [Integer] format version from the footer (1 or 2; says little about the features used)
     def version = @metadata.version
+
+    # @return [Array<Schema::Column>] the schema's leaf columns
     def columns = @schema.columns
+
+    # @return [Integer] file offset where the Thrift-encoded FileMetaData starts
     def footer_offset = @file_size - 8 - @footer_size
 
+    # @return [Array<RowGroupInfo>] the row groups, in footer order (built on first use)
     def row_groups
       @row_groups ||= begin
         first = 0
@@ -358,9 +489,11 @@ module Herringbone
       end
     end
 
+    # @return [Array<ColumnChunkInfo>] the column chunks of all row groups, row group by row group
     def column_chunks = row_groups.flat_map(&:columns)
 
     # Walks every page header and page index now (e.g. before closing the file)
+    # @return [Inspector] self
     def load_all
       column_chunks.each do |c|
         c.pages
@@ -371,18 +504,32 @@ module Herringbone
       self
     end
 
+    # @return [Boolean] whether any column chunk has a ColumnIndex or an OffsetIndex
     def page_index? = column_chunks.any? { |c| c.column_index_range || c.offset_index_range }
+
+    # @return [Boolean] whether any column chunk has a bloom filter
     def bloom_filters? = column_chunks.any?(&:bloom_filter_offset)
 
+    # The file-level key/value metadata, each entry described: ARROW:schema is decoded, JSON
+    # values are parsed (pandas metadata summarized), binary values are shown as hex
+    # @return [Array<Hash{Symbol => Object}>] each with :key, :bytesize, :format ("arrow_schema",
+    #   "json", "text" or "binary"), :value (truncated) and, depending on the format, :summary,
+    #   :json, :arrow_schema, :arrow_fields, :arrow_error
     def key_value_metadata
       (@metadata.key_value_metadata || []).map { |kv| describe_key_value(kv.key, kv.value) }
     end
 
+    # @return [Array<String>, nil] "TYPE_DEFINED_ORDER" or "UNKNOWN" per leaf column; nil when the
+    #   footer has no column_orders
     def column_orders
       orders = @metadata.column_orders or return nil
       orders.map { |o| o.type_order ? "TYPE_DEFINED_ORDER" : "UNKNOWN" }
     end
 
+    # File-wide facts: sizes, row and column counts, codecs, whether page indexes and bloom
+    # filters are present, and (after #verify_checksums) the CRC tallies under :checksums.
+    # Walks no page headers.
+    # @return [Hash{Symbol => Object}]
     def summary
       codecs = column_chunks.map(&:codec).uniq
       {
@@ -408,15 +555,20 @@ module Herringbone
     # the page data as stored: compressed, and for v2 pages the levels plus the compressed
     # values). Nothing is decompressed. Sets PageInfo#checksum on every page and returns
     # #checksum_summary. Needs the IO, so call it before closing the file.
+    # @return [Hash{Symbol => Object}] see #checksum_summary
     def verify_checksums
       column_chunks.each(&:verify_checksums)
       @checksums_verified = true
       checksum_summary
     end
 
+    # @return [Boolean] whether #verify_checksums has run
     def checksums_verified? = @checksums_verified == true
 
     # After #verify_checksums: { ok:, mismatch:, absent:, mismatches: [{ row_group:, column:, page:, type:, offset:, crc:, actual: }] }
+    # The counts are pages per status; in each mismatch +crc+ is the CRC from the page header and
+    # +actual+ the CRC32 of the stored bytes (kept from the verification, so the IO is not needed).
+    # @return [Hash{Symbol => Object}, nil] nil before #verify_checksums
     def checksum_summary
       return nil unless checksums_verified?
       all = column_chunks.flat_map { |c| c.pages.map { |p| [c, p] } }
@@ -425,13 +577,14 @@ module Herringbone
         ok: tally.fetch(:ok, 0), mismatch: tally.fetch(:mismatch, 0), absent: tally.fetch(:absent, 0),
         mismatches: all.select { |_, p| p.checksum == :mismatch }.map do |c, p|
           {row_group: c.row_group.index, column: c.path, page: p.index, type: p.type, offset: p.offset,
-           crc: p.expected_crc, actual: page_crc(p)}
+           crc: p.expected_crc, actual: p.actual_crc}
         end
       }
     end
 
     # Every disagreement between page header statistics and the ColumnIndex, across the file,
     # each with :row_group and :column added (see ColumnChunkInfo#index_mismatches)
+    # @return [Array<Hash{Symbol => Object}>]
     def index_mismatches
       column_chunks.flat_map do |c|
         c.index_mismatches.map { |m| {row_group: c.row_group.index, column: c.path}.merge(m) }
@@ -440,6 +593,7 @@ module Herringbone
 
     # The decoded ARROW:schema key/value (see ArrowSchema.decode); nil when the file has none or
     # it could not be decoded, and #arrow_schema_error then says why
+    # @return [Hash{Symbol => Object}, nil] see ArrowSchema.decode
     def arrow_schema
       return @arrow_schema if defined?(@arrow_schema)
       @arrow_schema_error = nil
@@ -452,12 +606,16 @@ module Herringbone
       end
     end
 
+    # @return [String, nil] why the ARROW:schema value could not be decoded; nil when it decoded
+    #   fine or the file has none
     def arrow_schema_error
       arrow_schema
       @arrow_schema_error
     end
 
     # Schema tree: Hashes with name, repetition, types, levels (leaves) and children (groups)
+    # Nodes that match a field of the ARROW:schema also get its type as :arrow_type.
+    # @return [Array<Hash{Symbol => Object}>] the root's children
     def schema_tree
       leaf_by_node = @schema.columns.to_h { |c| [c.node, c] }
       build = lambda do |node|
@@ -483,6 +641,8 @@ module Herringbone
     end
 
     # Per leaf column: sums over all row groups, plus overall min/max where comparable
+    # Walks every page header (for the page counts).
+    # @return [Array<Hash{Symbol => Object}>] one per leaf column, in schema order
     def column_totals
       columns.map do |col|
         chunks = row_groups.map { |rg| rg.columns[col.index] }.compact
@@ -507,8 +667,8 @@ module Herringbone
           num_data_pages: chunks.sum { |c| c.data_pages.size },
           dictionary_pages: chunks.count(&:dictionary_page),
           dictionary_bytes: chunks.sum { |c| c.dictionary_page&.total_size.to_i },
-          min: mins.all? ? safe_extreme(mins, :min) : nil,
-          max: maxes.all? ? safe_extreme(maxes, :max) : nil
+          min: mins.include?(nil) ? nil : safe_extreme(mins, :min),
+          max: maxes.include?(nil) ? nil : safe_extreme(maxes, :max)
         }.compact
       end
     end
@@ -516,6 +676,9 @@ module Herringbone
     # Byte ranges of the whole file, in offset order: magic, pages (or whole chunks when their pages
     # could not be walked), bloom filters, page indexes, footer. Gaps right after a chunk at its
     # file_offset are inline :column_metadata copies; other gaps are reported as :unknown. Each entry: { kind:, start:, length:, row_group:, column:, page: }
+    # +row_group+, +column+ and +page+ are indexes, present only where they apply. Segments can
+    # overlap when the file is damaged; gaps are only computed past the furthest end seen so far.
+    # @return [Array<Hash{Symbol => Object}>]
     def layout
       segs = [{kind: :magic, start: 0, length: 4}]
       column_chunks.each do |c|
@@ -567,6 +730,9 @@ module Herringbone
       out
     end
 
+    # Everything: summary, key/value metadata, schema tree, row groups with their chunks and
+    # pages, column totals, and any checksum and page index mismatches. Walks every page header.
+    # @return [Hash{Symbol => Object}] JSON-safe; keys without a value are left out
     def to_h
       Inspector.jsonable({
         summary: summary,
@@ -579,12 +745,17 @@ module Herringbone
       }.compact)
     end
 
+    # @param args [Array] passed on to Hash#to_json (e.g. a JSON::State)
+    # @return [String] #to_h as JSON
     def to_json(*args) = to_h.to_json(*args)
 
     # A self-contained HTML page showing the file's layout, see Visualizer
+    # @return [String] HTML document
     def to_html = Visualizer.new(self).to_html
 
     # Readable text summary. With pages: true, lists every page header too.
+    # @param pages [Boolean] whether to add a line per page header under each column chunk
+    # @return [String] multi-line text, as printed by +bin/herringbone inspect+
     def report(pages: false)
       s = summary
       out = []
@@ -641,7 +812,7 @@ module Herringbone
           "at #{rg.start_offset}..#{rg.end_offset}#{", sorted by #{sorting.join(", ")}" unless sorting.empty?}"
         rg.columns.each do |c|
           st = c.statistics
-          range = (st && (st.min || st.max)) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
+          range = (st && !(st.min.nil? && st.max.nil?)) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
           extras = []
           extras << "dict #{c.dictionary_size} entries" if c.dictionary_page
           extras << "column index" if c.column_index_range
@@ -657,13 +828,14 @@ module Herringbone
             out << "    #{p.index}: #{p.type} @#{p.offset} header #{p.header_size} + #{p.compressed_size}/#{p.uncompressed_size} bytes, " \
               "#{p.num_values} values#{", #{p.num_nulls} nulls" if p.num_nulls}#{", #{p.num_rows} rows" if p.num_rows}" \
               "#{" #{p.encoding}" if p.encoding}#{crc_text(p)}" \
-              "#{" [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" if st && (st.min || st.max)}"
+              "#{" [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" if st && !(st.min.nil? && st.max.nil?)}"
           end
         end
       end
       out.join("\n")
     end
 
+    # @return [String] short description: name, rows, row group count and file size
     def inspect
       "#<#{self.class.name} #{@name || "(IO)"} rows=#{num_rows} row_groups=#{row_groups.size} size=#{@file_size}>"
     end
@@ -672,6 +844,9 @@ module Herringbone
 
     # Walks page headers from the chunk's first page. Returns [pages, error_message_or_nil].
     # Mirrors the reader's tolerance: a chunk may extend past its declared total_compressed_size.
+    # @param chunk [ColumnChunkInfo] chunk whose pages to walk
+    # @return [Array(Array<PageInfo>, String), Array(Array<PageInfo>, nil)] the pages found, and why
+    #   the walk stopped early (nil when every value was accounted for)
     def walk_pages(chunk)
       return [[], "column chunk stored in external file #{chunk.external_file}"] if chunk.external_file
       pages = []
@@ -702,6 +877,9 @@ module Herringbone
       [pages, (seen < total) ? "found #{seen} of #{total} values in page headers" : nil]
     end
 
+    # Reads and decodes a chunk's ColumnIndex, decoding the per-page min/max with the column type
+    # @param chunk [ColumnChunkInfo] chunk whose ColumnIndex to read
+    # @return [ColumnIndexInfo, nil] nil when the chunk has none or it fails to decode
     def read_column_index(chunk)
       offset, length = chunk.column_index_range
       return nil unless offset && length.positive?
@@ -724,6 +902,9 @@ module Herringbone
       nil
     end
 
+    # Reads and decodes a chunk's OffsetIndex
+    # @param chunk [ColumnChunkInfo] chunk whose OffsetIndex to read
+    # @return [OffsetIndexInfo, nil] nil when the chunk has none or it fails to decode
     def read_offset_index(chunk)
       offset, length = chunk.offset_index_range
       return nil unless offset && length.positive?
@@ -740,6 +921,8 @@ module Herringbone
     end
 
     # Size in bytes of the bloom filter at +offset+ (its Thrift header plus the bitset)
+    # @param offset [Integer] file offset of the BloomFilterHeader
+    # @return [Integer, nil] nil when the header can't be decoded or has no num_bytes
     def bloom_filter_size(offset)
       buf = read_at(offset, 64)
       header, size = BloomFilterHeader.decode(buf)
@@ -748,18 +931,26 @@ module Herringbone
       nil
     end
 
-    # :ok, :mismatch or :absent for one page (reads its body)
+    # :ok, :mismatch or :absent for one page (reads its body). Sets PageInfo#actual_crc.
+    # @param page [PageInfo] page to check
+    # @return [Symbol]
     def page_checksum(page)
       return :absent unless page.crc
-      (page_crc(page) == page.expected_crc) ? :ok : :mismatch
+      page.actual_crc = page_crc(page)
+      (page.actual_crc == page.expected_crc) ? :ok : :mismatch
     end
 
     # CRC32 of a page's body as stored
+    # @param page [PageInfo] page whose compressed body to read
+    # @return [Integer] unsigned 32-bit CRC
     def page_crc(page)
       Zlib.crc32(read_at(page.body_offset, page.compressed_size))
     end
 
     # See ColumnChunkInfo#index_mismatches
+    # @param chunk [ColumnChunkInfo] chunk whose page headers to compare with its ColumnIndex
+    # @return [Array<Hash{Symbol => Object}>] one entry per disagreement; a single :page_count
+    #   entry when the ColumnIndex and the data pages differ in number
     def compare_page_index(chunk)
       ci = chunk.column_index or return []
       data = chunk.data_pages
@@ -788,6 +979,11 @@ module Herringbone
     end
 
     # Decodes a Format::Statistics into Ruby values via the column's type converter
+    # Prefers min_value/max_value; falls back to the deprecated min/max, with a caveat when their
+    # ordering can't be trusted for the column's type.
+    # @param st [Format::Statistics, nil] statistics from column metadata or a page header
+    # @param column [Schema::Column] column the statistics describe
+    # @return [Stats, nil] nil when +st+ is nil
     def decode_statistics(st, column)
       return nil unless st
       order = Inspector.sort_order(column)
@@ -821,6 +1017,12 @@ module Herringbone
     end
 
     # Decodes one PLAIN-encoded statistics value (no length prefix for byte arrays)
+    # INT96 decodes to [nanoseconds, julian_day] before conversion. Values of the wrong width,
+    # or that fail to convert, come back as hex (see Inspector.hex).
+    # @param bytes [String, nil] encoded value
+    # @param column [Schema::Column] column whose physical type and converter apply
+    # @return [Object, nil] the converted value, a hex String when it could not be decoded, nil
+    #   for nil (or empty BOOLEAN) input
     def decode_value(bytes, column)
       return nil if bytes.nil?
       bytes = bytes.b
@@ -854,43 +1056,84 @@ module Herringbone
     # Fields carry :name, :type, :nullable and, when present, :children, :dictionary
     # ({ index_type:, ordered:, id: }), :extension (ARROW:extension:name) and :metadata.
     module ArrowSchema
+      # Raised for malformed or unsupported ARROW:schema values
       class Error < StandardError; end
 
+      # Deepest field nesting accepted, against stack exhaustion on hostile input
       MAX_DEPTH = 64
+      # Most fields (nested ones included) accepted in one schema
       MAX_FIELDS = 100_000
+      # Arrow TimeUnit values (SECOND, MILLISECOND, MICROSECOND, NANOSECOND) as pyarrow abbreviates them
       TIME_UNITS = %w[s ms us ns].freeze
+      # MessageHeader union tag of a Schema in Message.fbs
       MESSAGE_SCHEMA = 1
 
       # A minimal flatbuffer reader: tables (through their vtables), scalars, strings, vectors of
       # scalars and tables, and unions. Every read is bounds-checked; malformed input raises Error.
       class FlatBuffer
+        # @param bytes [String] the flatbuffer (copied as binary)
         def initialize(bytes)
           @b = bytes.b
         end
 
+        # @return [Table] the root table, whose offset is stored in the first 4 bytes
         def root = table_at(u32(0))
+
+        # @param pos [Integer] absolute position of a table
+        # @return [Table]
+        # @raise [Error] when its vtable is out of bounds or malformed
         def table_at(pos) = Table.new(self, pos)
 
+        # @param pos [Integer] absolute start of the read
+        # @param len [Integer] bytes to read
+        # @return [void]
+        # @raise [Error] when the range is not inside the buffer
         def check(pos, len)
           return if pos >= 0 && len >= 0 && pos + len <= @b.bytesize
           raise Error, "flatbuffer read of #{len} bytes at #{pos} is out of bounds (#{@b.bytesize} bytes)"
         end
 
+        # @param pos [Integer] absolute start of the read
+        # @param len [Integer] bytes to read
+        # @param fmt [String] String#unpack1 directive for the bytes
+        # @return [Integer] the unpacked scalar
+        # @raise [Error] when the range is not inside the buffer
         def read(pos, len, fmt)
           check(pos, len)
           @b.byteslice(pos, len).unpack1(fmt)
         end
 
+        # @param pos [Integer] absolute position
+        # @return [Integer] unsigned 8-bit value at +pos+
         def u8(pos) = read(pos, 1, "C")
+
+        # @param pos [Integer] absolute position
+        # @return [Integer] unsigned little-endian 16-bit value at +pos+
         def u16(pos) = read(pos, 2, "S<")
+
+        # @param pos [Integer] absolute position
+        # @return [Integer] signed little-endian 16-bit value at +pos+
         def i16(pos) = read(pos, 2, "s<")
+
+        # @param pos [Integer] absolute position
+        # @return [Integer] unsigned little-endian 32-bit value at +pos+
         def u32(pos) = read(pos, 4, "L<")
+
+        # @param pos [Integer] absolute position
+        # @return [Integer] signed little-endian 32-bit value at +pos+
         def i32(pos) = read(pos, 4, "l<")
+
+        # @param pos [Integer] absolute position
+        # @return [Integer] signed little-endian 64-bit value at +pos+
         def i64(pos) = read(pos, 8, "q<")
 
         # Offsets are relative to where they are stored
+        # @param pos [Integer] absolute position of a uoffset
+        # @return [Integer] absolute position it points to
         def deref(pos) = pos + u32(pos)
 
+        # @param pos [Integer] absolute position of the string's length prefix
+        # @return [String] the string's bytes as UTF-8 (not validated)
         def string(pos)
           len = u32(pos)
           check(pos + 4, len)
@@ -898,6 +1141,10 @@ module Herringbone
         end
 
         # [start, length] of the vector at +pos+ with +size+-byte elements
+        # @param pos [Integer] absolute position of the vector's length prefix
+        # @param size [Integer] bytes per element
+        # @return [Array(Integer, Integer)] start of the first element and the element count
+        # @raise [Error] when the elements do not fit in the buffer
         def vector(pos, size)
           len = u32(pos)
           check(pos + 4, len * size)
@@ -907,6 +1154,9 @@ module Herringbone
 
       # One flatbuffer table; fields are addressed by their slot (declaration order in the .fbs)
       class Table
+        # @param fb [FlatBuffer] buffer the table lives in
+        # @param pos [Integer] absolute position of the table (where its vtable offset is stored)
+        # @raise [Error] when the vtable is out of bounds or malformed
         def initialize(fb, pos)
           @fb = fb
           @pos = pos
@@ -917,6 +1167,8 @@ module Herringbone
         end
 
         # Absolute position of a field's value, nil when absent
+        # @param slot [Integer] field slot, counting from 0
+        # @return [Integer, nil]
         def field(slot)
           o = 4 + (slot * 2)
           return nil if o + 2 > @vtable_size
@@ -924,20 +1176,49 @@ module Herringbone
           off.zero? ? nil : @pos + off
         end
 
+        # @param slot [Integer] field slot, counting from 0
+        # @param default [Integer] returned when the field is absent (the .fbs default)
+        # @return [Integer] the unsigned 8-bit field (also used for union type tags)
         def u8(slot, default = 0) = (p = field(slot)) ? @fb.u8(p) : default
+
+        # @param slot [Integer] field slot, counting from 0
+        # @param default [Boolean] returned when the field is absent (the .fbs default)
+        # @return [Boolean]
         def bool(slot, default = false) = (p = field(slot)) ? @fb.u8(p) != 0 : default
+
+        # @param slot [Integer] field slot, counting from 0
+        # @param default [Integer] returned when the field is absent (the .fbs default)
+        # @return [Integer] the signed 16-bit field (also used for enums such as TimeUnit)
         def i16(slot, default = 0) = (p = field(slot)) ? @fb.i16(p) : default
+
+        # @param slot [Integer] field slot, counting from 0
+        # @param default [Integer] returned when the field is absent (the .fbs default)
+        # @return [Integer] the signed 32-bit field
         def i32(slot, default = 0) = (p = field(slot)) ? @fb.i32(p) : default
+
+        # @param slot [Integer] field slot, counting from 0
+        # @param default [Integer] returned when the field is absent (the .fbs default)
+        # @return [Integer] the signed 64-bit field
         def i64(slot, default = 0) = (p = field(slot)) ? @fb.i64(p) : default
+
+        # @param slot [Integer] field slot, counting from 0
+        # @return [String, nil] the string field, nil when absent
         def string(slot) = (p = field(slot)) && @fb.string(@fb.deref(p))
+
+        # @param slot [Integer] field slot, counting from 0 (also the value of a union)
+        # @return [Table, nil] the sub-table, nil when absent
         def table(slot) = (p = field(slot)) && @fb.table_at(@fb.deref(p))
 
+        # @param slot [Integer] field slot, counting from 0
+        # @return [Array<Table>] the vector of tables, empty when absent
         def tables(slot)
           p = field(slot) or return []
           start, len = @fb.vector(@fb.deref(p), 4)
           Array.new(len) { |i| @fb.table_at(@fb.deref(start + (4 * i))) }
         end
 
+        # @param slot [Integer] field slot, counting from 0
+        # @return [Array<Integer>] the vector of signed 32-bit values, empty when absent
         def i32s(slot)
           p = field(slot) or return []
           start, len = @fb.vector(@fb.deref(p), 4)
@@ -948,6 +1229,10 @@ module Herringbone
       module_function
 
       # Decodes the base64 ARROW:schema value; raises ArrowSchema::Error when it can't
+      # @param b64 [String] the key/value metadata value (base64 of an IPC Schema message)
+      # @return [Hash{Symbol => Object}] { endianness:, fields:, metadata: }; +metadata+ is a
+      #   Hash{String => String}, left out when the schema has none
+      # @raise [Error] when the value is empty, malformed or not a Schema message
       def decode(b64)
         bytes = b64.to_s.unpack1("m")
         raise Error, "empty value" if bytes.empty?
@@ -968,6 +1253,9 @@ module Herringbone
 
       # The flatbuffer inside an encapsulated IPC message: [0xFFFFFFFF] int32 length, flatbuffer
       # (the continuation marker is missing in files from before Arrow 0.15)
+      # @param bytes [String] the decoded (binary) ARROW:schema value
+      # @return [String] the message's flatbuffer bytes
+      # @raise [Error] when the length prefix is missing or does not fit
       def message_bytes(bytes)
         raise Error, "too short for an IPC message (#{bytes.bytesize} bytes)" if bytes.bytesize < 8
         len = bytes.unpack1("l<")
@@ -980,6 +1268,13 @@ module Herringbone
         bytes.byteslice(start, len)
       end
 
+      # Describes one Arrow Field table and, recursively, its children
+      # @param t [Table] the Field table
+      # @param depth [Integer] nesting depth of the field, 0 at the top level
+      # @param count [Array<Integer>] one-element counter of the fields seen so far, shared across
+      #   the recursion
+      # @return [Hash{Symbol => Object}] see the module description for the keys
+      # @raise [Error] past MAX_DEPTH or MAX_FIELDS, or on malformed input
       def field(t, depth, count)
         raise Error, "fields nested deeper than #{MAX_DEPTH} levels" if depth > MAX_DEPTH
         raise Error, "more than #{MAX_FIELDS} fields" if (count[0] += 1) > MAX_FIELDS
@@ -1002,19 +1297,32 @@ module Herringbone
         h
       end
 
+      # @param tables [Array<Table>] KeyValue tables (custom_metadata of a Schema or Field)
+      # @return [Hash{String => String}, nil] nil when there are none
       def key_values(tables)
         return nil if tables.empty?
         tables.to_h { |kv| [kv.string(0).to_s, kv.string(1).to_s] }
       end
 
       # A child as pyarrow prints it inside a nested type: "name: type" plus " not null"
+      # @param c [Hash{Symbol => Object}] a field as returned by #field
+      # @return [String]
       def child_text(c) = "#{c[:name]}: #{c[:type]}#{" not null" unless c[:nullable]}"
 
+      # @param t [Table] an Arrow Int table (bitWidth, is_signed)
+      # @return [String] e.g. "int32" or "uint8"
       def int_name(t) = "#{"u" unless t.bool(1)}int#{t.i32(0)}"
 
+      # @param u [Integer] Arrow TimeUnit value
+      # @return [String] "s", "ms", "us" or "ns" ("unitN" for unknown values)
       def unit(u) = TIME_UNITS[u] || "unit#{u}"
 
       # Type names follow Arrow's DataType::ToString (what pyarrow prints)
+      # @param kind [Integer] the Field's Type union tag (Schema.fbs)
+      # @param t [Table, nil] the union's type table, nil when absent
+      # @param children [Array<Hash{Symbol => Object}>] the already described child fields
+      # @return [String] e.g. "timestamp[us, tz=UTC]" or "list<item: string>"
+      # @raise [Error] for a Decimal type without its parameters table
       def type_name(kind, t, children)
         case kind
         when 1 then "null"
@@ -1059,6 +1367,9 @@ module Herringbone
       end
 
       # map<key, value> with non-standard field names in parentheses, as Arrow prints it
+      # @param t [Table, nil] the Map table (keysSorted), nil when absent
+      # @param children [Array<Hash{Symbol => Object}>] the map's single entries struct field
+      # @return [String]
       def map_name(t, children)
         entries = children.first
         kv = entries && entries[:children] || []
@@ -1069,6 +1380,11 @@ module Herringbone
       end
 
       # "name: type" lines for a field and its children, indented, for text output
+      # Children nested deeper than 8 levels are left out.
+      # @param fields [Array<Hash{Symbol => Object}>] fields as returned by #decode under +:fields+
+      # @param depth [Integer] indentation level of +fields+
+      # @param out [Array<String>] accumulator the lines are appended to
+      # @return [Array<String>] +out+
       def lines(fields, depth = 0, out = [])
         fields.each do |f|
           notes = []
@@ -1085,8 +1401,13 @@ module Herringbone
 
     # ---- class helpers ----
 
+    # @param e [Integer] Parquet Encoding value
+    # @return [String] its name, e.g. "RLE_DICTIONARY" (the number as a String when unknown)
     def self.encoding_name(e) = Format::Encoding::NAMES[e]&.to_s || e.to_s
 
+    # @param column [Schema::Column] leaf column
+    # @return [String] physical type with its logical annotation, e.g. "BYTE_ARRAY STRING" or
+    #   "FIXED_LEN_BYTE_ARRAY(16) UUID"
     def self.type_name(column)
       node = column.node
       phys = T::NAMES[node.type].to_s
@@ -1095,6 +1416,10 @@ module Herringbone
       logical ? "#{phys} #{logical}" : phys
     end
 
+    # The node's LogicalType, else its ConvertedType, as text
+    # @param node [Schema::Node] schema node (leaf or group)
+    # @return [String, nil] e.g. "INTEGER(8, unsigned)", "TIMESTAMP(MICROS, UTC)" or "DECIMAL(10, 2)";
+    #   nil when the node has no annotation
     def self.logical_type_name(node)
       if (kind = node.logical_type&.kind)
         name, payload = kind
@@ -1113,6 +1438,8 @@ module Herringbone
     end
 
     # :signed, :unsigned or :unknown, per the Parquet sort order rules for the column's type
+    # @param column [Schema::Column] leaf column
+    # @return [Symbol]
     def self.sort_order(column)
       kind, _a, signed = Types.logical_of(column.node)
       case kind
@@ -1129,6 +1456,9 @@ module Herringbone
     end
 
     # Converts Ruby values (Time, BigDecimal, binary Strings, non-finite Floats...) to JSON-safe ones
+    # Recurses into Hashes, Arrays and Structs; Hash keys other than Symbols become Strings.
+    # @param v [Object] value to convert
+    # @return [Hash, Array, String, Integer, Float, Boolean, nil]
     def self.jsonable(v)
       case v
       when Hash then v.each_with_object({}) { |(k, x), h| h[k.is_a?(Symbol) ? k : k.to_s] = jsonable(x) }
@@ -1146,6 +1476,9 @@ module Herringbone
     end
 
     # A String as readable text when it is valid UTF-8 without control characters, else as hex
+    # Strings already tagged as valid UTF-8 are returned as they are, control characters and all.
+    # @param s [String] string in any encoding
+    # @return [String]
     def self.text(s)
       return s if s.encoding == Encoding::UTF_8 && s.valid_encoding?
       u = s.dup.force_encoding(Encoding::UTF_8)
@@ -1153,12 +1486,19 @@ module Herringbone
       hex(s)
     end
 
+    # @param bytes [String] bytes to show
+    # @return [String] "0x" and lowercase hex digits; only the first 64 bytes, followed by the
+    #   total size, for longer input
     def self.hex(bytes)
       b = bytes.b
       (b.bytesize > 64) ? "0x#{b.byteslice(0, 64).unpack1("H*")}… (#{b.bytesize} bytes)" : "0x#{b.unpack1("H*")}"
     end
 
     # A short display form of a decoded value
+    # Strings are quoted (binary ones go through Inspector.text first), nil shows as "null".
+    # @param v [Object] decoded value
+    # @param max [Integer] longest result, in characters; longer ones are cut and end in an ellipsis
+    # @return [String]
     def self.display(v, max: 40)
       s = case v
       when String then (v.encoding == Encoding::BINARY) ? text(v) : v
@@ -1169,6 +1509,8 @@ module Herringbone
       (s.size > max) ? "#{s[0, max - 1]}…" : s
     end
 
+    # @param n [Integer, nil] byte count
+    # @return [String] e.g. "512 B", "1.50 KB" or "12.3 MB" (binary units); "?" for nil
     def self.human_bytes(n)
       return "?" unless n
       units = %w[B KB MB GB TB]
@@ -1187,10 +1529,16 @@ module Herringbone
 
     private
 
+    # @param uncompressed [Integer, nil] uncompressed byte count
+    # @param compressed [Integer, nil] compressed byte count
+    # @return [String] " (3.21x)" for #report, empty when the ratio is unknown
     def ratio_text(uncompressed, compressed)
       (compressed.to_i.positive? && uncompressed) ? format(" (%.2fx)", uncompressed.to_f / compressed) : ""
     end
 
+    # @param page [PageInfo] page whose CRC status to show
+    # @return [String] the status for a #report page line: " crc ok", " CRC MISMATCH", " crc"
+    #   (has a CRC, not verified) or empty
     def crc_text(page)
       case page.checksum
       when :ok then " crc ok"
@@ -1199,6 +1547,8 @@ module Herringbone
       end
     end
 
+    # @param m [Hash{Symbol => Object}] an entry of #index_mismatches
+    # @return [String] one #report line describing it
     def index_mismatch_text(m)
       where = "row group #{m[:row_group]} #{m[:column]}"
       if m[:field] == :page_count
@@ -1210,6 +1560,10 @@ module Herringbone
     end
 
     # Adds :arrow_type to schema nodes with a same-named Arrow field (top level, and struct members)
+    # @param nodes [Array<Hash{Symbol => Object}>] #schema_tree nodes, updated in place
+    # @param fields [Array<Hash{Symbol => Object}>] Arrow fields at the same level
+    # @param depth [Integer] nesting depth; recursion stops at 32
+    # @return [void]
     def annotate_arrow_types(nodes, fields, depth = 0)
       by_name = fields.to_h { |f| [f[:name], f] }
       nodes.each do |n|
@@ -1224,6 +1578,11 @@ module Herringbone
     # Whether the index bound +idx+ excludes values the page's bound +page+ says are present
     # (index min above the page min, or index max below the page max). Truncated binary bounds
     # (one a prefix of the other) and values that can't be compared are never reported.
+    # @param idx [Object, nil] decoded ColumnIndex bound
+    # @param page [Object, nil] decoded page header bound
+    # @param order [Symbol] :signed, :unsigned or :unknown (see Inspector.sort_order)
+    # @param which [Symbol] :min or :max
+    # @return [Boolean]
     def narrower?(idx, page, order, which)
       return false if idx.nil? || page.nil? || order == :unknown
       a, b = (which == :min) ? [page, idx] : [idx, page] # true when a < b
@@ -1241,6 +1600,10 @@ module Herringbone
       false
     end
 
+    # Overall min or max of per-chunk bounds, when they can be compared
+    # @param values [Array<Object, nil>] decoded per-chunk minimums or maximums
+    # @param which [Symbol] :min or :max
+    # @return [Object, nil] nil when there are no values or they are of mixed or incomparable types
     def safe_extreme(values, which)
       vals = values.compact
       return nil if vals.empty?
@@ -1253,6 +1616,10 @@ module Herringbone
       nil
     end
 
+    # Reads the file size, the footer length and magic, and decodes the FileMetaData into @metadata
+    # @return [void]
+    # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
+    # @raise [UnsupportedError] when the file is encrypted (PARE magic)
     def read_footer
       @io.seek(0, IO::SEEK_END)
       @file_size = @io.pos
@@ -1269,6 +1636,9 @@ module Herringbone
 
     # Reads +len+ bytes at +pos+ through a small read-ahead window, so walking many small pages
     # does not cost a syscall per header
+    # @param pos [Integer] file offset
+    # @param len [Integer] bytes wanted
+    # @return [String] binary String; shorter than +len+ at the end of the file
     def read_at(pos, len)
       if @window && pos >= @window_pos && pos + len <= @window_pos + @window.bytesize
         return @window.byteslice(pos - @window_pos, len)
@@ -1285,6 +1655,11 @@ module Herringbone
 
     # Decodes the page header at +pos+, reading more bytes when it is larger than the first guess
     # (page statistics of long strings can make headers big)
+    # @param pos [Integer] file offset of the header
+    # @param limit [Integer] offset the header must not extend past (the footer's start)
+    # @return [Array(Format::PageHeader, Integer)] the header and its encoded size in bytes
+    # @raise [FormatError] when there is no room for a header before +limit+
+    # @raise [Thrift::Error] when it does not decode within +limit+ or 16 MiB
     def read_page_header(pos, limit)
       want = 256
       while true
@@ -1301,6 +1676,14 @@ module Herringbone
       end
     end
 
+    # Builds a PageInfo from a decoded page header
+    # @param index [Integer] position of the page in its chunk
+    # @param h [Format::PageHeader] decoded header
+    # @param pos [Integer] file offset of the header
+    # @param header_size [Integer] encoded size of the header in bytes
+    # @param column [Schema::Column] column the page belongs to (for statistics and row counts)
+    # @return [PageInfo]
+    # @raise [FormatError] when the header declares a negative compressed size
     def page_info(index, h, pos, header_size, column)
       info = PageInfo.new(
         index: index,
@@ -1338,6 +1721,10 @@ module Herringbone
       info
     end
 
+    # One #key_value_metadata entry
+    # @param key [String] metadata key
+    # @param value [String, nil] metadata value
+    # @return [Hash{Symbol => Object}] see #key_value_metadata
     def describe_key_value(key, value)
       value = value.to_s
       h = {key: key, bytesize: value.bytesize}
@@ -1372,6 +1759,8 @@ module Herringbone
       h
     end
 
+    # @param json [Object] the parsed "pandas" metadata value
+    # @return [String] e.g. "pandas 2.2.0 metadata, 3 columns"
     def pandas_summary(json)
       return "pandas metadata" unless json.is_a?(Hash)
       cols = json["columns"]&.size
@@ -1380,6 +1769,9 @@ module Herringbone
 
     # Field names from an Arrow IPC schema message, found by scanning for its flatbuffer strings.
     # Best effort: only used to label the blob, nil when nothing sensible is found.
+    # Only top-level Parquet column names that occur in the decoded bytes are reported.
+    # @param b64 [String] the base64 ARROW:schema value
+    # @return [Array<String>, nil]
     def arrow_field_names(b64)
       bytes = b64.unpack1("m")
       schema_cols = columns.map { |c| c.path.first }.uniq

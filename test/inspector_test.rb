@@ -284,6 +284,26 @@ class InspectorTest < Minitest::Test
     assert_equal i.row_groups.size, t[:num_data_pages]
   end
 
+  # false is a real min/max, not a missing one
+  def test_boolean_min_max_in_totals_and_report
+    schema = Herringbone::Schema.define { boolean :b }
+    io = StringIO.new("".b)
+    Herringbone::Writer.open(io, schema, row_group_rows: 2, page_rows: 1) do |w|
+      [false, false, true, true].each { |v| w << [v] }
+    end
+    i = Inspector.new(StringIO.new(io.string))
+    assert_equal [false, true], i.row_groups.map { |rg| rg.columns[0].statistics.min }
+    t = i.column_totals.first
+    assert_equal false, t[:min]
+    assert_equal true, t[:max]
+    # our writer puts page statistics in the page index only; give one page header its own
+    i.column_chunks.first.pages.first.statistics = Inspector::Stats.new(min: false, max: false)
+    text = i.report(pages: true)
+    assert_match(/b: BOOLEAN .*\[false \.\. true\]/, text)
+    assert_match(/  b: .*\[false \.\. false\]$/, text)
+    assert_match(/    0: DATA_PAGE .*\[false \.\. false\]$/, text)
+  end
+
   def test_accepts_io_reader_and_string
     path = File.join(GEN, "codec_snappy.parquet")
     expected = inspect_file(path).to_h[:row_groups]
@@ -405,6 +425,28 @@ class InspectorTest < Minitest::Test
     assert_match(/CRC MISMATCH: row group 0 a page 0 \(DATA_PAGE @4\): header says \h{8}, data has \h{8}/, text)
     assert_match(/0: DATA_PAGE @4 .* CRC MISMATCH/, text)
     assert_match(/1: DATA_PAGE @\d+ .* crc ok/, text)
+  end
+
+  def test_checksum_results_survive_closing_the_file
+    schema = Herringbone::Schema.define { int64 :id }
+    io = StringIO.new("".b)
+    Herringbone::Writer.open(io, schema, compression: :none, dictionary: false, page_rows: 1000) do |w|
+      30_000.times { |k| w << [k] }
+    end
+    # corrupt pages far apart, so no read-ahead window holds both
+    pages = Inspector.new(StringIO.new(io.string)).column_chunks.first.data_pages.values_at(0, -1)
+    bytes = io.string.dup
+    pages.each { |p| bytes.setbyte(p.body_offset, bytes.getbyte(p.body_offset) ^ 0x01) }
+    file = StringIO.new(bytes)
+    i = Inspector.new(file).load_all
+    s = i.verify_checksums
+    file.close
+    assert_equal 2, s[:mismatch]
+    assert_equal(pages.map { |p| Zlib.crc32(bytes.byteslice(p.body_offset, p.compressed_size)) }, s[:mismatches].map { |m| m[:actual] })
+    assert_equal s, i.checksum_summary
+    assert_equal 2, i.summary[:checksums][:mismatch]
+    assert_equal 2, i.to_h[:checksum_mismatches].size
+    assert_match(/data has \h{8}/, i.report)
   end
 
   # ---- ARROW:schema ----
