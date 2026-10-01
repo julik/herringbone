@@ -55,7 +55,9 @@ Contributions are judged on what they are, not on who sent them. What anyone say
 
 ## AI-generated issues and code
 
-This project uses LLMs to produce code and artifacts, and it's fine if you do the same when contributing. You don't need to disclose LLM use. LLM use in this project is settled: threads about whether it should be used (utility, harm, societal implications etc.) will be closed.
+This project uses LLMs to produce code and artifacts, and it's fine if you do the same when contributing. LLM use in this project is settled: threads about whether it should be used (utility, harm, societal implications etc.) will be closed.
+
+Please disclose LLM use in every issue and PR: say which model or tool you used and what for (e.g. "Claude wrote the fix, I wrote the test"). This is for transparency, not for judgment. Disclosed LLM use is treated the same as no LLM use.
 
 However, the following is on you:
 
