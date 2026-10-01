@@ -38,8 +38,7 @@ gem "numo-narray-alt" # read(as: :numo)
 
 ## Reading
 
-Herringbone never opens files by path: readers take a random-access IO (a `File` opened with
-`"rb"`, `StringIO`, `Tempfile`...), which stays open and belongs to the caller.
+Herringbone can read from any IO-ish object with random access (the IO should be seekable).
 
 ```ruby
 require "herringbone"
@@ -290,7 +289,7 @@ follows `Model.columns`.
 
 > The inspector and its HTML view are modelled on
 > **[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1** —
-> the design and the idea are theirs. Go check it out.
+> the design and the idea are theirs. Go check it out. It is amazing!
 
 `Herringbone::Inspector` examines a file using only its footer, page headers, page indexes and
 bloom filter headers. Nothing is decompressed, so it is fast on big files and works for ZSTD and
