@@ -10,8 +10,33 @@ module Herringbone
   class Error < StandardError; end
   # The file is not valid Parquet (bad metadata, corrupt pages...)
   class FormatError < Error; end
+
   # A value cannot be written to its column
-  class EncodeError < Error; end
+  class EncodeError < Error
+    # @return [Integer, nil] index of the row being written (0 for the first), when known
+    attr_reader :row
+    # @return [String, nil] dotted path of the column the value was meant for, when known
+    attr_reader :column
+    # @return [Object] the value that could not be written (nil when it was a missing required value)
+    attr_reader :value
+
+    # @param message [String, nil] the error message
+    # @param row [Integer, nil] index of the row being written
+    # @param column [String, nil] dotted path of the column
+    # @param value [Object] the value that could not be written
+    def initialize(message = nil, row: nil, column: nil, value: nil)
+      super(message)
+      @row = row
+      @column = column
+      @value = value
+    end
+  end
+
+  # A row does not fit a schema that was inferred from earlier rows (Herringbone.write without
+  # +schema:+, SimpleWriter). The message says what was inferred, from how many rows, and how to
+  # declare the column instead.
+  class SchemaMismatch < EncodeError; end
+
   # The file (or the writer configuration) uses a Parquet feature Herringbone does not implement,
   # such as encryption or a codec whose library is unavailable
   class UnsupportedError < Error; end
@@ -32,6 +57,8 @@ require_relative "herringbone/active_record"
 require_relative "herringbone/reader"
 require_relative "herringbone/byte_values"
 require_relative "herringbone/writer"
+require_relative "herringbone/inferring_writer"
+require_relative "herringbone/simple_writer"
 require_relative "herringbone/xxhash"
 require_relative "herringbone/bloom_filter"
 require_relative "herringbone/inspector"
@@ -43,10 +70,13 @@ module Herringbone
   # Writes +records+ to +io+ (any IO responding to #write; Herringbone never opens files by path)
   # and returns the number of rows written. +records+ is an Enumerable of rows, or an ActiveRecord
   # model or relation, which is read with find_each. Without +schema+, the schema comes from the
-  # model's columns (Schema.from_active_record) or is inferred from the first rows (Schema.infer).
-  # Other options go to Writer.
+  # model's columns (Schema.from_active_record) or is inferred from the first rows (Schema.infer);
+  # fields declared in the block replace inferred ones. +records+ is iterated once, so a source
+  # that can only be read once (a cursor, a lazy Enumerator over an IO) works too. Other options go
+  # to Writer.
   #
   #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
+  #   Herringbone.write(io, events.lazy.map(&:to_h)) { json :payload }
   #
   # @param io [IO, #write] destination; written sequentially, never closed
   # @param records [Enumerable<Hash, Array, Object>, Class, #find_each] rows (Hashes, Arrays in schema
@@ -66,23 +96,36 @@ module Herringbone
   # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
   # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
   #   columns to write split block bloom filters for, see Writer
+  # @yield optional block for Schema.infer (Builder DSL), declaring fields that replace inferred ones;
+  #   ignored when the schema is not inferred
   # @return [Integer] number of rows written
   # @raise [ArgumentError] when the schema has to be inferred and +records+ is empty or holds Array
   #   rows, or an option is invalid
   # @raise [EncodeError] when a row does not fit the schema
-  def write(io, records, schema: nil, **options)
+  # @raise [SchemaMismatch] when a row does not fit the inferred schema; the file is left unfinished
+  def write(io, records, schema: nil, **options, &overrides)
     model = if records.respond_to?(:klass) then records.klass
     elsif records.respond_to?(:columns) && records.respond_to?(:find_each) then records
     end
-    schema ||= model ? Schema.from_active_record(model) : Schema.infer(records)
-    Writer.open(io, schema, **options) do |writer|
+    schema ||= Schema.from_active_record(model) if model
+    writer = if schema
+      Writer.new(io, schema, **options)
+    else
+      fix = "Herringbone.write(io, rows) { %s }"
+      InferringWriter.new(io, fix: fix, **options) { |sample| Schema.infer(sample, &overrides) }
+    end
+    begin
       if records.respond_to?(:find_each)
         records.find_each { |record| writer << record }
       else
         records.each { |record| writer << record }
       end
-      writer.rows_written
+    rescue Exception # rubocop:disable Lint/RescueException -- also abort on Interrupt
+      writer.abort
+      raise
     end
+    writer.close
+    writer.rows_written
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].

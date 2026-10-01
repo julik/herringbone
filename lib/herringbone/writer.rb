@@ -189,20 +189,20 @@ module Herringbone
           if buf.nil?
             shred(field, value, 0, 0)
           elsif value.nil?
-            raise EncodeError, "Field #{name} is required but got nil" unless field.optional
+            raise EncodeError.new("Field #{name} is required but got nil", column: name) unless field.optional
             buf.defs << 0
           else
             begin
               buf.values << encoder.call(value)
             rescue ArgumentError, TypeError, NoMethodError, RangeError => e
-              raise EncodeError, "Cannot write #{value.inspect} to #{name}: #{e.message}"
+              raise EncodeError.new("Cannot write #{value.inspect} to #{name}: #{e.message}", column: name, value: value)
             end
             buf.defs << field.def_level
           end
         end
       rescue EncodeError => e
         rollback_row(marks)
-        raise EncodeError, "Row #{@total_rows + @buffered_rows}: #{e.message}"
+        raise EncodeError.new("Row #{@total_rows + @buffered_rows}: #{e.message}", row: @total_rows + @buffered_rows, column: e.column, value: e.value)
       rescue
         rollback_row(marks)
         raise
@@ -472,7 +472,7 @@ module Herringbone
     #   map key is nil, or a leaf value cannot be encoded
     def shred(field, value, parent_def, rep)
       if value.nil?
-        raise EncodeError, "Field #{field.node.path.join(".")} is required but got nil" unless field.optional
+        raise EncodeError.new("Field #{field.node.path.join(".")} is required but got nil", column: field.node.path.join(".")) unless field.optional
         field.leaves.each do |col|
           buf = @buffers[col.index]
           buf.defs << parent_def
@@ -490,12 +490,12 @@ module Herringbone
         begin
           buf.values << field.column.encoder.call(value)
         rescue ArgumentError, TypeError, NoMethodError, RangeError => e
-          raise EncodeError, "Cannot write #{value.inspect} to #{field.column.dotted_path}: #{e.message}"
+          raise EncodeError.new("Cannot write #{value.inspect} to #{field.column.dotted_path}: #{e.message}", column: field.column.dotted_path, value: value)
         end
       when :struct
         field.children.each { |ch| shred(ch, lookup(value, ch.name), d, rep) }
       when :list
-        raise EncodeError, "Expected an Array for #{field.node.path.join(".")}, got #{value.class}" unless value.respond_to?(:each_with_index)
+        raise EncodeError.new("Expected an Array for #{field.node.path.join(".")}, got #{value.class}", column: field.node.path.join("."), value: value) unless value.respond_to?(:each_with_index)
         if value.empty?
           field.leaves.each do |col|
             buf = @buffers[col.index]
@@ -508,7 +508,7 @@ module Herringbone
           end
         end
       when :map
-        raise EncodeError, "Expected a Hash for #{field.node.path.join(".")}, got #{value.class}" unless value.respond_to?(:each_pair) || value.is_a?(Array)
+        raise EncodeError.new("Expected a Hash for #{field.node.path.join(".")}, got #{value.class}", column: field.node.path.join("."), value: value) unless value.respond_to?(:each_pair) || value.is_a?(Array)
         if value.empty?
           field.leaves.each do |col|
             buf = @buffers[col.index]

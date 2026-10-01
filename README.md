@@ -6,31 +6,40 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
   and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems)
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
+- Optimized reads with batches and pages 
 - Ruby 3.0+
+
+## Diving in: dumping records in Rails
+
+Stream a relation straight into S3, no temp file needed:
+
+```ruby
+s3 = Aws::S3::TransferManager.new
+s3.upload_stream(bucket: "exports", key: "payments.parquet") do |io|
+  # Schema will be auto-inferred, find_each will be used automatically
+  Herringbone.write(io, Payment.where(status: "settled", created_at: 1.month.ago..))
+end
+```
 
 ## Installation
 
 ```ruby
 gem "herringbone"
-gem "snappy"    # optional: native Snappy, 2-3x faster reads and writes of typical files
-gem "zstd-ruby" # optional: ZSTD (faster writes and smaller files than the default Snappy)
-gem "brotli"    # optional: Brotli
-gem "xxhash"    # optional: faster bloom filters
-gem "numo-narray-alt" # optional: read(as: :numo)
 ```
 
-The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. Snappy, Parquet's most
-common codec, is pure Ruby unless the `snappy` gem is installed (it needs libsnappy or cmake to
-build); Herringbone then uses it automatically. `Herringbone.codecs` lists
-the codecs this process can use, e.g. `[:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd]`. Using
-a missing one raises `Herringbone::MissingCodecError` naming the gem to add: a writer raises it
-before writing anything, a reader when it reaches the first such page (the schema and metadata
-are still readable). LZO is not supported.
+Require these libraries to speed up and enable certain functionality:
+
+```ruby
+gem "snappy"          # native Snappy, 2-3x faster reads and writes of typical files
+gem "zstd-ruby"       # ZSTD
+gem "brotli"          # Brotli
+gem "xxhash"          # faster bloom filters
+gem "numo-narray-alt" # read(as: :numo)
+```
 
 ## Reading
 
-Herringbone never opens files by path: readers take a random-access IO (a `File` opened with
-`"rb"`, `StringIO`, `Tempfile`...), which stays open and belongs to the caller.
+Herringbone can read from any IO-ish object with random access (the IO should be seekable).
 
 ```ruby
 require "herringbone"
@@ -140,7 +149,10 @@ end
 
 `Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
 first 1000 rows unless `schema:` is given; fields declared in a block replace inferred ones:
-`Herringbone.write(io, rows, schema: Herringbone::Schema.infer(rows) { json :payload })`.
+`Herringbone.write(io, rows) { json :payload }`. The rows are iterated once, holding back only
+those first 1000, so lazy Enumerators and cursors that can't be rewound work. A later row that
+doesn't fit the inferred types raises `Herringbone::SchemaMismatch`, which explains what was
+inferred and how to declare the column, and leaves the file unfinished.
 
 The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
 pipe), sequentially, and never seeks, rewinds or closes it (it does switch it to binary mode). If
@@ -191,6 +203,24 @@ Writer options:
 | `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
 | `metadata` | `{}` | footer key/value metadata, read back with `reader.metadata` |
 | `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => { ndv:, fpp:, max_bytes: } }` |
+
+### Coming from CSV
+
+`SimpleWriter` writes like the CSV gem: name the columns, then append Arrays. The types are
+inferred from the first 1000 rows, as above.
+
+```ruby
+File.open("people.parquet", "wb") do |file|
+  Herringbone::SimpleWriter.open(file) do |sw|
+    sw.headers!(:id, :name, :age)
+    sw << [123, "John", 12]
+    sw << { id: 124, name: "Jane" } # Hashes work too
+  end
+end
+```
+
+Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
+`Herringbone::SimpleWriter.new(io) { string :code }` (then call `close` when done).
 
 ### Statistics, page indexes and bloom filters
 
@@ -281,7 +311,7 @@ follows `Model.columns`.
 
 > The inspector and its HTML view are modelled on
 > **[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1** —
-> the design and the idea are theirs. Go check it out.
+> the design and the idea are theirs. Go check it out. It is amazing!
 
 `Herringbone::Inspector` examines a file using only its footer, page headers, page indexes and
 bloom filter headers. Nothing is decompressed, so it is fast on big files and works for ZSTD and
