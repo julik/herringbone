@@ -8,24 +8,33 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
 - Ruby 3.0+
 
+## Diving in: dumping records in Rails
+
+Stream a relation straight into S3, no temp file needed:
+
+```ruby
+s3 = Aws::S3::TransferManager.new
+s3.upload_stream(bucket: "exports", key: "payments.parquet") do |io|
+  # Schema will be auto-inferred, find_each will be used automatically
+  Herringbone.write(io, Payment.where(status: "settled", created_at: 1.month.ago..))
+end
+```
+
 ## Installation
 
 ```ruby
 gem "herringbone"
-gem "snappy"    # optional: native Snappy, 2-3x faster reads and writes of typical files
-gem "zstd-ruby" # optional: ZSTD (faster writes and smaller files than the default Snappy)
-gem "brotli"    # optional: Brotli
-gem "xxhash"    # optional: faster bloom filters
-gem "numo-narray-alt" # optional: read(as: :numo)
 ```
 
-The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. Snappy, Parquet's most
-common codec, is pure Ruby unless the `snappy` gem is installed (it needs libsnappy or cmake to
-build); Herringbone then uses it automatically. `Herringbone.codecs` lists
-the codecs this process can use, e.g. `[:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd]`. Using
-a missing one raises `Herringbone::MissingCodecError` naming the gem to add: a writer raises it
-before writing anything, a reader when it reaches the first such page (the schema and metadata
-are still readable). LZO is not supported.
+Require these libraries to speed up and enable certain functionality:
+
+```ruby
+gem "snappy"          # native Snappy, 2-3x faster reads and writes of typical files
+gem "zstd-ruby"       # ZSTD
+gem "brotli"          # Brotli
+gem "xxhash"          # faster bloom filters
+gem "numo-narray-alt" # read(as: :numo)
+```
 
 ## Reading
 
