@@ -176,17 +176,23 @@ class VisualizerTest < Minitest::Test
     refute_match(/0: DATA_PAGE @4/, text)
     pages, = Open3.capture2(ruby, BIN, "inspect", path, "--pages")
     assert_match(/0: DATA_PAGE @4/, pages)
-    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json")
+    explicit, status = Open3.capture2(ruby, BIN, "inspect", path, "--format=text", "--pages")
+    assert status.success?
+    assert_equal pages, explicit
+    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--format=json")
     assert status.success?
     assert_equal 14, JSON.parse(json)["summary"]["num_rows"]
-    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--html")
+    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--format=html")
     assert status.success?
     check_html(html, "cli stdout")
     lines, status = Open3.capture2(ruby, BIN, "cat", path, "2")
     assert status.success?
     assert_equal 2, lines.lines.size
     assert_equal %w[String], JSON.parse(lines.lines.first).keys
-    [%w[inspect --json --html], %w[inspect --text], %w[inspect], %w[schema], %w[meta], %w[cat --json], %w[cat x]].each do |args|
+    [
+      %w[inspect --json], %w[inspect --html], %w[inspect --format=json --format=html], %w[inspect --format=xml],
+      %w[inspect --format=json --pages], %w[inspect --text], %w[inspect], %w[schema], %w[meta], %w[cat --json], %w[cat x]
+    ].each do |args|
       _, _, status = Open3.capture3(ruby, BIN, args[0], *((args[0] == "inspect" && args.size == 1) ? [] : [path]), *args.drop(1))
       refute status.success?, args.join(" ")
     end
@@ -257,12 +263,12 @@ class VisualizerTest < Minitest::Test
     text, status = Open3.capture2(ruby, BIN, "inspect", path, "--verify-checksums")
     assert status.success?
     assert_match(/page CRCs: 2 ok, 2 mismatched/, text)
-    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--json", "--verify-checksums")
+    json, status = Open3.capture2(ruby, BIN, "inspect", path, "--format=json", "--verify-checksums")
     assert status.success?
     assert_equal 2, JSON.parse(json)["summary"]["checksums"]["mismatch"]
-    plain, = Open3.capture2(ruby, BIN, "inspect", path, "--json")
+    plain, = Open3.capture2(ruby, BIN, "inspect", path, "--format=json")
     assert_nil JSON.parse(plain)["summary"]["checksums"]
-    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--html", "--verify-checksums")
+    html, status = Open3.capture2(ruby, BIN, "inspect", path, "--format=html", "--verify-checksums")
     assert status.success?
     assert_equal 2, embedded_data(html)["file"]["checksums"]["mismatch"]
   end

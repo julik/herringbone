@@ -3,14 +3,17 @@
 
 # Usage:
 #   herringbone cat FILE [N]              print rows as JSON lines (optionally only the first N)
-#   herringbone inspect FILE [--pages]    print the schema, row groups, column chunks (and every page header)
-#   herringbone inspect FILE --json       print all of it as JSON
-#   herringbone inspect FILE --html       print a self-contained HTML page showing the file's layout
+#   herringbone inspect FILE [--pages]          print the schema, row groups, column chunks (and every
+#                                               page header); same as --format=text
+#   herringbone inspect FILE --format=json      print all of it as JSON
+#   herringbone inspect FILE --format=html      write a self-contained HTML page showing the file's layout
+#                                               and open it in the browser (printed when stdout is redirected)
 #   add --verify-checksums to any inspect form to read page bodies and check their CRCs
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
 require "json"
+require "tmpdir"
 
 def jsonable(v)
   case v
@@ -25,8 +28,20 @@ def jsonable(v)
   end
 end
 
+# Opens a file with the platform's default application
+# @return [Boolean] whether the opener could be started
+def open_with_default_app(path)
+  command = case RbConfig::CONFIG["host_os"]
+  when /darwin/ then ["open", path]
+  when /mswin|mingw|cygwin/ then ["cmd", "/c", "start", "", path]
+  else ["xdg-open", path]
+  end
+  !!system(*command, out: File::NULL, err: File::NULL, exception: false)
+end
+
 USAGE = "usage: herringbone cat FILE [N]\n" \
-  "       herringbone inspect FILE [--pages | --json | --html] [--verify-checksums]"
+  "       herringbone inspect FILE [--format=text|json|html] [--pages] [--verify-checksums]\n" \
+  "       (--pages only with --format=text)"
 
 command, *rest = ARGV
 flags, args = rest.partition { |a| a.start_with?("--") }
@@ -34,8 +49,11 @@ path, limit = args
 valid = case command
 when "cat" then flags.empty? && path && (limit.nil? || limit.match?(/\A\d+\z/))
 when "inspect"
-  formats = flags & %w[--pages --json --html]
-  path && limit.nil? && (flags - %w[--pages --json --html --verify-checksums]).empty? && formats.size <= 1
+  format_flags, other_flags = flags.partition { |f| f.start_with?("--format=") }
+  format = format_flags.empty? ? "text" : format_flags.first.delete_prefix("--format=")
+  path && limit.nil? && format_flags.size <= 1 && %w[text json html].include?(format) &&
+    (other_flags - %w[--pages --verify-checksums]).empty? &&
+    (format == "text" || !other_flags.include?("--pages"))
 end
 unless valid
   warn USAGE
@@ -51,11 +69,19 @@ begin
     else
       inspector = Herringbone::Inspector.new(io)
       inspector.verify_checksums if flags.include?("--verify-checksums")
-      if flags.include?("--json")
+      case format
+      when "json"
         puts JSON.pretty_generate(inspector.to_h)
-      elsif flags.include?("--html")
-        $stdout.write(inspector.to_html)
-      else
+      when "html"
+        if $stdout.tty?
+          html_path = File.join(Dir.tmpdir, "#{File.basename(path, ".*")}-#{Process.pid}.html")
+          File.binwrite(html_path, inspector.to_html)
+          puts html_path
+          warn "herringbone: could not open the page, open #{html_path} in a browser" unless open_with_default_app(html_path)
+        else
+          $stdout.write(inspector.to_html)
+        end
+      when "text"
         puts inspector.report(pages: flags.include?("--pages"))
       end
     end

@@ -304,13 +304,19 @@ CRCs; the results then appear in `summary`, `report`, `to_h` and `to_html`.
 ## Command line
 
 ```
-bin/herringbone cat FILE [N]                    # rows as JSON lines
-bin/herringbone inspect FILE [--pages]          # text report (--pages lists every page header)
-bin/herringbone inspect FILE --json             # everything as JSON
-bin/herringbone inspect FILE --html > out.html  # the HTML page
+bin/herringbone cat FILE [N]                           # rows as JSON lines
+bin/herringbone inspect FILE [--pages]                 # text report (--pages lists every page header)
+bin/herringbone inspect FILE --format=json             # everything as JSON
+bin/herringbone inspect FILE --format=html             # the HTML page, opened in your browser
+bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
 ```
 
 Add `--verify-checksums` to any `inspect` form to check page CRCs.
+
+`--format` is `text` (the default), `json` or `html`; `--pages` only goes with `text`.
+In a terminal, `--format=html` writes the page to a temp file, prints its path and opens it with `open` on
+macOS, `start` on Windows or `xdg-open` elsewhere. When stdout is redirected or piped it prints the
+page instead.
 
 ## Supported format features
 
