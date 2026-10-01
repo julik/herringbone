@@ -28,6 +28,15 @@ Column-order batches (`each_batch(as: :columns)`, `read(as: :columns)`) are 25�
 `where:` / `from:` / `limit:` select rows using statistics, bloom filters and the page index
 (see section 4); `scan_plan` shows what would be read.
 
+`read(as: :numo)` / `each_batch(as: :numo)`: Numo arrays per column (optional numo-narray-alt,
+required lazily). Flat INT32/INT64/FLOAT/DOUBLE/BOOLEAN columns skip Ruby objects: PLAIN and
+BYTE_STREAM_SPLIT bytes go through `from_binary`, dictionary pages through `dict[indices]`, levels
+and indices are unpacked by Numo (`HybridDecoder#read_numo`/`#read_flags`). 1M rows × id + amount:
+26 ms vs 52 ms for `as: :columns` (`benchmark/numo_read.rb`). Nulls follow Polars/Rover (ints →
+DFloat NaN, bools → RObject), fixed-length numeric lists become 2-D. Possible follow-ups:
+`timestamps: :integer` / `dates: :integer` options, dictionary-encoded strings as Int32 codes plus
+categories, a fast path for list leaves (2-D without assembling Ruby Arrays).
+
 ## 3. Inspecting files without reading the data — done
 
 `Herringbone::Inspector` (footer, page headers, page indexes and bloom filter headers only; never

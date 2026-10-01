@@ -39,6 +39,21 @@ module Herringbone
           return if n.zero?
           @values.respond_to?(:skip) ? @values.skip(n) : @values.read(n)
         end
+
+        # The value decoder (for read(as: :numo), which asks it for bytes or Numo arrays)
+        def value_decoder = @values
+
+        # Which of the next +n+ entries are defined (definition level == +max_def+), as a
+        # Numo::Bit, or nil when the column has no definition levels. For columns without
+        # repetition levels; used by read(as: :numo).
+        def read_validity_numo(n, max_def)
+          n = @remaining if n > @remaining
+          @remaining -= n
+          defs = @defs or return nil
+          return defs.read_flags(n) if max_def == 1 && defs.respond_to?(:read_flags)
+          levels = defs.respond_to?(:read_numo) ? defs.read_numo(n, Numo::UInt8) : Numo::UInt8.cast(defs.read(n))
+          levels.eq(max_def)
+        end
       end
 
       # A decoder over an Array that is already decoded (legacy encodings, booleans, deltas)
@@ -98,6 +113,77 @@ module Herringbone
           out
         end
 
+        # For a bit width of 1: the next +n+ values as a Numo::Bit (read(as: :numo)). Runs are
+        # collected as "0"/"1" characters, which costs less per run than Numo calls do (levels of
+        # columns with scattered nulls come in many short runs).
+        def read_flags(n)
+          raise ArgumentError, "read_flags needs a bit width of 1" unless @width == 1
+          out = String.new(capacity: n, encoding: Encoding::BINARY)
+          while n > 0
+            next_run if @left.zero?
+            t = n < @left ? n : @left
+            if @rle
+              out << (@value == 1 ? "1" : "0") * t
+            elsif @buf && @bi < @buf.size
+              avail = @buf.size - @bi
+              t = avail if t > avail
+              out << @buf[@bi, t].join
+              @bi += t
+            else
+              groups = (t + 7) / 8
+              bits = @data.byteslice(@pos, groups)&.unpack1("b*") || +""
+              bits << "0" * (groups * 8 - bits.bytesize) if bits.bytesize < groups * 8 # truncated last run
+              @pos += groups
+              @groups -= groups
+              if groups * 8 > t
+                out << bits.byteslice(0, t)
+                @buf = bits.byteslice(t, groups * 8 - t).bytes.map! { |c| c - 48 }
+              else
+                out << bits
+                @buf = nil
+              end
+              @bi = 0
+            end
+            @left -= t
+            n -= t
+          end
+          Numo::UInt8.from_binary(out).eq(49)
+        end
+
+        # The next +n+ values as a Numo array of +klass+ (read(as: :numo)): RLE runs are
+        # filled and bit-packed runs unpacked by Numo, with no Ruby object per value. Leaves the
+        # decoder in a state #read can continue from.
+        def read_numo(n, klass)
+          out = klass.zeros(n)
+          i = 0
+          while n > 0
+            next_run if @left.zero?
+            t = n < @left ? n : @left
+            if @rle
+              out[i...i + t] = @value
+            elsif @buf && @bi < @buf.size
+              # Values of this run that #read (or a previous call) already unpacked
+              avail = @buf.size - @bi
+              t = avail if t > avail
+              out[i...i + t] = @buf[@bi, t]
+              @bi += t
+            else
+              groups = (t + 7) / 8 # @left == @groups * 8 here, so these groups exist
+              vals = NumoColumns.unpack_bits(@data, @pos, groups * 8, @width)
+              @pos += groups * @width
+              @groups -= groups
+              # A partly used group goes to the buffer #read and this method take values from
+              @buf = groups * 8 > t ? vals[t..].to_a : nil
+              @bi = 0
+              out[i...i + t] = groups * 8 > t ? vals[0...t] : vals
+            end
+            @left -= t
+            n -= t
+            i += t
+          end
+          out
+        end
+
         private
 
         def next_run
@@ -141,6 +227,15 @@ module Herringbone
         def skip(n)
           raise FormatError, "Truncated PLAIN data" if @pos + n * @width > @data.bytesize
           @pos += n * @width
+        end
+
+        # The next +n+ values as their PLAIN (little-endian) bytes, for read(as: :numo)
+        def read_bytes(n)
+          bytes = n * @width
+          raise FormatError, "Truncated PLAIN data" if @pos + bytes > @data.bytesize
+          out = @data.byteslice(@pos, bytes)
+          @pos += bytes
+          out
         end
       end
 
@@ -232,10 +327,20 @@ module Herringbone
           @i += n
           out
         end
+
+        # The next +n+ values as a Numo::Bit (read(as: :numo))
+        def read_numo(n)
+          raise FormatError, "Truncated BOOLEAN data" if @i + n > @bits.bytesize
+          out = Numo::UInt8.from_binary(@bits.byteslice(@i, n)).eq(49) # "0"/"1" characters
+          @i += n
+          out
+        end
       end
 
       # RLE_DICTIONARY / PLAIN_DICTIONARY indices mapped to the (already converted) dictionary
       class DictionaryDecoder
+        attr_reader :dictionary
+
         def initialize(data, pos, dictionary, path)
           @indices = HybridDecoder.new(data, pos + 1, data.bytesize, data.getbyte(pos).to_i)
           @dictionary = dictionary
@@ -253,6 +358,13 @@ module Herringbone
           raise FormatError, "Dictionary index out of range in #{@path}" if indices.max >= dict.size
           indices.map! { |i| dict[i] }
         end
+
+        # The next +n+ indices as a Numo::Int32, bounds-checked (read(as: :numo))
+        def read_indices_numo(n)
+          indices = @indices.read_numo(n, Numo::Int32)
+          raise FormatError, "Dictionary index out of range in #{@path}" if n.positive? && indices.max >= @dictionary.size
+          indices
+        end
       end
 
       # RLE-encoded BOOLEAN values
@@ -264,6 +376,11 @@ module Herringbone
 
         def read(n)
           @bits.read(n).map! { |v| v == 1 }
+        end
+
+        # The next +n+ values as a Numo::Bit (read(as: :numo))
+        def read_numo(n)
+          @bits.read_flags(n)
         end
       end
 
@@ -332,6 +449,14 @@ module Herringbone
           @i += n
           plain, = Encodings::ByteStreamSplit.decode(streams, 0, n, @width)
           Encodings::Plain.decode(plain, 0, n, @type, @type_length).first
+        end
+
+        # The next +n+ values re-interleaved into PLAIN bytes by Numo (read(as: :numo))
+        def read_bytes(n)
+          raise FormatError, "Truncated BYTE_STREAM_SPLIT data" if @i + n > @count
+          streams = Array.new(@width) { |k| @data.byteslice(@pos + k * @count + @i, n) }.join
+          @i += n
+          Numo::UInt8.from_binary(streams, [@width, n]).transpose.to_binary.b
         end
       end
     end

@@ -25,6 +25,7 @@ module Herringbone
     MAGIC = "PAR1"
     DEFAULT_BATCH_SIZE = 1024
     KEY_MODES = %i[string symbol].freeze
+    AS_MODES = %i[rows columns numo].freeze
 
     # The schema, and the file's FileMetaData (the decoded Thrift footer)
     attr_reader :schema, :file_metadata
@@ -58,7 +59,10 @@ module Herringbone
     #
     # as: :rows (default) yields an Array of row Hashes; as: :columns yields a Hash of top-level
     # field name => Array of that field's values in the batch, which skips building a Hash per row
-    # and is noticeably faster when you process data column by column.
+    # and is noticeably faster when you process data column by column. as: :numo yields a Hash of
+    # field name => Numo array (needs the numo-narray-alt or numo-narray gem; see NumoColumns
+    # for the type mapping). With as: :numo, whether an integer column becomes DFloat (nulls) or
+    # a list column 2-D is decided per batch, from the values in it.
     #
     # where: only yields rows matching all conditions (see Reader::Filter). Row groups and pages
     # that cannot match are skipped using statistics, bloom filters and the page index, and the
@@ -69,9 +73,13 @@ module Herringbone
       return enum_for(:each_batch, size, columns: columns, as: as, where: where, from: from, limit: limit) unless block_given?
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
-      raise ArgumentError, "as: must be :rows or :columns, got #{as.inspect}" unless as == :rows || as == :columns
+      raise ArgumentError, "as: must be :rows, :columns or :numo, got #{as.inspect}" unless AS_MODES.include?(as)
       raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
       return self if limit&.zero?
+      if as == :numo
+        each_numo_batch(size, columns, where, from, limit) { |batch| yield batch }
+        return self
+      end
       columnar = as == :columns
       symbolize = @symbolize
       out_fields = select_fields(columns)
@@ -173,9 +181,19 @@ module Herringbone
     end
 
     # Reads the whole file (or the selected rows) at once: an Array of row Hashes, or with
-    # as: :columns a Hash of top-level field name => Array of values. Takes the options of each_batch.
+    # as: :columns a Hash of top-level field name => Array of values, or with as: :numo a Hash of
+    # top-level field name => Numo array. Takes the options of each_batch.
     def read(columns: nil, as: :rows, where: nil, from: nil, limit: nil)
-      if as == :columns
+      if as == :numo
+        raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
+        out = nil
+        unless limit&.zero?
+          # One batch (num_rows is not trusted: some writers store 0), so the column types are
+          # decided from all the rows read
+          each_numo_batch(1 << 62, columns, where, from, limit) { |batch| out = batch }
+        end
+        out ||= numo_empty(columns)
+      elsif as == :columns
         out = row_keys(select_fields(columns), @symbolize).to_h { |name| [name, []] }
         each_batch(65_536, columns: columns, as: :columns, where: where, from: from, limit: limit) do |batch|
           batch.each { |name, values| out[name].concat(values) }
@@ -205,6 +223,100 @@ module Herringbone
     end
 
     private
+
+    # as: :numo. Flat numeric/boolean output columns go through NumoCursors (no Ruby object per
+    # value); the other output columns, and every column a where: filter needs, are assembled as
+    # Ruby values like as: :columns and converted when a batch is complete.
+    def each_numo_batch(size, columns, where, from, limit)
+      NumoColumns.load!
+      symbolize = @symbolize
+      out_fields = select_fields(columns)
+      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      filter_fields = filter ? filter.fields : []
+      names = row_keys(out_fields, symbolize)
+      specs = out_fields.map { |f| NumoColumns.spec_for(f) }
+      fast = out_fields.each_index.select { |j| specs[j].fast? && !filter_fields.include?(out_fields[j]) }
+      ruby_fields = (out_fields.each_index.to_a - fast).map { |j| out_fields[j] } | filter_fields
+      # Where each output column comes from: index into the fast cursors or the Ruby fields
+      sources = out_fields.each_index.map { |j| (i = fast.index(j)) ? [:fast, i] : [:ruby, ruby_fields.index(out_fields[j])] }
+      converters = @schema.columns.map { |col| converter_for(col) }
+      assemblers = ruby_fields.map { |f| Assembler.new(f, symbolize) }
+      # Rows decoded per step: Ruby values are kept to slices of the batch, Numo arrays need not be
+      step = ruby_fields.empty? ? 1 << 20 : 65_536
+      left_to_yield = limit
+      pending = Array.new(out_fields.size) { [] }
+      pending_rows = 0
+      flush = lambda do
+        batch = sources.each_with_index.map do |(kind, _), j|
+          kind == :fast ? NumoColumns.finish_fixed(specs[j], pending[j]) : NumoColumns.finish_values(specs[j], pending[j])
+        end
+        pending = Array.new(out_fields.size) { [] }
+        pending_rows = 0
+        yield names.zip(batch).to_h
+      end
+
+      plan_rows(filter, from).each do |rg_index, ranges|
+        rg = row_groups[rg_index]
+        partial = ranges != [[0, rg.num_rows]]
+        open = lambda do |col|
+          reader = ColumnChunkReader.new(@io, rg.columns.fetch(col.index), col, converter: converters[col.index], lazy: true)
+          reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
+          reader
+        end
+        ruby_cursors = ruby_fields.map { |f| f.leaves.map { |col| [col.index, ColumnCursor.new(open.call(col))] } }
+        fast_cursors = fast.map { |j| NumoCursor.new(open.call(out_fields[j].column), specs[j]) }
+        ranges.each do |first, stop|
+          ruby_cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } }
+          fast_cursors.each { |cursor| cursor.seek(first) }
+          left = stop - first
+          while left.positive?
+            k = size - pending_rows
+            raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
+            k = step if k > step
+            k = left if left < k
+            data = assemblers.each_with_index.map do |asm, j|
+              asm.read_rows(k, ruby_cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
+            end
+            numo = fast_cursors.map { |cursor| cursor.take(k) }
+            left -= k
+            kept = k
+            if filter
+              keep = filter.matching_rows(data, ruby_fields, k, symbolize)
+              kept = keep.size
+              next if kept.zero?
+              if kept < k
+                data = data.map { |col| keep.map { |i| col[i] } }
+                index = Numo::Int64.cast(keep)
+                numo = numo.map { |values, valid| [values[index].dup, valid && valid[index].dup] }
+              end
+            end
+            if left_to_yield && kept > left_to_yield
+              kept = left_to_yield
+              data = data.map { |col| col.first(kept) }
+              numo = numo.map { |values, valid| [values[0...kept].dup, valid && valid[0...kept].dup] }
+            end
+            sources.each_with_index do |(kind, i), j|
+              pending[j] << (kind == :fast ? numo[i] : data[i])
+            end
+            pending_rows += kept
+            left_to_yield -= kept if left_to_yield
+            flush.call if pending_rows >= size || left_to_yield&.zero?
+            return if left_to_yield&.zero?
+          end
+        end
+      end
+      flush.call if pending_rows.positive?
+    end
+
+    # read(as: :numo) of no rows: an empty array of each column's type
+    def numo_empty(columns)
+      NumoColumns.load!
+      fields = select_fields(columns)
+      row_keys(fields, @symbolize).zip(fields.map { |f|
+        spec = NumoColumns.spec_for(f)
+        spec.kind == :fixed ? spec.klass.new(0) : Numo::RObject.new(0)
+      }).to_h
+    end
 
     # [[row_group_index, [[first_row, end_row), ...]], ...] to read, after ruling out row groups
     # (statistics, bloom filters) and pages (page index), and skipping the first +from+ rows
@@ -489,3 +601,4 @@ require_relative "reader/page_stream"
 require_relative "reader/column_chunk_reader"
 require_relative "reader/column_cursor"
 require_relative "reader/scan"
+require_relative "reader/numo"

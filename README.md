@@ -15,6 +15,7 @@ gem "herringbone"
 gem "zstd-ruby" # optional: ZSTD (faster writes and smaller files than the default Snappy)
 gem "brotli"    # optional: Brotli
 gem "xxhash"    # optional: faster bloom filters
+gem "numo-narray-alt" # optional: read(as: :numo)
 ```
 
 The only dependency is `bigdecimal`. Snappy, LZ4 and GZIP always work. `Herringbone.codecs` lists
@@ -75,6 +76,34 @@ and `from:` jumps to its row through the offset index; every row read is then ch
 are exact. On a 1M-row file with 20k-row pages, looking up one `id` takes 0.1 s instead of 6.3 s.
 Filters help most on columns the data is sorted or clustered by. `reader.scan_plan(where: ...)`
 shows which row groups and row ranges a read would touch, without reading them.
+
+### Numo arrays
+
+`as: :numo` returns (or yields, with `each_batch`) a Hash of column name => Numo array, and takes
+the same `columns:`, `where:`, `from:` and `limit:`. Add `gem "numo-narray-alt"` (or
+`numo-narray`) to your Gemfile: Herringbone requires it on first use and raises
+`Herringbone::UnsupportedError` naming the gem when it is missing.
+
+```ruby
+cols = reader.read(as: :numo, columns: %w[id amount])  # { "id" => Numo::Int64, "amount" => Numo::DFloat }
+df = Rover::DataFrame.new(reader.read(as: :numo))       # no conversion needed
+```
+
+Flat numeric and boolean columns are decoded from the page bytes without a Ruby object per value:
+two numeric columns of 1M uncompressed rows read in about 25 ms, against 50 ms with `as: :columns`.
+
+| Parquet | Numo |
+|---|---|
+| INT32, INT64 (also TIME) | `Int32`, `Int64` |
+| INT(8/16) signed; INT(8/16/32/64) unsigned | `Int8`, `Int16`; `UInt8` … `UInt64` |
+| FLOAT, FLOAT16, DOUBLE | `SFloat`, `SFloat`, `DFloat` (nulls are NaN) |
+| integers with nulls | `DFloat` with NaN (exact up to 2**53) |
+| BOOLEAN | `Bit`; with nulls `RObject` of true/false/nil |
+| list of numbers, every row the same length and no nulls | 2-D `[rows, length]` (e.g. embeddings) |
+| strings, binary, decimals, dates, timestamps, UUIDs, structs, maps, other lists | `RObject` of the values `read` returns |
+
+Whether a column has nulls (or a list column is rectangular) is decided from the rows read, so
+with `each_batch` it can differ between batches.
 
 ## Writing
 

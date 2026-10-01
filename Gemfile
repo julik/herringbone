@@ -25,3 +25,10 @@ end
 group :speedups do
   gem "xxhash"
 end
+
+# Optional: Herringbone requires "numo/narray" on first use of read(as: :numo) / each_batch(as: :numo).
+# numo-narray-alt is the maintained fork that Rover and ankane's ML gems depend on (plain
+# numo-narray works too). CI also runs the suite with BUNDLE_WITHOUT=codecs:speedups:numo.
+group :numo do
+  gem "numo-narray-alt"
+end

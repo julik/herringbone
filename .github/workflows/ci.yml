@@ -31,14 +31,15 @@ jobs:
           bundler-cache: true
       - run: bundle exec rake test
 
-  # Without the optional zstd-ruby / brotli / xxhash gems: ZSTD and Brotli must fail with
-  # MissingCodecError, bloom filters use the pure-Ruby XXH64, and everything else keeps working
+  # Without the optional zstd-ruby / brotli / xxhash / numo-narray-alt gems: ZSTD and Brotli must
+  # fail with MissingCodecError, bloom filters use the pure-Ruby XXH64, as: :numo raises
+  # UnsupportedError (its tests skip), and everything else keeps working
   without-codec-gems:
-    name: Without zstd/brotli/xxhash gems
+    name: Without zstd/brotli/xxhash/numo gems
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_WITHOUT: codecs:speedups
+      BUNDLE_WITHOUT: codecs:speedups:numo
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
@@ -46,7 +47,7 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
       - name: Check the optional gems are not in the bundle
-        run: bundle exec ruby -e 'abort "optional gems present" if %w[zstd-ruby brotli xxhash].any? { |g| Gem.loaded_specs.key?(g) }'
+        run: bundle exec ruby -e 'abort "optional gems present" if %w[zstd-ruby brotli xxhash numo-narray-alt].any? { |g| Gem.loaded_specs.key?(g) }'
       - run: bundle exec rake test
 
   # Same suite on the String-based Snappy path used where IO::Buffer is unavailable
