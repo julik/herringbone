@@ -13,7 +13,8 @@
 /benchmark/*.log
 
 # Local tool state
-/.claude/
+/.claude/*
+!/.claude/skills/
 .DS_Store
 __pycache__/
 *.pyc
