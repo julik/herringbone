@@ -43,7 +43,7 @@ module Herringbone
         start = @meta.data_page_offset
         dict = @meta.dictionary_page_offset
         # Some writers store 0 when there is no dictionary page
-        start = dict if dict && dict.positive? && dict < start
+        start = dict if dict&.positive? && dict < start
         @pos = start
         @start = start
         @locations = nil # OffsetIndex page locations, when jumping between pages
@@ -127,8 +127,8 @@ module Herringbone
       # Whether all of the chunk's values have been returned
       def done? = @seen >= @total
 
-      def seen = @seen
-      def total = @total
+      attr_reader :seen
+      attr_reader :total
 
       private
 
@@ -171,7 +171,7 @@ module Herringbone
         if buf.bytesize - off < size
           raise FormatError, "Column #{@column.dotted_path}: page overruns the file (read #{@seen} of #{@total} values)"
         end
-        body = off.zero? && buf.bytesize == size ? buf : buf.byteslice(off, size)
+        body = (off.zero? && buf.bytesize == size) ? buf : buf.byteslice(off, size)
         @pos += hlen + size
         [header, body]
       end
@@ -272,7 +272,7 @@ module Herringbone
           raise UnsupportedError, "RLE value encoding is only supported for BOOLEAN" unless type == T::BOOLEAN
           PageStream::RleBooleanDecoder.new(data, pos)
         when E::DELTA_BINARY_PACKED
-          bits = type == T::INT32 ? 32 : 64
+          bits = (type == T::INT32) ? 32 : 64
           PageStream::ArrayDecoder.new(Encodings::Delta.decode_binary_packed(data, pos, bits).first)
         when E::DELTA_LENGTH_BYTE_ARRAY
           PageStream::DeltaLengthDecoder.new(data, pos)

@@ -26,7 +26,7 @@ module Herringbone
     # Footer JSON is embedded only when the footer is smaller than this
     MAX_FOOTER_JSON = 512 * 1024
 
-    PAGE_TYPES = { DATA_PAGE: 0, INDEX_PAGE: 1, DICTIONARY_PAGE: 2, DATA_PAGE_V2: 3 }.freeze
+    PAGE_TYPES = {DATA_PAGE: 0, INDEX_PAGE: 1, DICTIONARY_PAGE: 2, DATA_PAGE_V2: 3}.freeze
 
     # +inspector+ is an Inspector. +title+ defaults to the file's name.
     def initialize(inspector, title: nil, max_pages: MAX_PAGES)
@@ -39,8 +39,8 @@ module Herringbone
     def to_html
       json = JSON.generate(payload).gsub("<", "\\u003c").gsub("\u2028", "\\u2028").gsub("\u2029", "\\u2029")
       name = @title || @inspector.name || "Parquet file"
-      values = { "TITLE" => escape_html("#{name} · Parquet layout"), "HIGHLIGHT_JS" => HIGHLIGHT_JS,
-                 "CREDIT_URL" => CREDIT_URL, "DATA" => json }
+      values = {"TITLE" => escape_html("#{name} · Parquet layout"), "HIGHLIGHT_JS" => HIGHLIGHT_JS,
+                "CREDIT_URL" => CREDIT_URL, "DATA" => json}
       # One pass, so placeholder-like text in the data is never substituted
       TEMPLATE.gsub(/%%(TITLE|HIGHLIGHT_JS|CREDIT_URL|DATA)%%/) { values.fetch(Regexp.last_match(1)) }
     end
@@ -106,8 +106,8 @@ module Herringbone
         stats: st && stats_info(st),
         bloom: c.bloom_filter_offset && [c.bloom_filter_offset, c.bloom_filter_length],
         ci: c.column_index_range, oi: c.offset_index_range,
-        dict: c.dictionary_page && { n: c.dictionary_page.num_values, cs: c.dictionary_page.compressed_size,
-                                     us: c.dictionary_page.uncompressed_size, sorted: c.dictionary_page.is_sorted },
+        dict: c.dictionary_page && {n: c.dictionary_page.num_values, cs: c.dictionary_page.compressed_size,
+                                    us: c.dictionary_page.uncompressed_size, sorted: c.dictionary_page.is_sorted},
         np: c.pages.size, ndp: c.data_pages.size,
         size_stats: c.size_statistics,
         kv: c.key_value_metadata.empty? ? nil : c.key_value_metadata,
@@ -146,7 +146,7 @@ module Herringbone
       st = p.statistics
       extra = if p.type == :DATA_PAGE_V2
         "levels #{p.repetition_levels_byte_length}+#{p.definition_levels_byte_length} B" \
-          "#{p.is_compressed ? "" : ", not compressed"}"
+          "#{", not compressed" unless p.is_compressed}"
       elsif p.type == :DATA_PAGE
         [p.definition_level_encoding && "def #{p.definition_level_encoding}",
           p.repetition_level_encoding && "rep #{p.repetition_level_encoding}"].compact.join(", ")
@@ -158,7 +158,7 @@ module Herringbone
         CRC_STATES.fetch(p.checksum) { p.crc.nil? ? 0 : 1 }, extra]
     end
 
-    CRC_STATES = { absent: 0, ok: 2, mismatch: 3 }.freeze
+    CRC_STATES = {absent: 0, ok: 2, mismatch: 3}.freeze
 
     def mismatch_row(m)
       values = [m[:page_value], m[:index_value]]
@@ -172,7 +172,7 @@ module Herringbone
       when nil then return nil
       when String
         t = Inspector.text(v)
-        v.encoding == Encoding::BINARY && t.start_with?("0x") ? t : JSON.generate(t)
+        (v.encoding == Encoding::BINARY && t.start_with?("0x")) ? t : JSON.generate(t)
       when Float then v.nan? ? "NaN" : v.to_s
       when BigDecimal then v.to_s("F")
       when Time then Inspector.jsonable(v)
@@ -180,7 +180,7 @@ module Herringbone
       when Array then JSON.generate(Inspector.jsonable(v))
       else v.to_s
       end
-      s.size > 160 ? "#{s[0, 159]}…" : s
+      (s.size > 160) ? "#{s[0, 159]}…" : s
     end
 
     def footer_json
@@ -195,7 +195,7 @@ module Herringbone
       when Array then v.map { |x| raw(x) }
       when String
         t = Inspector.text(v)
-        t.size > 300 ? "#{t[0, 300]}… (#{v.bytesize} bytes)" : t
+        (t.size > 300) ? "#{t[0, 300]}… (#{v.bytesize} bytes)" : t
       else v
       end
     end

@@ -26,7 +26,7 @@ PART_SIZE = Integer(ENV.fetch("PART_SIZE", 5 * 1024 * 1024))
 BUCKET = ENV.fetch("S3_BUCKET")
 KEY = ENV.fetch("S3_KEY", "herringbone-upload-stream-test.parquet")
 
-client_options = { region: ENV.fetch("AWS_REGION", "us-east-1") }
+client_options = {region: ENV.fetch("AWS_REGION", "us-east-1")}
 if ENV["S3_ENDPOINT"]
   client_options[:endpoint] = ENV["S3_ENDPOINT"]
   client_options[:force_path_style] = true
@@ -54,8 +54,8 @@ end
 def each_row(count)
   rng = Random.new(42)
   count.times do |i|
-    yield({ id: i, token: rng.bytes(24).unpack1("H*"), category: "c#{i % 50}",
-            amount: (i % 10_000) / 100.0, created_at: Time.at(1_700_000_000 + i).utc })
+    yield({id: i, token: rng.bytes(24).unpack1("H*"), category: "c#{i % 50}",
+           amount: (i % 10_000) / 100.0, created_at: Time.at(1_700_000_000 + i).utc})
   end
 end
 
@@ -63,7 +63,7 @@ def rss_mb = `ps -o rss= -p #{Process.pid}`.to_i / 1024.0
 
 # Aws::S3::TransferManager was added in aws-sdk-s3 1.197; Object#upload_stream is deprecated there
 def upload_stream(key, &block)
-  opts = { part_size: PART_SIZE, tempfile: ENV["TEMPFILE"] == "1" }
+  opts = {part_size: PART_SIZE, tempfile: ENV["TEMPFILE"] == "1"}
   if defined?(Aws::S3::TransferManager)
     Aws::S3::TransferManager.new(client: CLIENT).upload_stream(bucket: BUCKET, key: key, **opts, &block)
   else
@@ -74,7 +74,12 @@ end
 GC.start
 base = rss_mb
 peak = base
-sampler = Thread.new { loop { peak = [peak, rss_mb].max; sleep 0.05 } }
+sampler = Thread.new {
+  loop {
+    peak = [peak, rss_mb].max
+    sleep 0.05
+  }
+}
 
 started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 upload_stream(KEY) do |io|
@@ -110,7 +115,7 @@ raise "row count #{count} != #{ROWS}" unless count == ROWS && reader.num_rows ==
 raise "id sum mismatch" unless id_sum == ROWS * (ROWS - 1) / 2
 raise "first row mismatch: #{first.inspect}" unless first["token"] == expected_first[:token]
 token = reader.read(from: ROWS - 1, limit: 1).first["token"]
-raise "lookup failed" unless reader.read(where: { token: token }).map { |r| r["id"] } == [ROWS - 1]
+raise "lookup failed" unless reader.read(where: {token: token}).map { |r| r["id"] } == [ROWS - 1]
 puts "read back: #{reader.num_rows} rows in #{reader.row_groups.size} row groups, contents match"
 
 # An upload whose block raises halfway through must be aborted

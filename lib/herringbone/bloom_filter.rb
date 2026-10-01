@@ -36,7 +36,7 @@ module Herringbone
     def self.optimal_num_bytes(ndv, fpp = DEFAULT_FPP, max_bytes: DEFAULT_MAX_BYTES)
       fpp = Float(fpp)
       raise ArgumentError, "fpp must be between 0 and 1, got #{fpp}" unless fpp > 0 && fpp < 1
-      max_bytes = [[Integer(max_bytes), MAX_BYTES].min, MIN_BYTES].max
+      max_bytes = Integer(max_bytes).clamp(MIN_BYTES, MAX_BYTES)
       max_bytes = 1 << (max_bytes.bit_length - 1) # a power of two
       ndv = [Integer(ndv), 1].max
       bits = -8.0 * ndv / Math.log(1 - fpp**(1.0 / 8))

@@ -29,7 +29,7 @@ module Herringbone
       # @param input [String] raw snappy block
       # @return [String] decompressed bytes in ASCII-8BIT
       def decompress(input)
-        src = input.encoding == Encoding::BINARY ? input : input.b
+        src = (input.encoding == Encoding::BINARY) ? input : input.b
         if (lib = native)
           begin
             return lib.inflate(src)
@@ -67,7 +67,7 @@ module Herringbone
         if @native_lib.nil?
           @native_lib = begin
             require NATIVE_GEM
-            ::Snappy.respond_to?(:inflate) && ::Snappy.respond_to?(:deflate) ? ::Snappy : false
+            (::Snappy.respond_to?(:inflate) && ::Snappy.respond_to?(:deflate)) ? ::Snappy : false
           rescue LoadError
             false
           end
@@ -211,7 +211,7 @@ module Herringbone
       # @param input [String] bytes to compress
       # @return [String] raw snappy block in ASCII-8BIT
       def compress(input)
-        src = input.encoding == Encoding::BINARY ? input : input.b
+        src = (input.encoding == Encoding::BINARY) ? input : input.b
         if (lib = native)
           return lib.deflate(src)
         end

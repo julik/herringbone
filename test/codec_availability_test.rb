@@ -69,7 +69,7 @@ class CodecAvailabilityTest < Minitest::Test
       Herringbone.codecs.each do |codec|
         io = StringIO.new("".b)
         Herringbone::Writer.open(io, A_SCHEMA, compression: codec) { |w| w << [1] }
-        assert_equal [{ "a" => 1 }], Herringbone::Reader.new(StringIO.new(io.string)).read
+        assert_equal [{"a" => 1}], Herringbone::Reader.new(StringIO.new(io.string)).read
         assert_equal [codec], file_codecs(io.string)
       end
     end

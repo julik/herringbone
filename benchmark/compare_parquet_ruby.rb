@@ -80,7 +80,7 @@ end
 # Both files exist now (the children wrote them), so cross-reading also checks interop
 puts
 puts "== Read all rows"
-{ "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
+{"herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file}.each do |name, path|
   measure("herringbone each_row, #{name}") do
     n = 0
     File.open(path, "rb") { |f| Herringbone::Reader.new(f).each_row { n += 1 } }
@@ -95,7 +95,7 @@ end
 
 puts
 puts "== Read one column (amount)"
-{ "herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file }.each do |name, path|
+{"herringbone file" => herringbone_file, "parquet-ruby file" => parquet_ruby_file}.each do |name, path|
   measure("herringbone column, #{name}") do
     sum = File.open(path, "rb") { |f| Herringbone::Reader.new(f).read(as: :columns, columns: ["amount"])["amount"].sum }
     "sum=#{sum.to_s("F")}"

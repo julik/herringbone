@@ -48,7 +48,7 @@ class InteropTest < Minitest::Test
           c.path = File.join(dir, "#{c.name}.parquet")
           begin
             File.open(c.path, "wb") { |f| Herringbone::Writer.open(f, c.schema, **c.options) { |w| c.rows.each { |r| w << r } } }
-          rescue StandardError => e
+          rescue => e
             c.path = nil
             c.options = c.options.merge(write_error: "#{e.class}: #{e.message}")
           end
@@ -67,7 +67,7 @@ class InteropTest < Minitest::Test
       WriterHelpers::CODECS.each do |codec|
         [1, 2].each do |v|
           [true, false].each do |dict|
-            opts = { compression: codec, data_page_version: v, dictionary: dict }
+            opts = {compression: codec, data_page_version: v, dictionary: dict}
             list << Case.new(name: "all_#{codec}_v#{v}_#{dict}", schema: ALL_TYPES_SCHEMA, rows: all_rows, options: opts)
             list << Case.new(name: "nested_#{codec}_v#{v}_#{dict}", schema: NESTED_SCHEMA, rows: nested_rows, options: opts)
           end
@@ -77,24 +77,24 @@ class InteropTest < Minitest::Test
       enc_rows = WriterTestSchemas.encoding_rows(200)
       [1, 2].each do |v|
         [nil, 50].each do |ps|
-          opts = { data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: Herringbone.codecs.include?(:zstd) ? :zstd : :gzip }
+          opts = {data_page_version: v, encodings: WriterTestSchemas::ENCODINGS, compression: Herringbone.codecs.include?(:zstd) ? :zstd : :gzip}
           opts[:page_bytes] = ps if ps
           list << Case.new(name: "encodings_v#{v}_#{ps || "default"}", schema: enc_schema, rows: enc_rows, options: opts)
         end
       end
       [1, 2].each do |v|
         list << Case.new(name: "pages_all_v#{v}", schema: ALL_TYPES_SCHEMA, rows: all_rows,
-          options: { page_bytes: 30, row_group_rows: 11, data_page_version: v })
+          options: {page_bytes: 30, row_group_rows: 11, data_page_version: v})
         list << Case.new(name: "pages_nested_v#{v}", schema: NESTED_SCHEMA, rows: nested_rows,
-          options: { page_bytes: 30, row_group_rows: 11, data_page_version: v, compression: :gzip })
+          options: {page_bytes: 30, row_group_rows: 11, data_page_version: v, compression: :gzip})
       end
       list << Case.new(name: "zero_rows_all", schema: ALL_TYPES_SCHEMA, rows: [], options: {})
-      list << Case.new(name: "zero_rows_nested", schema: NESTED_SCHEMA, rows: [], options: { data_page_version: 2 })
+      list << Case.new(name: "zero_rows_nested", schema: NESTED_SCHEMA, rows: [], options: {data_page_version: 2})
       nulls = all_rows.first(10).map { |r| r.to_h { |k, v| [k, ALL_TYPES_SCHEMA.field(k).optional ? nil : v] } }
       list << Case.new(name: "all_nulls_v1", schema: ALL_TYPES_SCHEMA, rows: nulls, options: {})
-      list << Case.new(name: "all_nulls_v2", schema: ALL_TYPES_SCHEMA, rows: nulls, options: { data_page_version: 2, dictionary: false })
+      list << Case.new(name: "all_nulls_v2", schema: ALL_TYPES_SCHEMA, rows: nulls, options: {data_page_version: 2, dictionary: false})
       list << Case.new(name: "kv_metadata", schema: NESTED_SCHEMA, rows: nested_rows.first(3),
-        options: { metadata: { "hello" => "world", "unicode" => "漢字" } })
+        options: {metadata: {"hello" => "world", "unicode" => "漢字"}})
 
       fuzz = Fuzz.new(FUZZ_SEED)
       FUZZ_ITERATIONS.times do |i|
@@ -129,7 +129,7 @@ class InteropTest < Minitest::Test
     end
   end
   %w[encodings_v1_default encodings_v1_50 encodings_v2_default encodings_v2_50 pages_all_v1 pages_all_v2
-     pages_nested_v1 pages_nested_v2 zero_rows_all zero_rows_nested all_nulls_v1 all_nulls_v2 kv_metadata].each do |n|
+    pages_nested_v1 pages_nested_v2 zero_rows_all zero_rows_nested all_nulls_v1 all_nulls_v2 kv_metadata].each do |n|
     define_case_test(n)
   end
 
@@ -209,7 +209,7 @@ class InteropTest < Minitest::Test
     when :list then cv.map { |e| pyarrow_view(field.element, e) }
     when :map then cv.map { |k, v| [pyarrow_view(field.key, k), field.value ? pyarrow_view(field.value, v) : nil] }
     else
-      Herringbone::Types.logical_of(field.node).first == :enum ? { "base64" => [cv].pack("m0") } : cv
+      (Herringbone::Types.logical_of(field.node).first == :enum) ? {"base64" => [cv].pack("m0")} : cv
     end
   end
 
@@ -225,9 +225,9 @@ class InteropTest < Minitest::Test
     end
   end
 
-  PYARROW_CODECS = { none: "UNCOMPRESSED", snappy: "SNAPPY", gzip: "GZIP", lz4: "LZ4", lz4_hadoop: "UNKNOWN", # pyarrow has no name for the deprecated Hadoop LZ4 codec
-                     
-                     zstd: "ZSTD", brotli: "BROTLI" }.freeze
+  PYARROW_CODECS = {none: "UNCOMPRESSED", snappy: "SNAPPY", gzip: "GZIP", lz4: "LZ4", lz4_hadoop: "UNKNOWN", # pyarrow has no name for the deprecated Hadoop LZ4 codec
+
+                    zstd: "ZSTD", brotli: "BROTLI"}.freeze
 
   def check_codecs(c, r)
     want = PYARROW_CODECS.fetch(c.options.fetch(:compression, :snappy))
@@ -240,13 +240,13 @@ class InteropTest < Minitest::Test
       "bool" => [:boolean], "i8" => [:int8], "i16" => [:int16], "i32" => [:int32], "i64" => [:int64],
       "u8" => [:uint8], "u16" => [:uint16], "u32" => [:uint32], "u64" => [:uint64], "f32" => [:float],
       "f64" => [:double], "f16" => [:float16], "str" => [:string], "bin" => [:binary], "js" => [:json],
-      "en" => [:enum], "uid" => [:uuid], "date" => [:date], "t_ms" => [:time, { unit: :millis }],
-      "t_us" => [:time, { unit: :micros }], "t_ns" => [:time, { unit: :nanos }],
-      "ts_ms" => [:timestamp, { unit: :millis }], "ts_us" => [:timestamp, { unit: :micros }],
-      "ts_ns" => [:timestamp, { unit: :nanos }], "ts_local" => [:timestamp, { unit: :micros, utc: false }],
-      "i96" => [:int96], "dec_small" => [:decimal, { precision: 9, scale: 2 }],
-      "dec_med" => [:decimal, { precision: 18, scale: 4 }], "dec_large" => [:decimal, { precision: 38, scale: 10 }],
-      "dec_bin" => [:decimal, { precision: 25, scale: 3, physical: :binary }], "fx" => [:fixed, { length: 5 }]
+      "en" => [:enum], "uid" => [:uuid], "date" => [:date], "t_ms" => [:time, {unit: :millis}],
+      "t_us" => [:time, {unit: :micros}], "t_ns" => [:time, {unit: :nanos}],
+      "ts_ms" => [:timestamp, {unit: :millis}], "ts_us" => [:timestamp, {unit: :micros}],
+      "ts_ns" => [:timestamp, {unit: :nanos}], "ts_local" => [:timestamp, {unit: :micros, utc: false}],
+      "i96" => [:int96], "dec_small" => [:decimal, {precision: 9, scale: 2}],
+      "dec_med" => [:decimal, {precision: 18, scale: 4}], "dec_large" => [:decimal, {precision: 38, scale: 10}],
+      "dec_bin" => [:decimal, {precision: 25, scale: 3, physical: :binary}], "fx" => [:fixed, {length: 5}]
     }.freeze
     MAP_KEYS = %w[str i32 i64 date].freeze
 
@@ -258,10 +258,10 @@ class InteropTest < Minitest::Test
     def case
       @n = 0
       specs = Array.new(@rng.rand(1..5)) { spec(1) }
-      specs.unshift({ kind: :leaf, name: "row_id", type: "i64", null: false })
+      specs.unshift({kind: :leaf, name: "row_id", type: "i64", null: false})
       decl = method(:declare)
       schema = Herringbone::Schema.define { specs.each { |s| decl.call(self, s) } }
-      rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], s[:name] == "row_id" ? i : value(s)] } }
+      rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], (s[:name] == "row_id") ? i : value(s)] } }
       codecs = WriterHelpers::CODECS
       opts = {
         compression: codecs.sample(random: @rng), data_page_version: [1, 2].sample(random: @rng),
@@ -286,13 +286,13 @@ class InteropTest < Minitest::Test
 
     def spec(depth, leaf_types: LEAVES.keys)
       null = @rng.rand(10) < 7
-      kind = depth >= 4 || @rng.rand(10) < 4 ? :leaf : %i[struct list map].sample(random: @rng)
+      kind = (depth >= 4 || @rng.rand(10) < 4) ? :leaf : %i[struct list map].sample(random: @rng)
       case kind
-      when :leaf then { kind: :leaf, name: name, type: leaf_types.sample(random: @rng), null: null }
-      when :struct then { kind: :struct, name: name, null: null, children: Array.new(@rng.rand(1..3)) { spec(depth + 1) } }
-      when :list then { kind: :list, name: name, null: null, element: spec(depth + 1) }
+      when :leaf then {kind: :leaf, name: name, type: leaf_types.sample(random: @rng), null: null}
+      when :struct then {kind: :struct, name: name, null: null, children: Array.new(@rng.rand(1..3)) { spec(depth + 1) }}
+      when :list then {kind: :list, name: name, null: null, element: spec(depth + 1)}
       when :map
-        { kind: :map, name: name, null: null, key: MAP_KEYS.sample(random: @rng), value: spec(depth + 1) }
+        {kind: :map, name: name, null: null, key: MAP_KEYS.sample(random: @rng), value: spec(depth + 1)}
       end
     end
 

@@ -66,7 +66,7 @@ class ByteValuesTest < Minitest::Test
       bv << "e"
       assert_equal 3, bv.size
       values = bv.materialize
-      values = values[0] == :dictionary ? values[2].map { |i| values[1][i] } : values[1]
+      values = (values[0] == :dictionary) ? values[2].map { |i| values[1][i] } : values[1]
       assert_equal %w[a bb e], values
     end
   end

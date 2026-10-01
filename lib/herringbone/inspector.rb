@@ -106,7 +106,7 @@ module Herringbone
       # of 0 for empty chunks (which would point at the magic bytes)
       def dictionary_page_offset
         d = @meta.dictionary_page_offset
-        d && d >= 4 && (d < @meta.data_page_offset.to_i || @meta.data_page_offset.to_i < 4) ? d : nil
+        (d && d >= 4 && (d < @meta.data_page_offset.to_i || @meta.data_page_offset.to_i < 4)) ? d : nil
       end
 
       # Where the chunk's first page starts
@@ -123,8 +123,8 @@ module Herringbone
 
       def encoding_stats
         (@meta.encoding_stats || []).map do |s|
-          { page_type: Format::PageType::NAMES[s.page_type] || s.page_type,
-            encoding: Inspector.encoding_name(s.encoding), count: s.count }
+          {page_type: Format::PageType::NAMES[s.page_type] || s.page_type,
+           encoding: Inspector.encoding_name(s.encoding), count: s.count}
         end
       end
 
@@ -154,12 +154,12 @@ module Herringbone
 
       def column_index_range
         o = @chunk.column_index_offset
-        o && @chunk.column_index_length ? [o, @chunk.column_index_length] : nil
+        (o && @chunk.column_index_length) ? [o, @chunk.column_index_length] : nil
       end
 
       def offset_index_range
         o = @chunk.offset_index_offset
-        o && @chunk.offset_index_length ? [o, @chunk.offset_index_length] : nil
+        (o && @chunk.offset_index_length) ? [o, @chunk.offset_index_length] : nil
       end
 
       # All page headers, in file order. Errors while walking (corrupt or truncated headers) end
@@ -229,13 +229,13 @@ module Herringbone
           end_offset: end_offset,
           data_page_offset: data_page_offset,
           dictionary_page_offset: dictionary_page_offset,
-          dictionary: dictionary_page && { offset: dictionary_page.offset, num_values: dictionary_page.num_values,
-            compressed_size: dictionary_page.compressed_size, uncompressed_size: dictionary_page.uncompressed_size,
-            is_sorted: dictionary_page.is_sorted },
+          dictionary: dictionary_page && {offset: dictionary_page.offset, num_values: dictionary_page.num_values,
+                                          compressed_size: dictionary_page.compressed_size, uncompressed_size: dictionary_page.uncompressed_size,
+                                          is_sorted: dictionary_page.is_sorted},
           statistics: statistics&.to_h,
           size_statistics: size_statistics,
           key_value_metadata: key_value_metadata.empty? ? nil : key_value_metadata,
-          bloom_filter: bloom_filter_offset && { offset: bloom_filter_offset, length: bloom_filter_length },
+          bloom_filter: bloom_filter_offset && {offset: bloom_filter_offset, length: bloom_filter_length},
           column_index_offset: column_index_range&.first,
           column_index_length: column_index_range&.last,
           offset_index_offset: offset_index_range&.first,
@@ -287,7 +287,7 @@ module Herringbone
       end
 
       def num_rows = @row_group.num_rows
-      def first_row = @first_row
+      attr_reader :first_row
       def total_byte_size = @row_group.total_byte_size
       def compressed_size = @row_group.total_compressed_size || @columns.sum(&:compressed_size)
       def uncompressed_size = @columns.sum { |c| c.uncompressed_size.to_i }
@@ -297,7 +297,7 @@ module Herringbone
 
       def sorting_columns
         (@row_group.sorting_columns || []).map do |s|
-          { column: @columns[s.column_idx]&.path || s.column_idx, descending: s.descending, nulls_first: s.nulls_first }
+          {column: @columns[s.column_idx]&.path || s.column_idx, descending: s.descending, nulls_first: s.nulls_first}
         end
       end
 
@@ -336,7 +336,7 @@ module Herringbone
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class}"
       end
-      @name = @io.respond_to?(:path) && @io.path ? File.basename(@io.path.to_s) : nil
+      @name = (@io.respond_to?(:path) && @io.path) ? File.basename(@io.path.to_s) : nil
       read_footer
       @schema = Schema.from_elements(@metadata.schema)
     end
@@ -424,8 +424,8 @@ module Herringbone
       {
         ok: tally.fetch(:ok, 0), mismatch: tally.fetch(:mismatch, 0), absent: tally.fetch(:absent, 0),
         mismatches: all.select { |_, p| p.checksum == :mismatch }.map do |c, p|
-          { row_group: c.row_group.index, column: c.path, page: p.index, type: p.type, offset: p.offset,
-            crc: p.expected_crc, actual: page_crc(p) }
+          {row_group: c.row_group.index, column: c.path, page: p.index, type: p.type, offset: p.offset,
+           crc: p.expected_crc, actual: page_crc(p)}
         end
       }
     end
@@ -434,7 +434,7 @@ module Herringbone
     # each with :row_group and :column added (see ColumnChunkInfo#index_mismatches)
     def index_mismatches
       column_chunks.flat_map do |c|
-        c.index_mismatches.map { |m| { row_group: c.row_group.index, column: c.path }.merge(m) }
+        c.index_mismatches.map { |m| {row_group: c.row_group.index, column: c.path}.merge(m) }
       end
     end
 
@@ -446,7 +446,7 @@ module Herringbone
       kv = (@metadata.key_value_metadata || []).find { |x| x.key == "ARROW:schema" }
       @arrow_schema = kv && begin
         ArrowSchema.decode(kv.value)
-      rescue StandardError => e
+      rescue => e
         @arrow_schema_error = "could not decode ARROW:schema: #{e.message}"
         nil
       end
@@ -461,7 +461,7 @@ module Herringbone
     def schema_tree
       leaf_by_node = @schema.columns.to_h { |c| [c.node, c] }
       build = lambda do |node|
-        h = { name: node.name, repetition: node.repetition }
+        h = {name: node.name, repetition: node.repetition}
         if node.leaf?
           col = leaf_by_node[node]
           h[:physical_type] = T::NAMES[node.type]&.to_s
@@ -517,32 +517,32 @@ module Herringbone
     # could not be walked), bloom filters, page indexes, footer. Gaps right after a chunk at its
     # file_offset are inline :column_metadata copies; other gaps are reported as :unknown. Each entry: { kind:, start:, length:, row_group:, column:, page: }
     def layout
-      segs = [{ kind: :magic, start: 0, length: 4 }]
+      segs = [{kind: :magic, start: 0, length: 4}]
       column_chunks.each do |c|
         rg = c.row_group.index
         col = c.column.index
         if c.pages.empty?
-          segs << { kind: :chunk, start: c.start_offset, length: c.compressed_size, row_group: rg, column: col }
+          segs << {kind: :chunk, start: c.start_offset, length: c.compressed_size, row_group: rg, column: col}
         else
           c.pages.each_with_index do |p, i|
-            segs << { kind: p.dictionary? ? :dictionary_page : :data_page, start: p.offset, length: p.total_size,
-                      row_group: rg, column: col, page: i }
+            segs << {kind: p.dictionary? ? :dictionary_page : :data_page, start: p.offset, length: p.total_size,
+                      row_group: rg, column: col, page: i}
           end
         end
         if c.bloom_filter_offset
-          segs << { kind: :bloom_filter, start: c.bloom_filter_offset, length: c.bloom_filter_length.to_i,
-                    row_group: rg, column: col }
+          segs << {kind: :bloom_filter, start: c.bloom_filter_offset, length: c.bloom_filter_length.to_i,
+                    row_group: rg, column: col}
         end
         if (r = c.column_index_range)
-          segs << { kind: :column_index, start: r[0], length: r[1], row_group: rg, column: col }
+          segs << {kind: :column_index, start: r[0], length: r[1], row_group: rg, column: col}
         end
         if (r = c.offset_index_range)
-          segs << { kind: :offset_index, start: r[0], length: r[1], row_group: rg, column: col }
+          segs << {kind: :offset_index, start: r[0], length: r[1], row_group: rg, column: col}
         end
       end
-      segs << { kind: :footer, start: footer_offset, length: @footer_size }
-      segs << { kind: :footer_length, start: @file_size - 8, length: 4 }
-      segs << { kind: :magic, start: @file_size - 4, length: 4 }
+      segs << {kind: :footer, start: footer_offset, length: @footer_size}
+      segs << {kind: :footer_length, start: @file_size - 8, length: 4}
+      segs << {kind: :magic, start: @file_size - 4, length: 4}
       segs.sort_by! { |s| s[:start] }
       # Some writers (old parquet-rs, parquet-mr for a while) store a copy of the ColumnMetaData
       # right after the chunk, at ColumnChunk.file_offset
@@ -556,9 +556,9 @@ module Herringbone
         if s[:start] > pos
           c = meta_copies[pos]
           out << if c
-            { kind: :column_metadata, start: pos, length: s[:start] - pos, row_group: c.row_group.index, column: c.column.index }
+            {kind: :column_metadata, start: pos, length: s[:start] - pos, row_group: c.row_group.index, column: c.column.index}
           else
-            { kind: :unknown, start: pos, length: s[:start] - pos }
+            {kind: :unknown, start: pos, length: s[:start] - pos}
           end
         end
         out << s
@@ -604,7 +604,7 @@ module Herringbone
       end
       mismatches = index_mismatches
       unless mismatches.empty?
-        out << "page statistics vs column index: #{mismatches.size} disagreement#{mismatches.size == 1 ? "" : "s"}"
+        out << "page statistics vs column index: #{mismatches.size} disagreement#{"s" unless mismatches.size == 1}"
         mismatches.first(50).each { |m| out << "  #{index_mismatch_text(m)}" }
         out << "  ..." if mismatches.size > 50
       end
@@ -623,7 +623,7 @@ module Herringbone
         ann = n[:logical_type] || n[:converted_type]
         levels = n[:children] ? "" : "  [def #{n[:max_definition_level]}, rep #{n[:max_repetition_level]}]"
         arrow = n[:arrow_type] ? "  arrow: #{n[:arrow_type]}" : ""
-        out << "#{"  " * depth}#{n[:repetition]} #{type} #{n[:name]}#{ann ? " (#{ann})" : ""}#{levels}#{arrow}"
+        out << "#{"  " * depth}#{n[:repetition]} #{type} #{n[:name]}#{" (#{ann})" if ann}#{levels}#{arrow}"
         (n[:children] || []).each { |c| walk.call(c, depth + 1) }
       end
       schema_tree.each { |n| walk.call(n, 1) }
@@ -633,15 +633,15 @@ module Herringbone
         out << "  #{t[:path]}: #{t[:type]} #{t[:codecs].join(",")} #{t[:encodings].join(",")} " \
           "#{Inspector.human_bytes(t[:compressed_size])}/#{Inspector.human_bytes(t[:uncompressed_size])}" \
           "#{ratio_text(t[:uncompressed_size], t[:compressed_size])}, #{t[:num_values]} values" \
-          "#{t[:null_count] ? ", #{t[:null_count]} nulls" : ""}, #{t[:num_data_pages]} data pages#{range}"
+          "#{", #{t[:null_count]} nulls" if t[:null_count]}, #{t[:num_data_pages]} data pages#{range}"
       end
       row_groups.each do |rg|
-        sorting = rg.sorting_columns.map { |c| "#{c[:column]}#{c[:descending] ? " desc" : ""}" }
+        sorting = rg.sorting_columns.map { |c| "#{c[:column]}#{" desc" if c[:descending]}" }
         out << "row group #{rg.index}: #{rg.num_rows} rows, #{Inspector.human_bytes(rg.compressed_size)} " \
-          "at #{rg.start_offset}..#{rg.end_offset}#{sorting.empty? ? "" : ", sorted by #{sorting.join(", ")}"}"
+          "at #{rg.start_offset}..#{rg.end_offset}#{", sorted by #{sorting.join(", ")}" unless sorting.empty?}"
         rg.columns.each do |c|
           st = c.statistics
-          range = st && (st.min || st.max) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
+          range = (st && (st.min || st.max)) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
           extras = []
           extras << "dict #{c.dictionary_size} entries" if c.dictionary_page
           extras << "column index" if c.column_index_range
@@ -650,14 +650,14 @@ module Herringbone
           extras << "ERROR: #{c.error}" if c.error
           out << "  #{c.path}: #{c.codec} #{c.encodings.join(",")} " \
             "#{c.compressed_size}/#{c.uncompressed_size} bytes#{ratio_text(c.uncompressed_size, c.compressed_size)}, " \
-            "#{c.num_values} values, #{c.pages.size} pages#{extras.empty? ? "" : ", #{extras.join(", ")}"}#{range}"
+            "#{c.num_values} values, #{c.pages.size} pages#{", #{extras.join(", ")}" unless extras.empty?}#{range}"
           next unless pages
           c.pages.each do |p|
             st = p.statistics
             out << "    #{p.index}: #{p.type} @#{p.offset} header #{p.header_size} + #{p.compressed_size}/#{p.uncompressed_size} bytes, " \
-              "#{p.num_values} values#{p.num_nulls ? ", #{p.num_nulls} nulls" : ""}#{p.num_rows ? ", #{p.num_rows} rows" : ""}" \
-              "#{p.encoding ? " #{p.encoding}" : ""}#{crc_text(p)}" \
-              "#{st && (st.min || st.max) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""}"
+              "#{p.num_values} values#{", #{p.num_nulls} nulls" if p.num_nulls}#{", #{p.num_rows} rows" if p.num_rows}" \
+              "#{" #{p.encoding}" if p.encoding}#{crc_text(p)}" \
+              "#{" [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" if st && (st.min || st.max)}"
           end
         end
       end
@@ -699,7 +699,7 @@ module Herringbone
         seen += page.num_values.to_i if page.data?
         pos = page.end_offset
       end
-      [pages, seen < total ? "found #{seen} of #{total} values in page headers" : nil]
+      [pages, (seen < total) ? "found #{seen} of #{total} values in page headers" : nil]
     end
 
     def read_column_index(chunk)
@@ -751,7 +751,7 @@ module Herringbone
     # :ok, :mismatch or :absent for one page (reads its body)
     def page_checksum(page)
       return :absent unless page.crc
-      page_crc(page) == page.expected_crc ? :ok : :mismatch
+      (page_crc(page) == page.expected_crc) ? :ok : :mismatch
     end
 
     # CRC32 of a page's body as stored
@@ -764,12 +764,12 @@ module Herringbone
       ci = chunk.column_index or return []
       data = chunk.data_pages
       if ci.null_pages.size != data.size
-        return [{ page: nil, data_page: nil, field: :page_count, page_value: data.size, index_value: ci.null_pages.size }]
+        return [{page: nil, data_page: nil, field: :page_count, page_value: data.size, index_value: ci.null_pages.size}]
       end
       order = Inspector.sort_order(chunk.column)
       out = []
       data.each_with_index do |p, k|
-        report = ->(field, pv, iv) { out << { page: p.index, data_page: k, field: field, page_value: pv, index_value: iv } }
+        report = ->(field, pv, iv) { out << {page: p.index, data_page: k, field: field, page_value: pv, index_value: iv} }
         idx_nulls = ci.null_counts&.[](k)
         report.call(:null_count, p.num_nulls, idx_nulls) if idx_nulls && p.num_nulls && idx_nulls != p.num_nulls
         st = p.statistics
@@ -840,7 +840,7 @@ module Herringbone
       end
       conv = column.converter
       conv ? conv.call(raw) : raw
-    rescue StandardError
+    rescue
       Inspector.hex(bytes)
     end
 
@@ -986,12 +986,12 @@ module Herringbone
         children = t.tables(5).map { |c| field(c, depth + 1, count) }
         metadata = key_values(t.tables(6))
         type = type_name(t.u8(2), t.table(3), children)
-        h = { name: t.string(0).to_s, type: type, nullable: t.bool(1) }
+        h = {name: t.string(0).to_s, type: type, nullable: t.bool(1)}
         if (d = t.table(4))
           index = d.table(1)
           index_type = index ? int_name(index) : "int32"
           ordered = d.bool(2)
-          h[:dictionary] = { index_type: index_type, ordered: ordered, id: d.i64(0) }
+          h[:dictionary] = {index_type: index_type, ordered: ordered, id: d.i64(0)}
           h[:type] = "dictionary<values=#{type}, indices=#{index_type}, ordered=#{ordered ? 1 : 0}>"
         end
         h[:children] = children unless children.empty?
@@ -1008,9 +1008,9 @@ module Herringbone
       end
 
       # A child as pyarrow prints it inside a nested type: "name: type" plus " not null"
-      def child_text(c) = "#{c[:name]}: #{c[:type]}#{c[:nullable] ? "" : " not null"}"
+      def child_text(c) = "#{c[:name]}: #{c[:type]}#{" not null" unless c[:nullable]}"
 
-      def int_name(t) = "#{t.bool(1) ? "" : "u"}int#{t.i32(0)}"
+      def int_name(t) = "#{"u" unless t.bool(1)}int#{t.i32(0)}"
 
       def unit(u) = TIME_UNITS[u] || "unit#{u}"
 
@@ -1033,7 +1033,7 @@ module Herringbone
           "time#{bits}[#{unit(t ? t.i16(0, 1) : 1)}]"
         when 10
           tz = t&.string(1)
-          "timestamp[#{unit(t ? t.i16(0) : 0)}#{tz ? ", tz=#{tz}" : ""}]"
+          "timestamp[#{unit(t ? t.i16(0) : 0)}#{", tz=#{tz}" if tz}]"
         when 11 then %w[month_interval day_time_interval month_day_nano_interval][t ? t.i16(0) : 0] || "interval"
         when 12 then "list<#{children.map { |c| child_text(c) }.join(", ")}>"
         when 13 then "struct<#{children.map { |c| child_text(c) }.join(", ")}>"
@@ -1049,7 +1049,7 @@ module Herringbone
         when 19 then "large_binary"
         when 20 then "large_string"
         when 21 then "large_list<#{children.map { |c| child_text(c) }.join(", ")}>"
-        when 22 then "run_end_encoded<#{children.map { |c| "#{c[:name] == "values" ? "values" : "run_ends"}: #{c[:type]}" }.join(", ")}>"
+        when 22 then "run_end_encoded<#{children.map { |c| "#{(c[:name] == "values") ? "values" : "run_ends"}: #{c[:type]}" }.join(", ")}>"
         when 23 then "binary_view"
         when 24 then "string_view"
         when 25 then "list_view<#{children.map { |c| child_text(c) }.join(", ")}>"
@@ -1062,9 +1062,9 @@ module Herringbone
       def map_name(t, children)
         entries = children.first
         kv = entries && entries[:children] || []
-        named = ->(f, std) { f ? "#{f[:type]}#{f[:name] == std ? "" : " ('#{f[:name]}')"}" : "?" }
+        named = ->(f, std) { f ? "#{f[:type]}#{" ('#{f[:name]}')" unless f[:name] == std}" : "?" }
         sorted = t&.bool(0) ? ", keys_sorted" : ""
-        entries_name = entries && entries[:name] != "entries" ? " ('#{entries[:name]}')" : ""
+        entries_name = (entries && entries[:name] != "entries") ? " ('#{entries[:name]}')" : ""
         "map<#{named.call(kv[0], "key")}, #{named.call(kv[1], "value")}#{sorted}#{entries_name}>"
       end
 
@@ -1076,7 +1076,7 @@ module Herringbone
           notes << "extension #{f[:extension]}" if f[:extension]
           meta = (f[:metadata] || {}).reject { |k, _| k.start_with?("ARROW:extension:") }
           notes << "metadata #{meta.map { |k, v| "#{k}=#{v.to_s[0, 60].inspect}" }.join(", ")}" unless meta.empty?
-          out << "#{"  " * depth}#{f[:name]}: #{f[:type]}#{notes.empty? ? "" : " (#{notes.join("; ")})"}"
+          out << "#{"  " * depth}#{f[:name]}: #{f[:type]}#{" (#{notes.join("; ")})" unless notes.empty?}"
           lines(f[:children], depth + 1, out) if f[:children] && depth < 8
         end
         out
@@ -1108,7 +1108,7 @@ module Herringbone
         end
       elsif node.converted_type
         c = Format::ConvertedType::NAMES[node.converted_type].to_s
-        c == "DECIMAL" ? "DECIMAL(#{node.precision}, #{node.scale || 0})" : c
+        (c == "DECIMAL") ? "DECIMAL(#{node.precision}, #{node.scale || 0})" : c
       end
     end
 
@@ -1116,7 +1116,7 @@ module Herringbone
     def self.sort_order(column)
       kind, _a, signed = Types.logical_of(column.node)
       case kind
-      when :integer then signed == false ? :unsigned : :signed
+      when :integer then (signed == false) ? :unsigned : :signed
       when :decimal, :date, :time, :timestamp, :float16 then :signed
       when :string, :enum, :json, :bson, :uuid then :unsigned
       else
@@ -1155,18 +1155,18 @@ module Herringbone
 
     def self.hex(bytes)
       b = bytes.b
-      b.bytesize > 64 ? "0x#{b.byteslice(0, 64).unpack1("H*")}… (#{b.bytesize} bytes)" : "0x#{b.unpack1("H*")}"
+      (b.bytesize > 64) ? "0x#{b.byteslice(0, 64).unpack1("H*")}… (#{b.bytesize} bytes)" : "0x#{b.unpack1("H*")}"
     end
 
     # A short display form of a decoded value
     def self.display(v, max: 40)
       s = case v
-      when String then v.encoding == Encoding::BINARY ? text(v) : v
+      when String then (v.encoding == Encoding::BINARY) ? text(v) : v
       when nil then "null"
       else jsonable(v).to_s
       end
       s = s.inspect if v.is_a?(String)
-      s.size > max ? "#{s[0, max - 1]}…" : s
+      (s.size > max) ? "#{s[0, max - 1]}…" : s
     end
 
     def self.human_bytes(n)
@@ -1178,13 +1178,17 @@ module Herringbone
         f /= 1024
         i += 1
       end
-      i.zero? ? "#{n} B" : format("%.#{f < 10 ? 2 : 1}f %s", f, units[i])
+      if i.zero?
+        "#{n} B"
+      else
+        format("%.#{(f < 10) ? 2 : 1}f %s", f, units[i])
+      end
     end
 
     private
 
     def ratio_text(uncompressed, compressed)
-      compressed.to_i.positive? && uncompressed ? format(" (%.2fx)", uncompressed.to_f / compressed) : ""
+      (compressed.to_i.positive? && uncompressed) ? format(" (%.2fx)", uncompressed.to_f / compressed) : ""
     end
 
     def crc_text(page)
@@ -1222,18 +1226,18 @@ module Herringbone
     # (one a prefix of the other) and values that can't be compared are never reported.
     def narrower?(idx, page, order, which)
       return false if idx.nil? || page.nil? || order == :unknown
-      a, b = which == :min ? [page, idx] : [idx, page] # true when a < b
+      a, b = (which == :min) ? [page, idx] : [idx, page] # true when a < b
       if a.is_a?(String) && b.is_a?(String)
         a = a.b
         b = b.b
         return false if a.start_with?(b) || b.start_with?(a)
-        return order == :unsigned ? a < b : false
+        return (order == :unsigned) ? a < b : false
       end
       return false if a.is_a?(Float) && a.nan? || b.is_a?(Float) && b.nan?
       a = a ? 1 : 0 if a == true || a == false
       b = b ? 1 : 0 if b == true || b == false
       (a <=> b) == -1
-    rescue StandardError
+    rescue
       false
     end
 
@@ -1241,10 +1245,10 @@ module Herringbone
       vals = values.compact
       return nil if vals.empty?
       if vals.all? { |v| v == true || v == false }
-        return which == :min ? vals.all? : vals.any?
+        return (which == :min) ? vals.all? : vals.any?
       end
       return nil unless vals.map(&:class).uniq.size == 1
-      which == :min ? vals.min : vals.max
+      (which == :min) ? vals.min : vals.max
     rescue ArgumentError, NoMethodError
       nil
     end
@@ -1324,7 +1328,7 @@ module Herringbone
         info.encoding = Inspector.encoding_name(d.encoding)
         info.definition_levels_byte_length = d.definition_levels_byte_length
         info.repetition_levels_byte_length = d.repetition_levels_byte_length
-        info.is_compressed = d.is_compressed.nil? ? true : d.is_compressed
+        info.is_compressed = d.is_compressed.nil? || d.is_compressed
         info.statistics = decode_statistics(d.statistics, column)
       elsif (d = h.dictionary_page_header)
         info.num_values = d.num_values
@@ -1336,14 +1340,14 @@ module Herringbone
 
     def describe_key_value(key, value)
       value = value.to_s
-      h = { key: key, bytesize: value.bytesize }
+      h = {key: key, bytesize: value.bytesize}
       if key == "ARROW:schema"
         h[:format] = "arrow_schema"
-        h[:value] = value.size > 120 ? "#{value[0, 120]}…" : value
+        h[:value] = (value.size > 120) ? "#{value[0, 120]}…" : value
         if (arrow = arrow_schema)
-          h[:summary] = "Arrow schema, #{arrow[:fields].size} field#{arrow[:fields].size == 1 ? "" : "s"}"
+          h[:summary] = "Arrow schema, #{arrow[:fields].size} field#{"s" unless arrow[:fields].size == 1}"
           h[:arrow_fields] = arrow[:fields].map { |f| f[:name] }
-          meta = arrow[:metadata]&.transform_values { |v| v.size > 4000 ? "#{v[0, 4000]}…" : v }
+          meta = arrow[:metadata]&.transform_values { |v| (v.size > 4000) ? "#{v[0, 4000]}…" : v }
           h[:arrow_schema] = arrow.merge(metadata: meta).compact
         else
           h[:summary] = "Arrow IPC schema message, base64-encoded (#{value.bytesize} bytes)"
@@ -1355,15 +1359,15 @@ module Herringbone
         begin
           h[:json] = JSON.parse(value)
           h[:format] = "json"
-          h[:summary] = key == "pandas" ? pandas_summary(h[:json]) : "JSON"
+          h[:summary] = (key == "pandas") ? pandas_summary(h[:json]) : "JSON"
         rescue JSON::ParserError
           h[:format] = "text"
         end
-        h[:value] = value.size > 4000 ? "#{value[0, 4000]}…" : value
+        h[:value] = (value.size > 4000) ? "#{value[0, 4000]}…" : value
       else
         t = Inspector.text(value.b)
-        h[:format] = t.start_with?("0x") && value.bytesize.positive? ? "binary" : "text"
-        h[:value] = t.size > 4000 ? "#{t[0, 4000]}…" : t
+        h[:format] = (t.start_with?("0x") && value.bytesize.positive?) ? "binary" : "text"
+        h[:value] = (t.size > 4000) ? "#{t[0, 4000]}…" : t
       end
       h
     end

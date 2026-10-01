@@ -61,17 +61,17 @@ class StreamingOutputTest < Minitest::Test
     Array.new(n) do |i|
       {
         "id" => i,
-        "name" => i % 7 == 0 ? nil : "name-#{i % 97}",
-        "blob" => blob_every.positive? && (i % blob_every).zero? ? ("x#{i}" * 40_000) : "b#{i}",
+        "name" => (i % 7 == 0) ? nil : "name-#{i % 97}",
+        "blob" => (blob_every.positive? && (i % blob_every).zero?) ? ("x#{i}" * 40_000) : "b#{i}",
         "score" => i * 0.5,
         "at" => Time.at(1_700_000_000 + i).utc,
         "tags" => i.even? ? ["t#{i % 5}", "u"] : [],
-        "address" => i % 3 == 0 ? nil : { "city" => "city-#{i % 11}" }
+        "address" => (i % 3 == 0) ? nil : {"city" => "city-#{i % 11}"}
       }
     end
   end
 
-  OPTIONS = { row_group_rows: 1500, page_rows: 400, bloom_filters: %w[id name address.city] }.freeze
+  OPTIONS = {row_group_rows: 1500, page_rows: 400, bloom_filters: %w[id name address.city]}.freeze
 
   [1, 2].each do |version|
     define_method("test_write_only_io_round_trip_v#{version}") do
@@ -97,8 +97,8 @@ class StreamingOutputTest < Minitest::Test
         assert reader.bloom_filter(g, "id").might_contain?(g * 1500)
         assert reader.bloom_filter(g, "address.city")
       end
-      assert_equal [4321], reader.read(where: { id: 4321 }).map { |r| r["id"] }
-      plan = reader.scan_plan(where: { id: 4321 })
+      assert_equal [4321], reader.read(where: {id: 4321}).map { |r| r["id"] }
+      plan = reader.scan_plan(where: {id: 4321})
       assert_equal [2], plan.map { |p| p[:row_group] }
       assert_operator plan[0][:rows], :<=, 400, "page index narrows the read to one page"
     end

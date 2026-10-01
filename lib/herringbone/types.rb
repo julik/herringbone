@@ -28,9 +28,8 @@ module Herringbone
     JULIAN_EPOCH_DAY = 2_440_588 # Julian day number of 1970-01-01, used by INT96
     NANOS_PER_DAY = 86_400 * 1_000_000_000
 
-    UNIT_DIVISORS = { millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000 }.freeze
-    UNIT_NAMES = { millis: :millisecond, micros: :microsecond, nanos: :nanosecond }.freeze
-
+    UNIT_DIVISORS = {millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000}.freeze
+    UNIT_NAMES = {millis: :millisecond, micros: :microsecond, nanos: :nanosecond}.freeze
 
     def lt(**kw) = Format::LogicalType.new(**kw)
 
@@ -44,63 +43,63 @@ module Herringbone
     end
 
     def int_type(bits, signed)
-      physical = bits == 64 ? T::INT64 : T::INT32
+      physical = (bits == 64) ? T::INT64 : T::INT32
       converted = signed ? C.const_get("INT_#{bits}") : C.const_get("UINT_#{bits}")
-      { type: physical, converted_type: converted,
-        logical_type: lt(integer: Format::IntType.new(bit_width: bits, is_signed: signed)) }
+      {type: physical, converted_type: converted,
+       logical_type: lt(integer: Format::IntType.new(bit_width: bits, is_signed: signed))}
     end
 
     # Physical attributes (type, logical type etc.) for a DSL type name
     def physical_attributes(type, **opts)
       case type.to_sym
-      when :boolean then { type: T::BOOLEAN }
+      when :boolean then {type: T::BOOLEAN}
       when :int8 then int_type(8, true)
       when :int16 then int_type(16, true)
-      when :int32 then { type: T::INT32 }
-      when :int64 then { type: T::INT64 }
+      when :int32 then {type: T::INT32}
+      when :int64 then {type: T::INT64}
       when :uint8 then int_type(8, false)
       when :uint16 then int_type(16, false)
       when :uint32 then int_type(32, false)
       when :uint64 then int_type(64, false)
-      when :float then { type: T::FLOAT }
-      when :double then { type: T::DOUBLE }
-      when :float16 then { type: T::FIXED_LEN_BYTE_ARRAY, type_length: 2, logical_type: lt(float16: Format::Float16Type.new) }
-      when :string then { type: T::BYTE_ARRAY, converted_type: C::UTF8, logical_type: lt(string: Format::StringType.new) }
-      when :binary then { type: T::BYTE_ARRAY }
-      when :json then { type: T::BYTE_ARRAY, converted_type: C::JSON, logical_type: lt(json: Format::JsonType.new) }
-      when :bson then { type: T::BYTE_ARRAY, converted_type: C::BSON, logical_type: lt(bson: Format::BsonType.new) }
+      when :float then {type: T::FLOAT}
+      when :double then {type: T::DOUBLE}
+      when :float16 then {type: T::FIXED_LEN_BYTE_ARRAY, type_length: 2, logical_type: lt(float16: Format::Float16Type.new)}
+      when :string then {type: T::BYTE_ARRAY, converted_type: C::UTF8, logical_type: lt(string: Format::StringType.new)}
+      when :binary then {type: T::BYTE_ARRAY}
+      when :json then {type: T::BYTE_ARRAY, converted_type: C::JSON, logical_type: lt(json: Format::JsonType.new)}
+      when :bson then {type: T::BYTE_ARRAY, converted_type: C::BSON, logical_type: lt(bson: Format::BsonType.new)}
       when :enum
         if opts[:parquet_enum]
-          { type: T::BYTE_ARRAY, converted_type: C::ENUM, logical_type: lt(enum: Format::EnumType.new) }
+          {type: T::BYTE_ARRAY, converted_type: C::ENUM, logical_type: lt(enum: Format::EnumType.new)}
         else
           physical_attributes(:string)
         end
-      when :uuid then { type: T::FIXED_LEN_BYTE_ARRAY, type_length: 16, logical_type: lt(uuid: Format::UUIDType.new) }
-      when :date then { type: T::INT32, converted_type: C::DATE, logical_type: lt(date: Format::DateType.new) }
-      when :int96 then { type: T::INT96 }
+      when :uuid then {type: T::FIXED_LEN_BYTE_ARRAY, type_length: 16, logical_type: lt(uuid: Format::UUIDType.new)}
+      when :date then {type: T::INT32, converted_type: C::DATE, logical_type: lt(date: Format::DateType.new)}
+      when :int96 then {type: T::INT96}
       when :fixed
-        { type: T::FIXED_LEN_BYTE_ARRAY, type_length: Integer(opts.fetch(:length)) }
+        {type: T::FIXED_LEN_BYTE_ARRAY, type_length: Integer(opts.fetch(:length))}
       when :time
         unit = time_unit(opts.fetch(:unit, :micros))
-        converted = { millis: C::TIME_MILLIS, micros: C::TIME_MICROS }[unit.to_sym]
-        { type: unit.millis ? T::INT32 : T::INT64, converted_type: opts.fetch(:utc, true) ? converted : nil,
-          logical_type: lt(time: Format::TimeType.new(is_adjusted_to_utc: opts.fetch(:utc, true), unit: unit)) }
+        converted = {millis: C::TIME_MILLIS, micros: C::TIME_MICROS}[unit.to_sym]
+        {type: unit.millis ? T::INT32 : T::INT64, converted_type: opts.fetch(:utc, true) ? converted : nil,
+         logical_type: lt(time: Format::TimeType.new(is_adjusted_to_utc: opts.fetch(:utc, true), unit: unit))}
       when :timestamp
         unit = time_unit(opts.fetch(:unit, :micros))
-        converted = { millis: C::TIMESTAMP_MILLIS, micros: C::TIMESTAMP_MICROS }[unit.to_sym]
-        { type: T::INT64, converted_type: opts.fetch(:utc, true) ? converted : nil,
-          logical_type: lt(timestamp: Format::TimestampType.new(is_adjusted_to_utc: opts.fetch(:utc, true), unit: unit)) }
+        converted = {millis: C::TIMESTAMP_MILLIS, micros: C::TIMESTAMP_MICROS}[unit.to_sym]
+        {type: T::INT64, converted_type: opts.fetch(:utc, true) ? converted : nil,
+         logical_type: lt(timestamp: Format::TimestampType.new(is_adjusted_to_utc: opts.fetch(:utc, true), unit: unit))}
       when :decimal
         precision = Integer(opts.fetch(:precision))
         scale = Integer(opts.fetch(:scale, 0))
         raise ArgumentError, "Decimal precision must be positive" unless precision.positive?
         raise ArgumentError, "Decimal scale must be between 0 and precision" unless scale.between?(0, precision)
         physical = if opts[:physical]
-          { int32: { type: T::INT32 }, int64: { type: T::INT64 }, binary: { type: T::BYTE_ARRAY },
-            fixed: { type: T::FIXED_LEN_BYTE_ARRAY, type_length: decimal_bytes(precision) } }.fetch(opts[:physical])
-        elsif precision <= 9 then { type: T::INT32 }
-        elsif precision <= 18 then { type: T::INT64 }
-        else { type: T::FIXED_LEN_BYTE_ARRAY, type_length: decimal_bytes(precision) }
+          {int32: {type: T::INT32}, int64: {type: T::INT64}, binary: {type: T::BYTE_ARRAY},
+           fixed: {type: T::FIXED_LEN_BYTE_ARRAY, type_length: decimal_bytes(precision)}}.fetch(opts[:physical])
+        elsif precision <= 9 then {type: T::INT32}
+        elsif precision <= 18 then {type: T::INT64}
+        else {type: T::FIXED_LEN_BYTE_ARRAY, type_length: decimal_bytes(precision)}
         end
         physical.merge(converted_type: C::DECIMAL, scale: scale, precision: precision,
           logical_type: lt(decimal: Format::DecimalType.new(scale: scale, precision: precision)))
@@ -161,7 +160,7 @@ module Herringbone
         return ->(v) { v.force_encoding(Encoding::UTF_8) } if type == T::BYTE_ARRAY || type == T::FIXED_LEN_BYTE_ARRAY
       when :integer
         if !b && (type == T::INT32 || type == T::INT64)
-          mask = type == T::INT32 ? 0xFFFF_FFFF : 0xFFFF_FFFF_FFFF_FFFF
+          mask = (type == T::INT32) ? 0xFFFF_FFFF : 0xFFFF_FFFF_FFFF_FFFF
           return ->(v) { v & mask }
         end
       when :date
@@ -206,7 +205,7 @@ module Herringbone
       return 0 if bytes.empty?
       i = bytes.unpack1("H*").to_i(16)
       bits = bytes.bytesize * 8
-      i >= (1 << (bits - 1)) ? i - (1 << bits) : i
+      (i >= (1 << (bits - 1))) ? i - (1 << bits) : i
     end
 
     def int_to_be(i, nbytes)
@@ -233,7 +232,7 @@ module Herringbone
     # in double arithmetic, so there is no double rounding.
     def float_to_half(f)
       return 0x7E00 if f.nan?
-      sign = f.negative? || (f.zero? && (1.0 / f).negative?) ? 0x8000 : 0
+      sign = (f.negative? || (f.zero? && (1.0 / f).negative?)) ? 0x8000 : 0
       a = f.abs
       return sign | 0x7C00 if a >= 65_520.0
       return sign | (a * 2.0**24).round(half: :even) if a < 2.0**-14
@@ -279,13 +278,13 @@ module Herringbone
         return decimal_writer(node, a)
       when :uuid
         return fixed_checker(16) do |v|
-          v.bytesize == 16 && v.encoding == Encoding::BINARY ? v : [v.to_s.delete("-")].pack("H*")
+          (v.bytesize == 16 && v.encoding == Encoding::BINARY) ? v : [v.to_s.delete("-")].pack("H*")
         end
       when :float16
         return ->(v) { [float_to_half(Float(v))].pack("v") }
       when :integer
         if !b && (type == T::INT32 || type == T::INT64)
-          bits = type == T::INT32 ? 32 : 64
+          bits = (type == T::INT32) ? 32 : 64
           check = int_checker(0, (1 << a) - 1)
           return ->(v) { Encodings::Delta.wrap(check.call(v), bits) }
         elsif type == T::INT32 || type == T::INT64
@@ -319,7 +318,7 @@ module Herringbone
 
     def to_boolean(v)
       BOOLEANS.fetch(v) do
-        s = v.is_a?(String) || v.is_a?(Symbol) ? v.to_s.downcase : nil
+        s = (v.is_a?(String) || v.is_a?(Symbol)) ? v.to_s.downcase : nil
         BOOLEANS.fetch(s) { raise ArgumentError, "expected a boolean, got #{v.inspect}" }
       end
     end
@@ -411,7 +410,7 @@ module Herringbone
       lambda do |v|
         i = Integer(v)
         raise ArgumentError, "#{v.inspect} is not an integer" unless v.is_a?(Integer) || !v.is_a?(Numeric) || v == i
-        raise RangeError, "#{i} is outside #{min}..#{max}" unless i >= min && i <= max
+        raise RangeError, "#{i} is outside #{min}..#{max}" unless i.between?(min, max)
         i
       end
     end

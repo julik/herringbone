@@ -34,7 +34,7 @@ module Herringbone
     def initialize(io, keys: :string, time_zone: nil)
       unless io.respond_to?(:seek) && io.respond_to?(:read)
         raise ArgumentError, "Herringbone::Reader expects an IO that supports #seek and #read " \
-          "(e.g. File.open(path, \"rb\")), got #{io.class == String ? "a String" : io.class}" \
+          "(e.g. File.open(path, \"rb\")), got #{io.is_a?(String) ? "a String" : io.class}" \
           "#{" (wrap Parquet bytes in a StringIO)" if io.is_a?(String)}"
       end
       keys = keys.to_sym if keys.is_a?(String)
@@ -74,7 +74,7 @@ module Herringbone
       size = Integer(size)
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
       raise ArgumentError, "as: must be :rows, :columns or :numo, got #{as.inspect}" unless AS_MODES.include?(as)
-      raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
+      raise ArgumentError, "limit: must not be negative" if limit&.negative?
       return self if limit&.zero?
       if as == :numo
         each_numo_batch(size, columns, where, from, limit) { |batch| yield batch }
@@ -83,7 +83,7 @@ module Herringbone
       columnar = as == :columns
       symbolize = @symbolize
       out_fields = select_fields(columns)
-      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      filter = (where && !where.empty?) ? Filter.new(@schema, where) : nil
       fields = filter ? out_fields | filter.fields : out_fields
       names = row_keys(out_fields, symbolize)
       nout = out_fields.size
@@ -166,9 +166,9 @@ module Herringbone
     # { row_group:, rows:, ranges: [[first_row, end_row), ...] } for the row groups that are
     # read. Row groups ruled out entirely are left out.
     def scan_plan(where: nil, from: nil)
-      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      filter = (where && !where.empty?) ? Filter.new(@schema, where) : nil
       plan_rows(filter, from).map do |rg_index, ranges|
-        { row_group: rg_index, rows: ranges.sum { |s, e| e - s }, ranges: ranges }
+        {row_group: rg_index, rows: ranges.sum { |s, e| e - s }, ranges: ranges}
       end
     end
 
@@ -185,7 +185,7 @@ module Herringbone
     # top-level field name => Numo array. Takes the options of each_batch.
     def read(columns: nil, as: :rows, where: nil, from: nil, limit: nil)
       if as == :numo
-        raise ArgumentError, "limit: must not be negative" if limit && limit.negative?
+        raise ArgumentError, "limit: must not be negative" if limit&.negative?
         out = nil
         unless limit&.zero?
           # One batch (num_rows is not trusted: some writers store 0), so the column types are
@@ -231,7 +231,7 @@ module Herringbone
       NumoColumns.load!
       symbolize = @symbolize
       out_fields = select_fields(columns)
-      filter = where && !where.empty? ? Filter.new(@schema, where) : nil
+      filter = (where && !where.empty?) ? Filter.new(@schema, where) : nil
       filter_fields = filter ? filter.fields : []
       names = row_keys(out_fields, symbolize)
       specs = out_fields.map { |f| NumoColumns.spec_for(f) }
@@ -248,7 +248,7 @@ module Herringbone
       pending_rows = 0
       flush = lambda do
         batch = sources.each_with_index.map do |(kind, _), j|
-          kind == :fast ? NumoColumns.finish_fixed(specs[j], pending[j]) : NumoColumns.finish_values(specs[j], pending[j])
+          (kind == :fast) ? NumoColumns.finish_fixed(specs[j], pending[j]) : NumoColumns.finish_values(specs[j], pending[j])
         end
         pending = Array.new(out_fields.size) { [] }
         pending_rows = 0
@@ -296,12 +296,12 @@ module Herringbone
               numo = numo.map { |values, valid| [values[0...kept].dup, valid && valid[0...kept].dup] }
             end
             sources.each_with_index do |(kind, i), j|
-              pending[j] << (kind == :fast ? numo[i] : data[i])
+              pending[j] << ((kind == :fast) ? numo[i] : data[i])
             end
             pending_rows += kept
             left_to_yield -= kept if left_to_yield
             flush.call if pending_rows >= size || left_to_yield&.zero?
-            return if left_to_yield&.zero?
+            return if left_to_yield&.zero? # standard:disable Lint/NonLocalExitFromIterator
           end
         end
       end
@@ -314,7 +314,7 @@ module Herringbone
       fields = select_fields(columns)
       row_keys(fields, @symbolize).zip(fields.map { |f|
         spec = NumoColumns.spec_for(f)
-        spec.kind == :fixed ? spec.klass.new(0) : Numo::RObject.new(0)
+        (spec.kind == :fixed) ? spec.klass.new(0) : Numo::RObject.new(0)
       }).to_h
     end
 
@@ -361,7 +361,7 @@ module Herringbone
 
     def build_rows(names, data, k)
       return Array.new(k) { {} } if names.empty?
-      return data.first.map { |v| { names.first => v } } if names.size == 1
+      return data.first.map { |v| {names.first => v} } if names.size == 1
       nf = names.size
       Array.new(k) do |i|
         row = {}
@@ -404,7 +404,7 @@ module Herringbone
         return nil if zone.match?(/\A(?:utc|z)\z/i)
         if (m = OFFSET_PATTERN.match(zone))
           # As seconds, since Ruby 3.0 only parses "+HH:MM" offset strings
-          return zone_converter((m[1] == "-" ? -1 : 1) * (m[2].to_i * 3600 + m[3].to_i * 60 + m[4].to_i))
+          return zone_converter(((m[1] == "-") ? -1 : 1) * (m[2].to_i * 3600 + m[3].to_i * 60 + m[4].to_i))
         end
         if defined?(::ActiveSupport::TimeZone) && (tz = ::ActiveSupport::TimeZone[zone])
           return ->(t) { tz.at(t) }
@@ -477,7 +477,7 @@ module Herringbone
           max = f.column.max_definition_level
           return vals if vals.size == defs.size
           vi = -1
-          return defs.map { |d| d == max ? vals[vi += 1] : nil }
+          return defs.map { |d| (d == max) ? vals[vi += 1] : nil }
         end
         return read_simple_list(f) if f.kind == :list && f.element.leaf? && f.element.column.max_repetition_level == 1
 

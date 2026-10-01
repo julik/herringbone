@@ -22,7 +22,7 @@ report_every = [rows / 20, 100_000].max
 def rss_mb = GetProcessMem.new.mb.round
 
 puts "Exporting #{rows} rows to #{path} (#{options.empty? ? "default options" : options.inspect})"
-puts format("%12s %9s %10s %9s %11s", "rows", "elapsed", "rows/s", "RSS MB", "GC runs")
+puts "        rows   elapsed     rows/s    RSS MB     GC runs"
 t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 peak = 0
 File.open(path, "wb") do |file|

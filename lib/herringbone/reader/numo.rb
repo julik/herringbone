@@ -82,9 +82,9 @@ module Herringbone
           when nil, :time then [Numo::Int32, Numo::Int32]
           when :integer
             if signed
-              [{ 8 => Numo::Int8, 16 => Numo::Int16 }.fetch(bits, Numo::Int32), Numo::Int32]
+              [{8 => Numo::Int8, 16 => Numo::Int16}.fetch(bits, Numo::Int32), Numo::Int32]
             else
-              [{ 8 => Numo::UInt8, 16 => Numo::UInt16 }.fetch(bits, Numo::UInt32), Numo::UInt32]
+              [{8 => Numo::UInt8, 16 => Numo::UInt16}.fetch(bits, Numo::UInt32), Numo::UInt32]
             end
           end
         when T::INT64
@@ -102,10 +102,10 @@ module Herringbone
       # (validity is a Numo::Bit, or nil when every value is present)
       def finish_fixed(spec, parts)
         return spec.klass.new(0) if parts.empty?
-        full = parts.size == 1 ? parts[0][0] : Numo::NArray.concatenate(parts.map(&:first))
+        full = (parts.size == 1) ? parts[0][0] : Numo::NArray.concatenate(parts.map(&:first))
         valid = nil
         if parts.any? { |_, v| v }
-          valid = parts.size == 1 ? parts[0][1] : Numo::NArray.concatenate(parts.map { |f, v| v || Numo::Bit.ones(f.size) })
+          valid = (parts.size == 1) ? parts[0][1] : Numo::NArray.concatenate(parts.map { |f, v| v || Numo::Bit.ones(f.size) })
           valid = nil if valid.count_false.zero?
         end
         unless valid
@@ -115,7 +115,7 @@ module Herringbone
         if spec.klass == Numo::Bit
           bits = full.to_a
           present = valid.to_a
-          return robject(Array.new(bits.size) { |i| present[i] == 1 ? bits[i] == 1 : nil })
+          return robject(Array.new(bits.size) { |i| (present[i] == 1) ? bits[i] == 1 : nil })
         end
         out_class = spec.float? ? spec.klass : Numo::DFloat
         out = full.instance_of?(out_class) ? full.dup : out_class.cast(full) # never write into a view
@@ -125,7 +125,7 @@ module Herringbone
 
       # The result for a field read as Ruby values (+parts+ are Arrays of values)
       def finish_values(spec, parts)
-        values = parts.size == 1 ? parts[0] : parts.flatten(1)
+        values = (parts.size == 1) ? parts[0] : parts.flatten(1)
         case spec.kind
         when :object then robject(values, arrays: spec.arrays)
         when :list then list_array(spec.klass, values)
@@ -138,7 +138,7 @@ module Herringbone
         if values.include?(nil)
           return robject(values) if klass == Numo::Bit
           filled = values.map { |v| v.nil? ? Float::NAN : v }
-          return (klass == Numo::SFloat ? Numo::SFloat : Numo::DFloat).cast(filled)
+          return ((klass == Numo::SFloat) ? Numo::SFloat : Numo::DFloat).cast(filled)
         end
         return klass.new(0) if values.empty?
         return Numo::Bit.cast(values.map { |v| v ? 1 : 0 }) if klass == Numo::Bit
@@ -165,7 +165,7 @@ module Herringbone
         out
       end
 
-      POWERS = Hash.new { |h, w| h[w] = (w > 30 ? Numo::Int64 : Numo::Int32).cast(Array.new(w) { |j| 1 << j }) }
+      POWERS = Hash.new { |h, w| h[w] = ((w > 30) ? Numo::Int64 : Numo::Int32).cast(Array.new(w) { |j| 1 << j }) }
 
       # +count+ bit-packed values of +width+ bits (LSB first) from +data+ at +pos+ as a Numo
       # array, without a Ruby object per value
@@ -241,7 +241,7 @@ module Herringbone
           load_page! while @page.nil? || @page.remaining.zero?
           t = @page.remaining
           t = k if k < t
-          valid = nil
+          nil
           nv = t
           if (valid = @page.read_validity_numo(t, @max_def))
             nv = valid.count_true
@@ -284,7 +284,11 @@ module Herringbone
       end
 
       def cast(values)
-        @klass == Numo::Bit ? Numo::Bit.cast(values.map { |v| v ? 1 : 0 }) : @klass.cast(values)
+        if @klass == Numo::Bit
+          Numo::Bit.cast(values.map { |v| v ? 1 : 0 })
+        else
+          @klass.cast(values)
+        end
       end
 
       def load_page!

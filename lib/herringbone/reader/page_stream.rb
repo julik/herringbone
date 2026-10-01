@@ -91,12 +91,12 @@ module Herringbone
           out = []
           while n > 0
             next_run if @left.zero?
-            t = n < @left ? n : @left
+            t = (n < @left) ? n : @left
             if @rle
               out.fill(@value, out.size, t)
             else
               if @buf.nil? || @bi >= @buf.size
-                g = @groups < CHUNK / 8 ? @groups : CHUNK / 8
+                g = (@groups < CHUNK / 8) ? @groups : CHUNK / 8
                 @buf = Encodings::RLE.unpack_bits(@data, @pos, g * 8, @width)
                 @pos += g * @width
                 @groups -= g
@@ -121,9 +121,9 @@ module Herringbone
           out = String.new(capacity: n, encoding: Encoding::BINARY)
           while n > 0
             next_run if @left.zero?
-            t = n < @left ? n : @left
+            t = (n < @left) ? n : @left
             if @rle
-              out << (@value == 1 ? "1" : "0") * t
+              out << ((@value == 1) ? "1" : "0") * t
             elsif @buf && @bi < @buf.size
               avail = @buf.size - @bi
               t = avail if t > avail
@@ -158,7 +158,7 @@ module Herringbone
           i = 0
           while n > 0
             next_run if @left.zero?
-            t = n < @left ? n : @left
+            t = (n < @left) ? n : @left
             if @rle
               out[i...i + t] = @value
             elsif @buf && @bi < @buf.size
@@ -173,9 +173,9 @@ module Herringbone
               @pos += groups * @width
               @groups -= groups
               # A partly used group goes to the buffer #read and this method take values from
-              @buf = groups * 8 > t ? vals[t..].to_a : nil
+              @buf = (groups * 8 > t) ? vals[t..].to_a : nil
               @bi = 0
-              out[i...i + t] = groups * 8 > t ? vals[0...t] : vals
+              out[i...i + t] = (groups * 8 > t) ? vals[0...t] : vals
             end
             @left -= t
             n -= t

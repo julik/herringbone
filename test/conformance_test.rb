@@ -58,5 +58,5 @@ class ConformanceTest < Minitest::Test
     end
     assert_equal expected["rows"], JSON.parse(Canonical.dump(first_rows)), "first rows"
     assert_equal expected["row_hash"], Canonical.row_hash(lines), "row hash of all rows"
-    end
+  end
 end

@@ -241,15 +241,15 @@ module Herringbone
           [:boolean]
         elsif all.call(Integer, BigDecimal)
           scale = values.map { |v| v.is_a?(BigDecimal) ? v.to_s("F").split(".")[1].to_s.sub(/0+\z/, "").size : 0 }.max
-          [:decimal, { precision: 38, scale: scale }]
+          [:decimal, {precision: 38, scale: scale}]
         elsif all.call(Numeric)
           [:double]
         elsif all.call(String)
-          values.all? { |v| v.encoding != Encoding::BINARY && v.valid_encoding? } ? [:string] : [:binary]
+          (values.all? { |v| v.encoding != Encoding::BINARY && v.valid_encoding? }) ? [:string] : [:binary]
         elsif all.call(String, Symbol)
           [:string]
         elsif all.call(Time, DateTime)
-          [:timestamp, { unit: :micros }]
+          [:timestamp, {unit: :micros}]
         elsif all.call(Date)
           [:date]
         else
@@ -301,7 +301,7 @@ module Herringbone
         elsif node.logical_type then "UNKNOWN LOGICAL TYPE"
         else Format::ConvertedType::NAMES[node.converted_type]
         end
-        lines << "#{"  " * depth}#{node.repetition} #{desc} #{node.name}#{ann ? " (#{ann})" : ""}"
+        lines << "#{"  " * depth}#{node.repetition} #{desc} #{node.name}#{" (#{ann})" if ann}"
         node.children&.each { |c| walk.call(c, depth + 1) }
       end
       @root.children.each { |c| walk.call(c, 0) }
@@ -313,7 +313,7 @@ module Herringbone
 
     def collect_columns(node, max_def, max_rep)
       node.children.each do |child|
-        d = child.repetition == :required ? max_def : max_def + 1
+        d = (child.repetition == :required) ? max_def : max_def + 1
         r = child.repeated? ? max_rep + 1 : max_rep
         if child.leaf?
           @columns << Column.new(@columns.size, child, d, r)
@@ -357,8 +357,10 @@ module Herringbone
         rr = parent_rep + 1
         key = build_field(kv.children[0], rd, rr)
         # A map without values is read as a list of its keys, like Arrow does
-        return Field.new(kind: :list, name: node.name, optional: optional, def_level: d,
-          rep_level: rr, item_def: rd, element: key, node: node) unless kv.children[1]
+        unless kv.children[1]
+          return Field.new(kind: :list, name: node.name, optional: optional, def_level: d,
+            rep_level: rr, item_def: rd, element: key, node: node)
+        end
         value = build_field(kv.children[1], rd, rr)
         Field.new(kind: :map, name: node.name, optional: optional, def_level: d,
           rep_level: rr, item_def: rd, key: key, value: value, node: node)

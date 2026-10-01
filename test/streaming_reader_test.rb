@@ -35,7 +35,10 @@ class StreamingReaderTest < Minitest::Test
           dict = []
           index = {}
           # Keyed by bytes for Floats, where 0.0.eql?(-0.0)
-          ids = vals.map { |v| key = v.is_a?(Float) ? [v].pack("G") : v; index.fetch(key) { index[key] = (dict << v).size - 1 } }
+          ids = vals.map { |v|
+            key = v.is_a?(Float) ? [v].pack("G") : v
+            index.fetch(key) { index[key] = (dict << v).size - 1 }
+          }
           body = Plain.encode(dict, col.type, col.type_length)
           header = F::PageHeader.new(type: F::PageType::DICTIONARY_PAGE, uncompressed_page_size: body.bytesize,
             compressed_page_size: body.bytesize,
@@ -149,11 +152,11 @@ class StreamingReaderTest < Minitest::Test
       end
     end
     rows = [
-      { "id" => 0, "l" => (1..50).to_a, "m" => { "a" => { "xs" => (1..20).to_a }, "b" => nil } },
-      { "id" => 1, "l" => nil, "m" => {} },
-      { "id" => 2, "l" => [], "m" => nil },
-      { "id" => 3, "l" => [nil] * 30, "m" => { "c" => { "xs" => [] } } },
-      { "id" => 4, "l" => [7], "m" => { "d" => { "xs" => nil } } }
+      {"id" => 0, "l" => (1..50).to_a, "m" => {"a" => {"xs" => (1..20).to_a}, "b" => nil}},
+      {"id" => 1, "l" => nil, "m" => {}},
+      {"id" => 2, "l" => [], "m" => nil},
+      {"id" => 3, "l" => [nil] * 30, "m" => {"c" => {"xs" => []}}},
+      {"id" => 4, "l" => [7], "m" => {"d" => {"xs" => nil}}}
     ]
     [1, 2].each do |version|
       bytes = resplit(write_to_string(schema, rows), per_page: 4, version: version)
@@ -190,7 +193,7 @@ class StreamingReaderTest < Minitest::Test
 
   def test_each_batch_spans_row_groups
     schema = Herringbone::Schema.define { int64 :id, null: false }
-    rows = Array.new(95) { |i| { "id" => i } }
+    rows = Array.new(95) { |i| {"id" => i} }
     reader = reader_for(write_to_string(schema, rows, row_group_rows: 10))
     assert_equal 10, reader.row_groups.size
     sizes = reader.each_batch(30).map(&:size)
@@ -226,23 +229,23 @@ class StreamingReaderTest < Minitest::Test
         string :name
       end
     end
-    row = { "id" => 1, "s" => { "a" => "A", "inner" => { "b" => 2 } }, "m" => { "k" => { "x" => 3 } },
-            "plain" => { "p" => 4 }, "ls" => [{ "name" => "n" }, nil] }
-    expected = { id: 1, s: { a: "A", inner: { b: 2 } }, m: { "k" => { x: 3 } }, plain: { "p" => 4 }, ls: [{ name: "n" }, nil] }
+    row = {"id" => 1, "s" => {"a" => "A", "inner" => {"b" => 2}}, "m" => {"k" => {"x" => 3}},
+           "plain" => {"p" => 4}, "ls" => [{"name" => "n"}, nil]}
+    expected = {id: 1, s: {a: "A", inner: {b: 2}}, m: {"k" => {x: 3}}, plain: {"p" => 4}, ls: [{name: "n"}, nil]}
     bytes = write_to_string(schema, [row])
     assert_equal [row], reader_for(bytes).read
     reader = Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol)
     assert_equal [expected], reader.read
     assert_equal [expected], reader.each_row.to_a
     assert_equal [[expected]], reader.each_batch.to_a
-    assert_equal [{ s: expected[:s] }], reader.each_row(columns: ["s"]).to_a
-    assert_equal({ id: [1], plain: [{ "p" => 4 }] }, reader.read(as: :columns, columns: %w[id plain]))
+    assert_equal [{s: expected[:s]}], reader.each_row(columns: ["s"]).to_a
+    assert_equal({id: [1], plain: [{"p" => 4}]}, reader.read(as: :columns, columns: %w[id plain]))
     assert_equal [row], Herringbone::Reader.new(StringIO.new(bytes), keys: "string").read
     assert_raises(ArgumentError) { Herringbone::Reader.new(StringIO.new(bytes), keys: :nope) }
   end
 
   def test_reader_needs_an_io_and_leaves_it_open
-    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{ id: 1 }])
+    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{id: 1}])
     Dir.mktmpdir do |dir|
       path = File.join(dir, "io.parquet")
       File.binwrite(path, bytes)
@@ -252,7 +255,7 @@ class StreamingReaderTest < Minitest::Test
       end
       assert_match(/StringIO/, assert_raises(ArgumentError) { Herringbone::Reader.new(bytes) }.message)
       File.open(path, "rb") do |f|
-        assert_equal [{ "id" => 1 }], Herringbone::Reader.new(f).read
+        assert_equal [{"id" => 1}], Herringbone::Reader.new(f).read
         refute f.closed?, "the IO belongs to the caller"
       end
     end
@@ -271,8 +274,8 @@ class StreamingReaderTest < Minitest::Test
 
   def ts_bytes
     write_to_string(TS_SCHEMA, [
-      { ts: T0, ts_ms: T0, ts_ns: T0, local: Time.utc(2024, 1, 1, 12), i96: T0, tl: [T0, nil], d: Date.new(2024, 3, 31) },
-      { ts: nil, tl: nil }
+      {ts: T0, ts_ms: T0, ts_ns: T0, local: Time.utc(2024, 1, 1, 12), i96: T0, tl: [T0, nil], d: Date.new(2024, 3, 31)},
+      {ts: nil, tl: nil}
     ])
   end
 
@@ -361,14 +364,17 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_page_reads_are_lazy
-    schema = Herringbone::Schema.define { int64 :id, null: false; string :s }
-    rows = Array.new(5000) { |i| { "id" => i, "s" => "row #{i}" } }
+    schema = Herringbone::Schema.define {
+      int64 :id, null: false
+      string :s
+    }
+    rows = Array.new(5000) { |i| {"id" => i, "s" => "row #{i}"} }
     bytes = write_to_string(schema, rows, page_bytes: 1024, compression: :none)
     io = CountingIO.new(bytes)
     reader = Herringbone::Reader.new(io)
     io.bytes_read = 0
     first = reader.each_batch(10).first
-    assert_equal({ "id" => 0, "s" => "row 0" }, first.first)
+    assert_equal({"id" => 0, "s" => "row 0"}, first.first)
     assert_operator io.bytes_read, :<, bytes.bytesize / 4, "reading the first batch should not read whole chunks"
   end
 
@@ -383,8 +389,11 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_under_reported_chunk_sizes_are_tolerated
-    schema = Herringbone::Schema.define { int64 :id, null: false; list :l, :string }
-    rows = Array.new(300) { |i| { "id" => i, "l" => [i.to_s] * (i % 4) } }
+    schema = Herringbone::Schema.define {
+      int64 :id, null: false
+      list :l, :string
+    }
+    rows = Array.new(300) { |i| {"id" => i, "l" => [i.to_s] * (i % 4)} }
     bytes = write_to_string(schema, rows, page_bytes: 256)
     reader = reader_for(bytes)
     reader.row_groups.each do |rg|
@@ -401,7 +410,7 @@ class StreamingReaderTest < Minitest::Test
 
   def test_truncated_file_raises_format_error
     schema = Herringbone::Schema.define { int64 :id, null: false }
-    bytes = write_to_string(schema, Array.new(1000) { |i| { "id" => i } }, page_bytes: 512, compression: :none)
+    bytes = write_to_string(schema, Array.new(1000) { |i| {"id" => i} }, page_bytes: 512, compression: :none)
     reader = reader_for(bytes)
     reader.row_groups[0].num_rows = 2000
     reader.row_groups[0].columns[0].meta_data.num_values = 2000

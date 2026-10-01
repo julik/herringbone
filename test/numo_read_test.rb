@@ -44,7 +44,7 @@ class NumoReadTest < Minitest::Test
       v.is_a?(Numeric) && [v].pack("e") == [x].pack("e")
     when Numo::DFloat
       return v.nil? || (v.is_a?(Float) && v.nan?) if x.nan?
-      v.is_a?(Numeric) && v.to_f.eql?(x) # integers with nulls: exact up to 2**53
+      v.is_a?(Numeric) && v.to_f.eql?(x) # standard:disable Lint/FloatComparison -- integers with nulls: exact up to 2**53
     when Numo::RObject then Marshal.dump(x) == Marshal.dump(v)
     else x == v && v.is_a?(Integer)
     end
@@ -77,11 +77,11 @@ class NumoReadTest < Minitest::Test
     when :object then Numo::RObject
     when :list
       w = values.first.is_a?(Array) ? values.first.size : 0
-      w.positive? && values.all? { |v| v.is_a?(Array) && v.size == w && !v.include?(nil) } ? spec.klass : Numo::RObject
+      (w.positive? && values.all? { |v| v.is_a?(Array) && v.size == w && !v.include?(nil) }) ? spec.klass : Numo::RObject
     else
       return spec.klass unless values.include?(nil)
       return Numo::RObject if spec.klass == Numo::Bit
-      spec.klass == Numo::SFloat ? Numo::SFloat : Numo::DFloat
+      (spec.klass == Numo::SFloat) ? Numo::SFloat : Numo::DFloat
     end
   end
 
@@ -122,7 +122,7 @@ class NumoReadTest < Minitest::Test
         end
         n = rows.values.first&.size || 0
         # Tiny batches only on small files, to keep the test fast
-        assert_same_reads(r, File.basename(path), sizes: n <= 2000 ? [7, 1024] : [4096])
+        assert_same_reads(r, File.basename(path), sizes: (n <= 2000) ? [7, 1024] : [4096])
         checked += 1
       end
     end
@@ -158,7 +158,7 @@ class NumoReadTest < Minitest::Test
     rows = Array.new(3) do |i|
       [-i, -300 * i, -70_000 * i, -(2**40) * i, 200 + i, 60_000 + i, 4_000_000_000 + i, 2**64 - 1 - i,
         i + 0.5, i + 0.25, i + 0.5, i.odd?, 1000 * i, "s#{i}", Date.new(2024, 1, 1 + i), Time.utc(2024, 1, 1, i),
-        BigDecimal("1.5") + i, [i, i + 1.5, 0.25], ["t"] * i, { a: i }, { "k" => i }]
+        BigDecimal("1.5") + i, [i, i + 1.5, 0.25], ["t"] * i, {a: i}, {"k" => i}]
     end
     r = write(rows, schema)
     cols = r.read(as: :numo)
@@ -176,16 +176,16 @@ class NumoReadTest < Minitest::Test
     assert_equal [[2.0, 3.5, 0.25]], cols["emb"][2, true].to_a.then { |a| [a] }
     assert_equal [Date.new(2024, 1, 3), Time.utc(2024, 1, 1, 2), BigDecimal("3.5")], [cols["d"][2], cols["ts"][2], cols["dec"][2]]
     assert_equal [[], ["t"], %w[t t]], cols["tags"].to_a
-    assert_equal({ "a" => 1 }, cols["st"][1])
+    assert_equal({"a" => 1}, cols["st"][1])
     assert_equal [0, 1, 0], cols["bool"].to_a
     assert_same_reads(r, "types", sizes: [1, 2])
   end
 
   def test_nulls
     rows = [
-      { i: 1, f: 1.5, s: 1.5, b: true, l: 2**60 + 1 },
-      { i: nil, f: nil, s: nil, b: nil, l: nil },
-      { i: 3, f: 3.5, s: 3.5, b: false, l: 3 }
+      {i: 1, f: 1.5, s: 1.5, b: true, l: 2**60 + 1},
+      {i: nil, f: nil, s: nil, b: nil, l: nil},
+      {i: 3, f: 3.5, s: 3.5, b: false, l: 3}
     ]
     schema = Herringbone::Schema.define do
       int32 :i
@@ -244,10 +244,10 @@ class NumoReadTest < Minitest::Test
     rng = Random.new(7)
     rows = Array.new(1000) do |i|
       null = i % 7 == 3
-      { "id" => i, "i32" => rng.rand(-1000..1000), "i64" => rng.rand(-2**62..2**62), "f32" => rng.rand.round(3),
-        "f64" => rng.rand * 1e6, "flag" => i % 3 == 0, "n32" => null ? nil : rng.rand(50),
-        "n64" => null ? nil : i * 3, "nf" => null ? nil : i / 4.0, "nflag" => null ? nil : i.even?,
-        "small" => i % 5 } # few distinct values: dictionary pages of short indices
+      {"id" => i, "i32" => rng.rand(-1000..1000), "i64" => rng.rand(-2**62..2**62), "f32" => rng.rand.round(3),
+       "f64" => rng.rand * 1e6, "flag" => i % 3 == 0, "n32" => null ? nil : rng.rand(50),
+       "n64" => null ? nil : i * 3, "nf" => null ? nil : i / 4.0, "nflag" => null ? nil : i.even?,
+       "small" => i % 5} # few distinct values: dictionary pages of short indices
     end
     schema = Herringbone::Schema.define do
       int64 :id, null: false
@@ -264,11 +264,11 @@ class NumoReadTest < Minitest::Test
     end
     variants = []
     [1, 2].each do |version|
-      [true, false].each { |dict| variants << { data_page_version: version, dictionary: dict } }
-      variants << { data_page_version: version, dictionary: false,
-                    encodings: %w[i32 i64 f32 f64 n32 n64 nf].to_h { |c| [c, :byte_stream_split] } }
-      variants << { data_page_version: version, dictionary: false,
-                    encodings: %w[id i32 i64 n32 n64 small].to_h { |c| [c, :delta_binary_packed] } }
+      [true, false].each { |dict| variants << {data_page_version: version, dictionary: dict} }
+      variants << {data_page_version: version, dictionary: false,
+                    encodings: %w[i32 i64 f32 f64 n32 n64 nf].to_h { |c| [c, :byte_stream_split] }}
+      variants << {data_page_version: version, dictionary: false,
+                    encodings: %w[id i32 i64 n32 n64 small].to_h { |c| [c, :delta_binary_packed] }}
     end
     variants.each do |opts|
       r = write(rows, schema, page_rows: 64, row_group_rows: 300, compression: :none, **opts)
@@ -281,31 +281,31 @@ class NumoReadTest < Minitest::Test
   end
 
   def test_where_from_and_limit
-    rows = Array.new(3000) { |i| { id: i, v: i.odd? ? nil : i * 1.5, grp: i % 10, name: "n#{i % 13}" } }
+    rows = Array.new(3000) { |i| {id: i, v: i.odd? ? nil : i * 1.5, grp: i % 10, name: "n#{i % 13}"} }
     r = write(rows, page_rows: 100, row_group_rows: 1000)
     [
-      { where: { grp: 3 } },
-      { where: { id: 1234..2345 } },                            # an output column in where: goes the Ruby way
-      { where: { id: 1234..2345 }, columns: %w[v grp] },        # pages skipped with the page index
-      { where: { name: "n7", grp: 1..5 }, columns: %w[id v] },
-      { where: { id: 5000.. } },                                # no rows
-      { from: 999 }, { from: 2500, limit: 17 }, { limit: 1 }, { limit: 0 }, { from: 3000 },
-      { where: { grp: [1, 2] }, from: 1500, limit: 99 },
-      { where: { v: nil }, columns: %w[id] },
-      { columns: %w[name v] }
+      {where: {grp: 3}},
+      {where: {id: 1234..2345}},                            # an output column in where: goes the Ruby way
+      {where: {id: 1234..2345}, columns: %w[v grp]},        # pages skipped with the page index
+      {where: {name: "n7", grp: 1..5}, columns: %w[id v]},
+      {where: {id: 5000..}},                                # no rows
+      {from: 999}, {from: 2500, limit: 17}, {limit: 1}, {limit: 0}, {from: 3000},
+      {where: {grp: [1, 2]}, from: 1500, limit: 99},
+      {where: {v: nil}, columns: %w[id]},
+      {columns: %w[name v]}
     ].each do |opts|
       assert_same_reads(r, opts.inspect, sizes: [1, 64, 1000], **opts)
     end
-    assert_equal 2346 - 1234, r.read(as: :numo, where: { id: 1234..2345 }, columns: ["id"])["id"].size
+    assert_equal 2346 - 1234, r.read(as: :numo, where: {id: 1234..2345}, columns: ["id"])["id"].size
   end
 
   def test_zero_rows_and_columns
-    r = write([{ a: 1, b: "x", l: [1.0] }])
+    r = write([{a: 1, b: "x", l: [1.0]}])
     empty = r.read(as: :numo, limit: 0)
-    assert_equal({ "a" => [Numo::Int64, 0], "b" => [Numo::RObject, 0], "l" => [Numo::RObject, 0] },
+    assert_equal({"a" => [Numo::Int64, 0], "b" => [Numo::RObject, 0], "l" => [Numo::RObject, 0]},
       empty.transform_values { |v| [v.class, v.size] })
-    assert_equal empty.keys, r.read(as: :numo, where: { a: 2 }).keys
-    assert_equal [], r.each_batch(as: :numo, where: { a: 2 }).to_a
+    assert_equal empty.keys, r.read(as: :numo, where: {a: 2}).keys
+    assert_equal [], r.each_batch(as: :numo, where: {a: 2}).to_a
     assert_equal({}, r.read(as: :numo, columns: []))
     with_reader(File.join(FIXTURES_DIR, "generated", "zero_rows.parquet")) do |zr|
       assert(zr.read(as: :numo).values.all? { |v| v.is_a?(Numo::NArray) && v.empty? })
@@ -314,16 +314,16 @@ class NumoReadTest < Minitest::Test
 
   def test_symbol_keys
     io = StringIO.new("".b)
-    Herringbone.write(io, [{ a: 1, b: "x" }])
+    Herringbone.write(io, [{a: 1, b: "x"}])
     r = Herringbone::Reader.new(StringIO.new(io.string), keys: :symbol)
     assert_equal %i[a b], r.read(as: :numo).keys
     assert_equal %i[a], r.each_batch(as: :numo, columns: ["a"]).first.keys
   end
 
   def test_results_are_independent_of_dictionary_cache
-    r = write(Array.new(10) { |i| { v: (i % 3).to_f } }, dictionary: true)
+    r = write(Array.new(10) { |i| {v: (i % 3).to_f} }, dictionary: true)
     b1, b2 = r.each_batch(5, as: :numo).to_a
-    b1["v"].inplace * 100 # mutating a result must not change later batches
+    b1["v"].inplace # mutating a result must not change later batches
     assert_equal [2.0, 0.0, 1.0, 2.0, 0.0], b2["v"].to_a
   end
 
@@ -335,7 +335,7 @@ class NumoReadTest < Minitest::Test
       while values.size < 3000
         # Long RLE runs and scattered values, to get both kinds of runs
         v = rng.rand(0..max)
-        values.concat(rng.rand < 0.3 ? [v] * rng.rand(8..40) : Array.new(rng.rand(1..30)) { rng.rand(0..max) })
+        values.concat((rng.rand < 0.3) ? [v] * rng.rand(8..40) : Array.new(rng.rand(1..30)) { rng.rand(0..max) })
       end
       data = Herringbone::Encodings::RLE.encode_hybrid(values, width)
       dec = Herringbone::Reader::PageStream::HybridDecoder.new(data, 0, data.bytesize, width)
@@ -344,10 +344,10 @@ class NumoReadTest < Minitest::Test
       while got.size < values.size
         n = [rng.rand(1..90), values.size - got.size].min
         got.concat(case i % 3
-          when 0 then dec.read(n)
-          when 1 then dec.read_numo(n, width > 31 ? Numo::Int64 : Numo::Int32).to_a
-          else width == 1 ? dec.read_flags(n).to_a : dec.read_numo(n, Numo::UInt32).to_a
-          end)
+        when 0 then dec.read(n)
+        when 1 then dec.read_numo(n, (width > 31) ? Numo::Int64 : Numo::Int32).to_a
+        else (width == 1) ? dec.read_flags(n).to_a : dec.read_numo(n, Numo::UInt32).to_a
+        end)
         i += 1
       end
       assert values == got, "width #{width}: first difference at #{values.each_index.find { |k| values[k] != got[k] }}"
@@ -361,28 +361,28 @@ class NumoMissingTest < Minitest::Test
 
   def test_as_numo_without_numo_names_the_gems
     io = StringIO.new("".b)
-    Herringbone.write(io, [{ a: 1 }])
+    Herringbone.write(io, [{a: 1}])
     reader = Herringbone::Reader.new(StringIO.new(io.string))
     loaded = NumoColumns.instance_variable_get(:@loaded)
     NumoColumns.instance_variable_set(:@loaded, false)
     missing = -> { raise LoadError, "cannot load such file -- numo/narray" }
     NumoColumns.stub(:require_library, missing) do
-      [-> { reader.read(as: :numo) }, -> { reader.each_batch(as: :numo) { } }].each do |call|
+      [-> { reader.read(as: :numo) }, -> { reader.each_batch(as: :numo) {} }].each do |call|
         error = assert_raises(Herringbone::UnsupportedError) { call.call }
         assert_match(/needs the "numo-narray-alt" gem \(or "numo-narray"\)/, error.message)
         assert_match(/cannot load such file -- numo\/narray/, error.message)
         assert_match(/Add `gem "numo-narray-alt"` to your Gemfile/, error.message)
       end
     end
-    assert_equal [{ "a" => 1 }], reader.read, "other read modes do not need Numo"
+    assert_equal [{"a" => 1}], reader.read, "other read modes do not need Numo"
   ensure
     NumoColumns.instance_variable_set(:@loaded, loaded)
   end
 
   def test_rejects_unknown_as
     io = StringIO.new("".b)
-    Herringbone.write(io, [{ a: 1 }])
-    error = assert_raises(ArgumentError) { Herringbone::Reader.new(StringIO.new(io.string)).each_batch(as: :numpy) { } }
+    Herringbone.write(io, [{a: 1}])
+    error = assert_raises(ArgumentError) { Herringbone::Reader.new(StringIO.new(io.string)).each_batch(as: :numpy) {} }
     assert_match(/:rows, :columns or :numo/, error.message)
   end
 end

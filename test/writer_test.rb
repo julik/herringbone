@@ -21,7 +21,7 @@ class WriterTest < Minitest::Test
     [1, 2].each do |version|
       [true, false].each do |dict|
         define_method("test_matrix_#{codec}_v#{version}_#{dict ? "dict" : "nodict"}") do
-          opts = { compression: codec, data_page_version: version, dictionary: dict }
+          opts = {compression: codec, data_page_version: version, dictionary: dict}
           bytes = write_to_string(ALL_TYPES_SCHEMA, ALL_ROWS, **opts)
           assert_roundtrip(ALL_TYPES_SCHEMA, ALL_ROWS, bytes, opts.inspect)
           check_chunk_metadata(bytes, codec, version, dict)
@@ -50,7 +50,7 @@ class WriterTest < Minitest::Test
         pages.each do |h, body|
           assert_equal Zlib.crc32(body), h.crc & 0xFFFF_FFFF, "page CRC"
           next if h.type == PT::DICTIONARY_PAGE
-          assert_equal(version == 1 ? PT::DATA_PAGE : PT::DATA_PAGE_V2, h.type)
+          assert_equal((version == 1) ? PT::DATA_PAGE : PT::DATA_PAGE_V2, h.type)
         end
         assert_equal pages.sum { |h, _| (h.data_page_header || h.data_page_header_v2)&.num_values || 0 }, meta.num_values
       end
@@ -70,7 +70,7 @@ class WriterTest < Minitest::Test
       [nil, 3].each do |page_bytes|
         define_method("test_explicit_encodings_v#{version}_#{dict}_#{page_bytes || "default"}") do
           rows = encoding_rows(300)
-          opts = { data_page_version: version, dictionary: dict, encodings: ENCODINGS, compression: :snappy }
+          opts = {data_page_version: version, dictionary: dict, encodings: ENCODINGS, compression: :snappy}
           opts[:page_bytes] = page_bytes if page_bytes
           bytes = write_to_string(ENCODING_SCHEMA, rows, **opts)
           assert_roundtrip(ENCODING_SCHEMA, rows, bytes, opts.inspect)
@@ -92,15 +92,15 @@ class WriterTest < Minitest::Test
 
   def test_invalid_explicit_encoding
     schema = Herringbone::Schema.define { string :s }
-    assert_raises(ArgumentError) { write_to_string(schema, [{ "s" => "x" }], encodings: { "s" => :byte_stream_split }) }
-    assert_raises(ArgumentError) { write_to_string(schema, [{ "s" => "x" }], encodings: { "s" => :bogus }) }
+    assert_raises(ArgumentError) { write_to_string(schema, [{"s" => "x"}], encodings: {"s" => :byte_stream_split}) }
+    assert_raises(ArgumentError) { write_to_string(schema, [{"s" => "x"}], encodings: {"s" => :bogus}) }
     schema = Herringbone::Schema.define { double :d }
-    assert_raises(ArgumentError) { write_to_string(schema, [{ "d" => 1.0 }], encodings: { "d" => :delta_binary_packed }) }
+    assert_raises(ArgumentError) { write_to_string(schema, [{"d" => 1.0}], encodings: {"d" => :delta_binary_packed}) }
   end
 
   def test_rle_dictionary_with_single_distinct_value
     schema = Herringbone::Schema.define { string :s }
-    rows = Array.new(100) { { "s" => "same" } }
+    rows = Array.new(100) { {"s" => "same"} }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
     assert_includes reader_for(bytes).row_groups[0].columns[0].meta_data.encodings, E::RLE_DICTIONARY
@@ -112,46 +112,46 @@ class WriterTest < Minitest::Test
       string :b
       list :c, :string
     end
-    rows = Array.new(50) { |i| { "a" => "x#{i % 2}", "b" => "y#{i % 2}", "c" => ["z#{i % 3}"] } }
+    rows = Array.new(50) { |i| {"a" => "x#{i % 2}", "b" => "y#{i % 2}", "c" => ["z#{i % 3}"]} }
     bytes = write_to_string(schema, rows, dictionary: ["b", "c.list.element"])
     assert_roundtrip(schema, rows, bytes)
     encs = reader_for(bytes).row_groups[0].columns.map { |c| c.meta_data.encodings.include?(E::RLE_DICTIONARY) }
     assert_equal [false, true, true], encs
   end
 
-def test_dictionary_encoded_floats_keep_negative_zero
+  def test_dictionary_encoded_floats_keep_negative_zero
     schema = Herringbone::Schema.define do
       double :d
       float :f
     end
-    rows = [{ "d" => 0.0, "f" => 0.0 }, { "d" => -0.0, "f" => -0.0 }, { "d" => Float::NAN, "f" => 1.0 }]
+    rows = [{"d" => 0.0, "f" => 0.0}, {"d" => -0.0, "f" => -0.0}, {"d" => Float::NAN, "f" => 1.0}]
     bytes = write_to_string(schema, rows, dictionary: %w[d f])
     signs = reader_for(bytes).read.first(2).map { |r| [r["d"], r["f"]].map { |v| (1.0 / v).positive? } }
     assert_equal [[true, true], [false, false]], signs
   end
-  
+
   def test_boolean_columns_are_never_dictionary_encoded
     schema = Herringbone::Schema.define { boolean :b }
-    rows = Array.new(20) { |i| { "b" => i.odd? ? nil : i % 4 == 0 } }
+    rows = Array.new(20) { |i| {"b" => i.odd? ? nil : i % 4 == 0} }
     bytes = write_to_string(schema, rows, dictionary: ["b"])
     assert_roundtrip(schema, rows, bytes)
     encs = reader_for(bytes).row_groups[0].columns[0].meta_data.encodings
     refute_includes encs, E::RLE_DICTIONARY
   end
-  
+
   def test_decimal_nan_and_infinity_raise_encode_error
     schema = Herringbone::Schema.define { decimal :a, precision: 10, scale: 2 }
     [Float::NAN, Float::INFINITY].each do |v|
-      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
+      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{"a" => v}]) }
     end
     [BigDecimal("NaN"), BigDecimal("Infinity")].each do |v|
-      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "a" => v }]) }
+      assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{"a" => v}]) }
     end
   end
 
   def test_dictionary_fallback_for_high_cardinality
     schema = Herringbone::Schema.define { int64 :a }
-    rows = Array.new(1000) { |i| { "a" => i } }
+    rows = Array.new(1000) { |i| {"a" => i} }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
     refute_includes reader_for(bytes).row_groups[0].columns[0].meta_data.encodings, E::RLE_DICTIONARY
@@ -180,7 +180,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_row_group_flush_boundary_exact
     schema = Herringbone::Schema.define { int32 :a }
-    rows = Array.new(10) { |i| { "a" => i } }
+    rows = Array.new(10) { |i| {"a" => i} }
     bytes = write_to_string(schema, rows, row_group_rows: 5)
     assert_equal [5, 5], reader_for(bytes).row_groups.map(&:num_rows)
     assert_roundtrip(schema, rows, bytes)
@@ -226,7 +226,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_repeated_rows_larger_than_page_are_not_split
     schema = Herringbone::Schema.define { list :l, :int64 }
-    rows = [{ "l" => (1..500).to_a }, { "l" => [] }, { "l" => (1..300).to_a }, { "l" => nil }]
+    rows = [{"l" => (1..500).to_a}, {"l" => []}, {"l" => (1..300).to_a}, {"l" => nil}]
     [1, 2].each do |v|
       bytes = write_to_string(schema, rows, page_bytes: 16, data_page_version: v)
       assert_roundtrip(schema, rows, bytes)
@@ -276,9 +276,9 @@ def test_dictionary_encoded_floats_keep_negative_zero
   end
 
   def test_all_null_nested
-    rows = Array.new(10) { |i| { "id" => i, "l_required" => [], "s_req" => { "x" => i } } }
+    rows = Array.new(10) { |i| {"id" => i, "l_required" => [], "s_req" => {"x" => i}} }
     bytes = write_to_string(NESTED_SCHEMA, rows)
-    expected = rows.map { |r| NESTED_SCHEMA.fields.to_h { |f| [f.name, r[f.name]] }.merge("s_req" => { "x" => r["s_req"]["x"], "y" => nil }) }
+    expected = rows.map { |r| NESTED_SCHEMA.fields.to_h { |f| [f.name, r[f.name]] }.merge("s_req" => {"x" => r["s_req"]["x"], "y" => nil}) }
     assert_roundtrip(NESTED_SCHEMA, expected, bytes)
   end
 
@@ -289,14 +289,14 @@ def test_dictionary_encoded_floats_keep_negative_zero
         string :b
       end
     end
-    bytes = write_to_string(schema, [{ a: 1, s: { b: "x" } }, {}, { "s" => {} }])
-    assert_equal [{ "a" => 1, "s" => { "b" => "x" } }, { "a" => nil, "s" => nil }, { "a" => nil, "s" => { "b" => nil } }], reader_for(bytes).read
+    bytes = write_to_string(schema, [{a: 1, s: {b: "x"}}, {}, {"s" => {}}])
+    assert_equal [{"a" => 1, "s" => {"b" => "x"}}, {"a" => nil, "s" => nil}, {"a" => nil, "s" => {"b" => nil}}], reader_for(bytes).read
   end
 
   def test_map_accepts_array_of_pairs
     schema = Herringbone::Schema.define { map :m, :string, :int32 }
-    bytes = write_to_string(schema, [{ "m" => [["a", 1], ["b", nil]] }])
-    assert_equal [{ "m" => { "a" => 1, "b" => nil } }], reader_for(bytes).read
+    bytes = write_to_string(schema, [{"m" => [["a", 1], ["b", nil]]}])
+    assert_equal [{"m" => {"a" => 1, "b" => nil}}], reader_for(bytes).read
   end
 
   def test_string_encoding_of_read_values
@@ -306,7 +306,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       json :j
       enum :e
     end
-    bytes = write_to_string(schema, [{ "s" => "é", "b" => "é", "j" => "{}", "e" => "A" }])
+    bytes = write_to_string(schema, [{"s" => "é", "b" => "é", "j" => "{}", "e" => "A"}])
     row = reader_for(bytes).read.first
     assert_equal Encoding::UTF_8, row["s"].encoding
     assert_equal "é", row["s"]
@@ -344,7 +344,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_date_before_gregorian_reform_with_default_calendar
     schema = Herringbone::Schema.define { date :d }
-    bytes = write_to_string(schema, [{ "d" => Date.new(1, 1, 1) }, { "d" => Date.new(1500, 3, 1) }])
+    bytes = write_to_string(schema, [{"d" => Date.new(1, 1, 1)}, {"d" => Date.new(1500, 3, 1)}])
     assert_equal %w[0001-01-01 1500-03-01], reader_for(bytes).read.map { |r| r["d"].iso8601 }
   end
 
@@ -352,7 +352,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     schema = Herringbone::Schema.define { float16 :h }
     # exactly representable
     vals = [0.5, 1.0, 2.0**-24, 65_504.0, -1000.5, 0.333251953125]
-    bytes = write_to_string(schema, vals.map { |v| { "h" => v } })
+    bytes = write_to_string(schema, vals.map { |v| {"h" => v} })
     assert_equal vals, reader_for(bytes).read.map { |r| r["h"] }
     # rounding: nearest-even, overflow to infinity, underflow to zero
     assert_equal 0x3C00, Herringbone::Types.float_to_half(1.0 + 2.0**-11) # tie -> even
@@ -380,11 +380,11 @@ def test_dictionary_encoded_floats_keep_negative_zero
       list :lr, :int32, null: false
       map :m, :string, :int32, value_null: false
     end
-    good = { "a" => 1, "s" => { "x" => 1 }, "l" => [1], "lr" => [], "m" => { "k" => 1 } }
+    good = {"a" => 1, "s" => {"x" => 1}, "l" => [1], "lr" => [], "m" => {"k" => 1}}
     write_to_string(schema, [good])
     [
-      { "a" => nil }, { "s" => { "x" => nil } }, { "s" => {} }, { "l" => [1, nil] }, { "lr" => nil },
-      { "m" => { "k" => nil } }, { "m" => { nil => 1 } }
+      {"a" => nil}, {"s" => {"x" => nil}}, {"s" => {}}, {"l" => [1, nil]}, {"lr" => nil},
+      {"m" => {"k" => nil}}, {"m" => {nil => 1}}
     ].each do |bad|
       assert_raises(Herringbone::EncodeError, bad.inspect) { write_to_string(schema, [good.merge(bad)]) }
     end
@@ -411,7 +411,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       schema = Herringbone::Schema.define(&defn)
       values.each do |v|
         assert_raises(Herringbone::EncodeError, "#{schema.columns.first.dotted_path} <- #{v.inspect}") do
-          write_to_string(schema, [{ "a" => v }])
+          write_to_string(schema, [{"a" => v}])
         end
       end
     end
@@ -423,15 +423,15 @@ def test_dictionary_encoded_floats_keep_negative_zero
         int32 :x
       end
     end
-    assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{ "s" => 5 }]) }
+    assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{"s" => 5}]) }
   end
 
   def test_out_of_range_integers_raise
-    { proc { int32 :a } => [2**40, 2**31], proc { int64 :a } => [2**70, 2**63], proc { int8 :a } => [300, -129],
-      proc { uint8 :a } => [256, -1], proc { decimal :a, precision: 5, scale: 2 } => [10**8], proc { int32 :a } => [1.5] }.each do |defn, values|
+    {proc { int32 :a } => [2**40, 2**31], proc { int64 :a } => [2**70, 2**63], proc { int8 :a } => [300, -129],
+     proc { uint8 :a } => [256, -1], proc { decimal :a, precision: 5, scale: 2 } => [10**8], proc { int32 :a } => [1.5]}.each do |defn, values|
       schema = Herringbone::Schema.define(&defn)
       values.each do |v|
-        assert_raises(Herringbone::EncodeError, v.inspect) { write_to_string(schema, [{ "a" => v }]) }
+        assert_raises(Herringbone::EncodeError, v.inspect) { write_to_string(schema, [{"a" => v}]) }
       end
     end
   end
@@ -443,19 +443,19 @@ def test_dictionary_encoded_floats_keep_negative_zero
     end
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, schema)
-    w << { "a" => 1, "b" => 2 }
-    assert_raises(Herringbone::EncodeError) { w << { "a" => 3, "b" => nil } }
-    w << { "a" => 5, "b" => 6 }
+    w << {"a" => 1, "b" => 2}
+    assert_raises(Herringbone::EncodeError) { w << {"a" => 3, "b" => nil} }
+    w << {"a" => 5, "b" => 6}
     w.close
     rows = reader_for(io.string).read
-    assert_equal [{ "a" => 1, "b" => 2 }, { "a" => 5, "b" => 6 }], rows
+    assert_equal [{"a" => 1, "b" => 2}, {"a" => 5, "b" => 6}], rows
   end
 
   def test_closed_writer_rejects_rows
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, Herringbone::Schema.define { int32 :a })
     w.close
-    assert_raises(Herringbone::Error) { w << { "a" => 1 } }
+    assert_raises(Herringbone::Error) { w << {"a" => 1} }
     size = io.string.bytesize
     w.close # idempotent
     assert_equal size, io.string.bytesize
@@ -471,8 +471,8 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_key_value_metadata
     schema = Herringbone::Schema.define { int32 :a }
-    meta = { "k" => "v", "unicode" => "漢字", "empty" => "", :sym => "s", "big" => "x" * 10_000 }
-    bytes = write_to_string(schema, [{ "a" => 1 }], metadata: meta)
+    meta = {"k" => "v", "unicode" => "漢字", "empty" => "", :sym => "s", "big" => "x" * 10_000}
+    bytes = write_to_string(schema, [{"a" => 1}], metadata: meta)
     reader = reader_for(bytes)
     assert_equal meta.transform_keys(&:to_s), reader.metadata
     assert_match(/herringbone/, reader.file_metadata.created_by)
@@ -542,10 +542,10 @@ def test_dictionary_encoded_floats_keep_negative_zero
     case col.type
     when T::BOOLEAN then [phys.include?(false) ? "\x00".b : "\x01".b, phys.include?(true) ? "\x01".b : "\x00".b]
     when T::INT32, T::INT64
-      fmt = col.type == T::INT32 ? "l<" : "q<"
+      fmt = (col.type == T::INT32) ? "l<" : "q<"
       if kind == :integer && name.start_with?("u")
         # Unsigned columns sort by the unsigned value of the stored (wrapped) integer
-        mask = (1 << (col.type == T::INT32 ? 32 : 64)) - 1
+        mask = (1 << ((col.type == T::INT32) ? 32 : 64)) - 1
         [[phys.min_by { |v| v & mask }].pack(fmt), [phys.max_by { |v| v & mask }].pack(fmt)]
       else
         [[phys.min].pack(fmt), [phys.max].pack(fmt)]
@@ -553,7 +553,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
     when T::FLOAT, T::DOUBLE
       fin = phys.reject(&:nan?)
       return nil if fin.empty?
-      fmt = col.type == T::FLOAT ? "e" : "E"
+      fmt = (col.type == T::FLOAT) ? "e" : "E"
       mn = fin.min
       mx = fin.max
       mn = -0.0 if mn.zero?
@@ -563,7 +563,10 @@ def test_dictionary_encoded_floats_keep_negative_zero
       case kind
       when :decimal
         # Big-endian two's complement: sorts by the signed integer
-        by = ->(b) { i = b.unpack1("H*").to_i(16); i >= (1 << (b.bytesize * 8 - 1)) ? i - (1 << (b.bytesize * 8)) : i }
+        by = ->(b) {
+          i = b.unpack1("H*").to_i(16)
+          (i >= (1 << (b.bytesize * 8 - 1))) ? i - (1 << (b.bytesize * 8)) : i
+        }
         [phys.min_by(&by), phys.max_by(&by)]
       when :float16
         halves = phys.reject { |b| Herringbone::Types.half_to_float(b.unpack1("v")).nan? }
@@ -580,13 +583,13 @@ def test_dictionary_encoded_floats_keep_negative_zero
 
   def test_schema_infer_roundtrip
     rows = [
-      { "i" => 1, "f" => 1.5, "s" => "é", "b" => "\xFF".b, "t" => Time.at(1, 5, :microsecond).utc, "d" => Date.new(2020, 1, 2),
-        "bool" => true, "dec" => BigDecimal("1.25"), "sym" => :abc, "h" => { "x" => 1, "y" => [1, 2] }, "l" => [[1], []],
-        "lh" => [{ "k" => "v" }] },
-      { "i" => nil, "f" => 2, "s" => nil, "b" => nil, "t" => nil, "d" => nil, "bool" => false, "dec" => 3,
-        "sym" => nil, "h" => nil, "l" => nil, "lh" => [] },
-      { i: -5, f: nil, s: "x", b: "\x00".b, t: Time.at(0).utc, d: Date.new(1970, 1, 1), bool: nil, dec: nil, sym: :x,
-        h: { x: nil, y: [] }, l: [[nil]], lh: [nil, { k: nil }] }
+      {"i" => 1, "f" => 1.5, "s" => "é", "b" => "\xFF".b, "t" => Time.at(1, 5, :microsecond).utc, "d" => Date.new(2020, 1, 2),
+       "bool" => true, "dec" => BigDecimal("1.25"), "sym" => :abc, "h" => {"x" => 1, "y" => [1, 2]}, "l" => [[1], []],
+       "lh" => [{"k" => "v"}]},
+      {"i" => nil, "f" => 2, "s" => nil, "b" => nil, "t" => nil, "d" => nil, "bool" => false, "dec" => 3,
+       "sym" => nil, "h" => nil, "l" => nil, "lh" => []},
+      {i: -5, f: nil, s: "x", b: "\x00".b, t: Time.at(0).utc, d: Date.new(1970, 1, 1), bool: nil, dec: nil, sym: :x,
+       h: {x: nil, y: []}, l: [[nil]], lh: [nil, {k: nil}]}
     ]
     schema = Herringbone::Schema.infer(rows)
     types = schema.columns.to_h { |c| [c.dotted_path, T::NAMES[c.type]] }
@@ -609,22 +612,22 @@ def test_dictionary_encoded_floats_keep_negative_zero
       assert_equal BigDecimal("1.25"), read[0]["dec"]
       assert_equal BigDecimal("3"), read[1]["dec"]
       assert_equal "abc", read[0]["sym"]
-      assert_equal({ "x" => 1, "y" => [1, 2] }, read[0]["h"])
-      assert_equal({ "x" => nil, "y" => [] }, read[2]["h"])
+      assert_equal({"x" => 1, "y" => [1, 2]}, read[0]["h"])
+      assert_equal({"x" => nil, "y" => []}, read[2]["h"])
       assert_equal [[1], []], read[0]["l"]
       assert_equal [[nil]], read[2]["l"]
-      assert_equal [nil, { "k" => nil }], read[2]["lh"]
+      assert_equal [nil, {"k" => nil}], read[2]["lh"]
       assert_equal [], read[1]["lh"]
       assert_equal(-5, read[2]["i"])
       assert_equal 3, reader.num_rows
-      assert_equal [{ "i" => 1 }, { "i" => nil }, { "i" => -5 }], reader.read(columns: ["i"])
+      assert_equal [{"i" => 1}, {"i" => nil}, {"i" => -5}], reader.read(columns: ["i"])
     end
   end
 
   def test_schema_infer_errors
     assert_raises(ArgumentError) { Herringbone::Schema.infer([]) }
-    assert_equal :string, Herringbone::Types.logical_of(Herringbone::Schema.infer([{ "a" => nil }]).columns.first.node).first
-    assert_raises(ArgumentError) { Herringbone::Schema.infer([{ "a" => 1 }, { "a" => "x" }]) }
+    assert_equal :string, Herringbone::Types.logical_of(Herringbone::Schema.infer([{"a" => nil}]).columns.first.node).first
+    assert_raises(ArgumentError) { Herringbone::Schema.infer([{"a" => 1}, {"a" => "x"}]) }
   end
 
   def test_writer_open_with_block_writes_file
@@ -642,7 +645,7 @@ def test_dictionary_encoded_floats_keep_negative_zero
       string :big
       int64 :n, null: false
     end
-    rows = Array.new(5000) { |i| { "big" => i % 1000 == 0 ? "x" * 100_000 : "v#{i % 50}", "n" => i } }
+    rows = Array.new(5000) { |i| {"big" => (i % 1000 == 0) ? "x" * 100_000 : "v#{i % 50}", "n" => i} }
     bytes = write_to_string(schema, rows, page_bytes: 8192, row_group_rows: 2000)
     reader = reader_for(bytes)
     assert_equal rows, reader.read

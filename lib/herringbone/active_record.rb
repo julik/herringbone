@@ -17,7 +17,7 @@ module Herringbone
     #               rejects values outside the enum; stored values such as 0/1 are written as
     #               their labels). true adds the Parquet ENUM annotation, see Builder#enum.
     def self.from_active_record(model, only: nil, except: nil, parquet_enum: false)
-      only = only && Array(only).map(&:to_s)
+      only &&= Array(only).map(&:to_s)
       except = Array(except).map(&:to_s)
       defined_enums = model.respond_to?(:defined_enums) ? model.defined_enums.to_h { |k, v| [k.to_s, v] } : {}
       primary_keys = Array(model.respond_to?(:primary_key) ? model.primary_key : nil).map(&:to_s)
@@ -86,7 +86,7 @@ module Herringbone
       def scalar_type(column, type, sql_type, primary)
         case type
         when :integer, :bigint then [integer_type(column, sql_type, primary), {}]
-        when :float then [sql_type == "float4" ? :float : :double, {}]
+        when :float then [(sql_type == "float4") ? :float : :double, {}]
         when :decimal, :money
           precision = column.respond_to?(:precision) ? column.precision : nil
           scale = column.respond_to?(:scale) ? column.scale : nil
@@ -94,12 +94,12 @@ module Herringbone
             precision = DEFAULT_DECIMAL_PRECISION
             scale ||= DEFAULT_DECIMAL_SCALE
           end
-          [:decimal, { precision: precision, scale: scale || 0 }]
+          [:decimal, {precision: precision, scale: scale || 0}]
         when :boolean then [:boolean, {}]
         when :binary then [:binary, {}]
         when :date then [:date, {}]
-        when :datetime, :timestamp, :timestamptz then [:timestamp, { unit: :micros, utc: true }]
-        when :time then [:time, { unit: :micros }]
+        when :datetime, :timestamp, :timestamptz then [:timestamp, {unit: :micros, utc: true}]
+        when :time then [:time, {unit: :micros}]
         when :json, :jsonb then [:json, {}]
         when :uuid then [:uuid, {}]
         else [:string, {}]
@@ -120,9 +120,8 @@ module Herringbone
         bits = 64 if primary
         unsigned = sql_type.include?("unsigned")
         return :"uint#{bits}" if unsigned
-        { 8 => :int8, 16 => :int16, 32 => :int32, 64 => :int64 }.fetch(bits)
+        {8 => :int8, 16 => :int16, 32 => :int32, 64 => :int64}.fetch(bits)
       end
     end
   end
 end
-

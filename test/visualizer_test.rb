@@ -80,7 +80,7 @@ class VisualizerTest < Minitest::Test
     credit_at = body.index(link)
     assert_operator credit_at, :<, body.index("<section"), "credit comes before any content"
     assert_operator credit_at, :<, body.index("</header>"), "credit sits in the page header"
-    assert_match(/Design and idea from <a href="#{Regexp.escape(Visualizer::CREDIT_URL)}"[^>]*>Parquet X-ray<\/a> by cfahlgren1/, html)
+    assert_match(/Design and idea from <a href="#{Regexp.escape(Visualizer::CREDIT_URL)}"[^>]*>Parquet X-ray<\/a> by cfahlgren1/o, html)
   end
 
   def test_page_indexes_and_stats_are_embedded
@@ -187,7 +187,7 @@ class VisualizerTest < Minitest::Test
     assert_equal 2, lines.lines.size
     assert_equal %w[String], JSON.parse(lines.lines.first).keys
     [%w[inspect --json --html], %w[inspect --text], %w[inspect], %w[schema], %w[meta], %w[cat --json], %w[cat x]].each do |args|
-      _, _, status = Open3.capture3(ruby, BIN, args[0], *(args[0] == "inspect" && args.size == 1 ? [] : [path]), *args.drop(1))
+      _, _, status = Open3.capture3(ruby, BIN, args[0], *((args[0] == "inspect" && args.size == 1) ? [] : [path]), *args.drop(1))
       refute status.success?, args.join(" ")
     end
     _, err, status = Open3.capture3(ruby, BIN, "inspect", "/nonexistent.parquet")
@@ -203,12 +203,12 @@ class VisualizerTest < Minitest::Test
     html = render(path, checksums: true)
     check_html(html, "checksums")
     data = embedded_data(html)
-    assert_equal({ "ok" => 2, "mismatch" => 2, "absent" => 0 }, data["file"]["checksums"])
+    assert_equal({"ok" => 2, "mismatch" => 2, "absent" => 0}, data["file"]["checksums"])
     chunks = data["row_groups"][0]["chunks"]
     assert_equal [[3, 2], [2, 3]], chunks.map { |c| c["pages"].map { |p| p[12] } }
     assert_equal [1, 1], chunks.map { |c| c["crc_bad"] }
     ok = embedded_data(render(File.join(FIXTURES_DIR, "parquet-testing", "rle-dict-snappy-checksum.parquet"), checksums: true))
-    assert_equal({ "ok" => 2, "mismatch" => 0, "absent" => 2 }, ok["file"]["checksums"])
+    assert_equal({"ok" => 2, "mismatch" => 0, "absent" => 2}, ok["file"]["checksums"])
     assert_equal [[2, 0], [2, 0]], ok["row_groups"][0]["chunks"].map { |c| c["pages"].map { |p| p[12] } }
   end
 
@@ -219,7 +219,7 @@ class VisualizerTest < Minitest::Test
     assert_equal 11, kv["arrow_schema"]["fields"].size
     assert_nil data["arrow_error"]
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, Herringbone::Schema.define { int64 :id }, metadata: { "ARROW:schema" => "/////w==" }) { |w| w << [1] }
+    Herringbone::Writer.open(io, Herringbone::Schema.define { int64 :id }, metadata: {"ARROW:schema" => "/////w=="}) { |w| w << [1] }
     broken = embedded_data(Herringbone::Inspector.new(StringIO.new(io.string)).to_html)
     assert_match(/could not decode ARROW:schema/, broken["arrow_error"])
     assert_match(/could not decode/, broken["kv"][0]["arrow_error"])
@@ -266,5 +266,4 @@ class VisualizerTest < Minitest::Test
     assert status.success?
     assert_equal 2, embedded_data(html)["file"]["checksums"]["mismatch"]
   end
-
 end

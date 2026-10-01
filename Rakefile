@@ -2,6 +2,7 @@
 
 require "bundler/gem_tasks"
 require "rake/testtask"
+require "standard/rake"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "test" << "lib"
@@ -9,4 +10,4 @@ Rake::TestTask.new(:test) do |t|
   t.warning = false
 end
 
-task default: :test
+task default: [:"standard:fix", :test]

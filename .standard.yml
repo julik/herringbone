@@ -1,0 +1,8 @@
+# Keep to syntax the oldest supported Ruby (gemspec required_ruby_version) understands
+ruby_version: 3.0
+
+ignore:
+  - "**/*":
+      # `while true` in the codec and decoder hot loops avoids the block call and
+      # StopIteration rescue that Kernel#loop adds
+      - Style/InfiniteLoop

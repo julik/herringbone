@@ -7,6 +7,11 @@ gemspec
 gem "minitest", "~> 5.0"
 gem "rake"
 
+group :development do
+  # Pinned exactly so a new Standard release can't start failing lint on its own; bump deliberately
+  gem "standard", "1.56.0"
+end
+
 group :test do
   # Optional: only used by test/active_record_test.rb, which skips without them
   gem "activerecord", ">= 7.0", "< 9"

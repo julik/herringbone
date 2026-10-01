@@ -106,7 +106,7 @@ module Herringbone
         reps = []
         while true
           if @bi >= @br.to_a.size
-            if @page && @page.remaining.positive?
+            if @page&.remaining&.positive?
               @bd, @br = @page.read_levels(LOOKAHEAD)
               @bi = 0
             else

@@ -22,7 +22,7 @@ module Canonical
     end
   end
 
-  FRACTION_DIGITS = { millis: 3, micros: 6, nanos: 9 }.freeze
+  FRACTION_DIGITS = {millis: 3, micros: 6, nanos: 9}.freeze
 
   def leaf(node, v)
     kind, a, b = Herringbone::Types.logical_of(node)
@@ -30,7 +30,7 @@ module Canonical
     case v
     when Float
       return "NaN" if v.nan?
-      return(v.positive? ? "Infinity" : "-Infinity") if v.infinite?
+      return (v.positive? ? "Infinity" : "-Infinity") if v.infinite?
       v
     when Time
       if type == Herringbone::Format::Type::INT96
@@ -44,11 +44,11 @@ module Canonical
       v
     when String
       if kind == :uuid
-        { "base64" => [[v.delete("-")].pack("H*")].pack("m0") }
+        {"base64" => [[v.delete("-")].pack("H*")].pack("m0")}
       elsif %i[string json enum].include?(kind)
         v
       else
-        { "base64" => [v].pack("m0") }
+        {"base64" => [v].pack("m0")}
       end
     when BigDecimal then decimal(v, a)
     else
@@ -63,7 +63,7 @@ module Canonical
   end
 
   def time_of_day(v, unit)
-    per_sec = { millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000 }.fetch(unit)
+    per_sec = {millis: 1_000, micros: 1_000_000, nanos: 1_000_000_000}.fetch(unit)
     secs, frac = v.divmod(per_sec)
     h, rem = secs.divmod(3600)
     m, s = rem.divmod(60)
@@ -101,7 +101,11 @@ module Canonical
     mantissa, exp = s.split("e")
     int_part, frac_part = mantissa.split(".")
     digits = (int_part + frac_part.to_s).sub(/\A0+/, "")
-    decpt = exp ? exp.to_i + 1 : (int_part == "0" ? -(frac_part[/\A0*/].length) : int_part.length)
+    decpt = if exp
+      exp.to_i + 1
+    else
+      ((int_part == "0") ? -frac_part[/\A0*/].length : int_part.length)
+    end
     digits = digits.sub(/0+\z/, "")
     digits = "0" if digits.empty?
     sign = f.negative? ? "-" : ""
@@ -115,7 +119,7 @@ module Canonical
       end
     else
       e = decpt - 1
-      m = digits.length > 1 ? digits[0] + "." + digits[1..] : digits
+      m = (digits.length > 1) ? digits[0] + "." + digits[1..] : digits
       sign + m + "e" + (e.negative? ? "-" : "+") + e.abs.to_s.rjust(2, "0")
     end
   end

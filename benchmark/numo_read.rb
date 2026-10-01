@@ -35,7 +35,7 @@ def file_for(compression)
   File.open(path, "wb") do |f|
     Herringbone::Writer.open(f, SCHEMA, compression: compression) do |w|
       ROWS.times do |i|
-        w << [i, rng.rand * 1000, rng.rand(1000), i.odd?, (rng.rand < 0.1 ? nil : rng.rand), CATEGORIES[i % 50]]
+        w << [i, rng.rand * 1000, rng.rand(1000), i.odd?, ((rng.rand < 0.1) ? nil : rng.rand), CATEGORIES[i % 50]]
       end
     end
   end
@@ -82,7 +82,7 @@ end
   measure("read(as: :numo)") { open_reader.call { |r| r.read(as: :numo) } }
   measure("read(as: :numo, columns: [id, amount])") { open_reader.call { |r| r.read(as: :numo, columns: %w[id amount]) } }
   measure("read(as: :numo) numeric columns only") { open_reader.call { |r| r.read(as: :numo, columns: %w[id amount quantity active score]) } }
-  measure("each_batch(100_000, as: :numo)") { open_reader.call { |r| r.each_batch(100_000, as: :numo) { } } }
+  measure("each_batch(100_000, as: :numo)") { open_reader.call { |r| r.each_batch(100_000, as: :numo) {} } }
   measure("read(as: :columns)") { open_reader.call { |r| r.read(as: :columns) } }
   measure("read(as: :columns, columns: [id, amount])") { open_reader.call { |r| r.read(as: :columns, columns: %w[id amount]) } }
   measure("read") { open_reader.call { |r| r.read } }

@@ -172,23 +172,23 @@ class ActiveRecordTest < Minitest::Test
   def test_enums
     model = FakeModel.new(
       columns: [col("id", :integer, "integer"), col("status", :integer, "integer", null: false), col("kind", :string, "varchar")],
-      defined_enums: { "status" => { "pending" => 0, "shipped" => 1 }, "kind" => { "a" => "a" } }
+      defined_enums: {"status" => {"pending" => 0, "shipped" => 1}, "kind" => {"a" => "a"}}
     )
     s = Herringbone::Schema.from_active_record(model)
     assert_equal [:string], kind(node(s, "status"))
     assert_equal :required, node(s, "status").repetition
     assert_equal [:string], kind(node(s, "kind"))
-    assert_equal({ "pending" => 0, "shipped" => 1 }, node(s, "status").enum_values)
+    assert_equal({"pending" => 0, "shipped" => 1}, node(s, "status").enum_values)
 
     # Labels and stored values are accepted and written as labels; anything else is rejected
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, s)
-    w << { "id" => 1, "status" => "shipped", "kind" => "a" }
-    w << { "id" => 2, "status" => 0 }
+    w << {"id" => 1, "status" => "shipped", "kind" => "a"}
+    w << {"id" => 2, "status" => 0}
     w.close
     assert_equal %w[shipped pending], Herringbone::Reader.new(StringIO.new(io.string)).read.map { |r| r["status"] }
     bad = Herringbone::Writer.new(StringIO.new("".b), s)
-    assert_raises(Herringbone::Error) { bad << { "id" => 3, "status" => "lost" } }
+    assert_raises(Herringbone::Error) { bad << {"id" => 3, "status" => "lost"} }
 
     s = Herringbone::Schema.from_active_record(model, parquet_enum: true)
     assert_equal [:enum], kind(node(s, "status"))
@@ -227,17 +227,17 @@ class ActiveRecordTest < Minitest::Test
         col("tags", :string, "text", array: true),
         col("attrs", :hstore, "hstore")
       ],
-      defined_enums: { "status" => { "pending" => 0, "shipped" => 1 } }
+      defined_enums: {"status" => {"pending" => 0, "shipped" => 1}}
     )
     schema = Herringbone::Schema.from_active_record(model)
     t = Time.utc(2024, 5, 6, 7, 8, 9, 123_456)
     rows = [
-      { "id" => 1, "name" => "Anna", "status" => "pending", "price" => BigDecimal("9.99"), "ratio" => 0.5,
-        "paid" => true, "ship_on" => Date.new(2024, 1, 2), "created_at" => t,
-        "uid" => "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", "clock" => Time.utc(2000, 1, 1, 12, 34, 56, 789_000),
-        "doc" => { "a" => [1, 2] }, "tags" => ["x", nil], "attrs" => { "k" => "v" } },
-      { "id" => 2**40, "name" => "Bob", "status" => nil, "price" => nil, "ratio" => nil, "paid" => false,
-        "ship_on" => nil, "created_at" => t + 1, "uid" => nil, "clock" => nil, "doc" => nil, "tags" => [], "attrs" => nil }
+      {"id" => 1, "name" => "Anna", "status" => "pending", "price" => BigDecimal("9.99"), "ratio" => 0.5,
+       "paid" => true, "ship_on" => Date.new(2024, 1, 2), "created_at" => t,
+       "uid" => "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", "clock" => Time.utc(2000, 1, 1, 12, 34, 56, 789_000),
+       "doc" => {"a" => [1, 2]}, "tags" => ["x", nil], "attrs" => {"k" => "v"}},
+      {"id" => 2**40, "name" => "Bob", "status" => nil, "price" => nil, "ratio" => nil, "paid" => false,
+       "ship_on" => nil, "created_at" => t + 1, "uid" => nil, "clock" => nil, "doc" => nil, "tags" => [], "attrs" => nil}
     ]
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, schema)
@@ -287,12 +287,12 @@ class ActiveRecordTest < Minitest::Test
       end
       order = Class.new(ActiveRecord::Base) do
         self.table_name = "herringbone_orders"
-        enum :status, { pending: 0, shipped: 1, cancelled: 2 }
+        enum :status, {pending: 0, shipped: 1, cancelled: 2}
         def self.name = "HerringboneOrder"
       end
 
       order.create!(customer: "Anna", status: :shipped, total: BigDecimal("12.34"), ratio: 0.25, paid: true,
-        ship_on: Date.new(2024, 3, 4), cutoff: "12:34:56.789", payload: { "a" => [1, 2] }, notes: "fragile", big: 2**40, small: -3)
+        ship_on: Date.new(2024, 3, 4), cutoff: "12:34:56.789", payload: {"a" => [1, 2]}, notes: "fragile", big: 2**40, small: -3)
       order.create!(customer: "Bob")
 
       schema = Herringbone::Schema.from_active_record(order)
@@ -324,7 +324,7 @@ class ActiveRecordTest < Minitest::Test
       assert_equal expected, read
       assert_equal "shipped", read[0]["status"]
       assert_equal "pending", read[1]["status"]
-      assert_equal({ "a" => [1, 2] }, JSON.parse(read[0]["payload"]))
+      assert_equal({"a" => [1, 2]}, JSON.parse(read[0]["payload"]))
       assert_nil read[1]["payload"]
       assert_equal 45_296_789_000, read[0]["cutoff"]
     end
@@ -342,7 +342,7 @@ class ActiveRecordTest < Minitest::Test
       end
       model = Class.new(ActiveRecord::Base) do
         self.table_name = "herringbone_exports"
-        enum :kind, { free: 0, pro: 1 }
+        enum :kind, {free: 0, pro: 1}
         def self.name = "HerringboneExport"
       end
       25.times { |i| model.create!(name: "n#{i}", kind: i.even? ? :free : :pro, amount: BigDecimal(i) / 4) }

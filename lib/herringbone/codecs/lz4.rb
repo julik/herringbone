@@ -121,7 +121,7 @@ module Herringbone
             # Emit the sequence: token, literal run, offset, extended match length
             lit_len = ip - anchor
             ml = len - MIN_MATCH
-            out << (((lit_len < 15 ? lit_len : 15) << 4) | (ml < 15 ? ml : 15))
+            out << ((((lit_len < 15) ? lit_len : 15) << 4) | ((ml < 15) ? ml : 15))
             write_length(out, lit_len - 15) if lit_len >= 15
             out << src.byteslice(anchor, lit_len) if lit_len > 0
             offset = ip - ref
@@ -153,7 +153,7 @@ module Herringbone
       # -- internals --
 
       def binary(str)
-        str.encoding == BINARY ? str : str.b
+        (str.encoding == BINARY) ? str : str.b
       end
 
       def le32(src, i)
@@ -173,7 +173,7 @@ module Herringbone
       end
 
       def emit_last_literals(out, src, anchor, lit_len)
-        out << ((lit_len < 15 ? lit_len : 15) << 4)
+        out << (((lit_len < 15) ? lit_len : 15) << 4)
         write_length(out, lit_len - 15) if lit_len >= 15
         out << src.byteslice(anchor, lit_len) if lit_len > 0
       end

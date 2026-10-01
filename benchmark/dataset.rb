@@ -69,7 +69,7 @@ module Dataset
   # Deterministic record number +i+ (no RNG state, so it can be regenerated lazily in any order)
   def record(i)
     h = (i * 2_654_435_761) & 0xFFFF_FFFF
-    created = Time.at(EPOCH + (h % 150_000_000), (h % 1_000_000), :usec).utc
+    created = Time.at(EPOCH + (h % 150_000_000), h % 1_000_000, :usec).utc
     status = STATUSES[h % 6]
     {
       "id" => i,
@@ -78,10 +78,10 @@ module Dataset
       "plan" => PLANS[(h >> 3) % 4],
       "currency" => CURRENCIES[(h >> 5) % 3],
       "amount" => BigDecimal(h % 10_000_000) / 100,
-      "discount_rate" => h % 5 == 0 ? nil : (h % 30) / 100.0,
+      "discount_rate" => (h % 5 == 0) ? nil : (h % 30) / 100.0,
       "email" => "user#{h % 250_000}@example.com",
-      "name" => h % 11 == 0 ? nil : "Customer #{h % 250_000}",
-      "notes" => h % 7 == 0 ? "Please leave the parcel at the door, order #{i}" : nil,
+      "name" => (h % 11 == 0) ? nil : "Customer #{h % 250_000}",
+      "notes" => (h % 7 == 0) ? "Please leave the parcel at the door, order #{i}" : nil,
       "item_count" => 1 + (h % 12),
       "gift" => h.odd?,
       "created_at" => created,

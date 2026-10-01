@@ -74,7 +74,7 @@ class RLEEncodingTest < Minitest::Test
     [1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 24, 31, 32].each do |width|
       cases.each do |name, values|
         vals = values.map { |v| v & ((1 << width) - 1) }
-        vals = vals.each_with_index.map { |v, i| i % 11 == 10 ? (1 << width) - 1 : v } unless name == "one run"
+        vals = vals.each_with_index.map { |v, i| (i % 11 == 10) ? (1 << width) - 1 : v } unless name == "one run"
         enc = RLE.encode_hybrid(vals, width)
         dec = RLE.decode_hybrid(enc, 0, enc.bytesize, width, vals.size)
         assert_equal vals, dec, "width=#{width} #{name}"
@@ -208,7 +208,7 @@ class DeltaEncodingTest < Minitest::Test
 
   def test_length_byte_array
     [[], [""], ["", "", ""], ["a"], %w[hello world foo], ["x" * 1000, "", "y"], ["\x00\xFF".b, "é漢字"],
-     Array.new(300) { |i| "v#{i}" * (i % 7) }].each do |values|
+      Array.new(300) { |i| "v#{i}" * (i % 7) }].each do |values|
       enc = Delta.encode_length_byte_array(values)
       dec, pos = Delta.decode_length_byte_array(enc, 0, values.size)
       assert_equal values.map(&:b), dec
@@ -218,8 +218,8 @@ class DeltaEncodingTest < Minitest::Test
 
   def test_byte_array
     [[], [""], ["", "a", ""], %w[apple application apply apt banana band bandana],
-     ["same", "same", "same"], ["abc", "ab", "a", ""], ["prefix\x00\xFF".b, "prefix\x00\xFE".b],
-     ["日本語", "日本", "日本語テキスト"], Array.new(400) { |i| format("key-%05d", i / 3) }].each do |values|
+      ["same", "same", "same"], ["abc", "ab", "a", ""], ["prefix\x00\xFF".b, "prefix\x00\xFE".b],
+      ["日本語", "日本", "日本語テキスト"], Array.new(400) { |i| format("key-%05d", i / 3) }].each do |values|
       enc = Delta.encode_byte_array(values)
       dec, pos = Delta.decode_byte_array(enc, 0, values.size)
       assert_equal values.map(&:b), dec

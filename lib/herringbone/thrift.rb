@@ -124,12 +124,12 @@ module Herringbone
         when T_FALSE then false
         when T_BYTE
           b = read_byte
-          b >= 0x80 ? b - 0x100 : b
+          (b >= 0x80) ? b - 0x100 : b
         when T_I16, T_I32, T_I64 then read_zigzag
         when T_DOUBLE then read_double
         when T_BINARY
           s = read_binary
-          type == :string ? s.force_encoding(Encoding::UTF_8) : s
+          (type == :string) ? s.force_encoding(Encoding::UTF_8) : s
         when T_LIST, T_SET then read_list(type)
         when T_STRUCT then read_struct(type)
         else
@@ -144,7 +144,7 @@ module Herringbone
         elem_wire = header & 0x0F
         elem_type = type[1]
         bool_elems = elem_wire == T_TRUE || elem_wire == T_FALSE
-        unless size.zero? || (bool_elems && elem_type == :bool) || Thrift.compatible?(elem_wire, elem_type)
+        if size.positive? && !(bool_elems && elem_type == :bool) && !Thrift.compatible?(elem_wire, elem_type)
           size.times { bool_elems ? read_byte : skip(elem_wire) }
           return nil
         end

@@ -18,7 +18,7 @@ module Herringbone
       else
         false
       end
-    rescue StandardError
+    rescue
       false
     end
   end

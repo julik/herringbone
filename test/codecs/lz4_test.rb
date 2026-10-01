@@ -99,7 +99,7 @@ class LZ4Test < Minitest::Test
   def test_roundtrips_runs_and_repeats
     roundtrip("\x00" * 100_000)
     roundtrip("abc" * 10_000 + "tail")
-    roundtrip(("The quick brown fox jumps over the lazy dog. " * 500))
+    roundtrip("The quick brown fox jumps over the lazy dog. " * 500)
   end
 
   def test_roundtrips_random_and_semi_compressible
@@ -107,7 +107,7 @@ class LZ4Test < Minitest::Test
     roundtrip(rng.bytes(100_000))
     words = %w[alpha beta gamma parquet column row page]
     semi = +""
-    semi << (rng.rand < 0.8 ? words.sample(random: rng) : rng.bytes(rng.rand(1..10))) while semi.bytesize < 200_000
+    semi << ((rng.rand < 0.8) ? words.sample(random: rng) : rng.bytes(rng.rand(1..10))) while semi.bytesize < 200_000
     roundtrip(semi)
   end
 

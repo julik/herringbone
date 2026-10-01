@@ -160,7 +160,7 @@ module WriterHelpers
     rng = Random.new(seed)
     sp = specials
     Array.new(n) do |i|
-      row = { "id" => i }
+      row = {"id" => i}
       ALL_TYPES_SCHEMA.fields.each do |f|
         next if f.name == "id"
         list = sp.fetch(f.name)
@@ -180,22 +180,22 @@ module WriterHelpers
   def self.nested_rows(n, seed: 2)
     rng = Random.new(seed)
     fixed = [
-      { "id" => 0, "l_nullable" => nil, "l_required_el" => nil, "l_required" => [], "ll" => nil, "lsl" => nil,
-        "m_struct" => nil, "m_nullval" => nil, "m_reqval" => nil, "s" => nil, "s_req" => { "x" => 0, "y" => nil } },
-      { "id" => 1, "l_nullable" => [], "l_required_el" => [], "l_required" => [1], "ll" => [], "lsl" => [],
-        "m_struct" => {}, "m_nullval" => {}, "m_reqval" => {}, "s" => { "x" => nil, "inner" => nil }, "s_req" => { "x" => 1, "y" => "" } },
-      { "id" => 2, "l_nullable" => [nil], "l_required_el" => [""], "l_required" => [I64_MIN, I64_MAX], "ll" => [nil, [], [nil], [1, nil, 2]],
-        "lsl" => [nil, { "name" => nil, "vals" => nil }, { "name" => "n", "vals" => [] }, { "name" => "é", "vals" => [nil, 1.5, Float::NAN] }],
-        "m_struct" => { "a" => nil, "b" => { "a" => nil, "b" => nil }, "c" => { "a" => 1, "b" => [] }, "d" => { "a" => 2, "b" => ["x", nil] } },
-        "m_nullval" => { "k" => nil, "k2" => 5 }, "m_reqval" => { 1 => "one", -1 => "" },
-        "s" => { "x" => 1, "inner" => { "y" => nil, "z" => nil } }, "s_req" => { "x" => -1, "y" => "why" } },
-      { "id" => 3, "l_nullable" => [nil, nil, nil], "l_required_el" => %w[a b c], "l_required" => [0] * 20, "ll" => [[1], [2, 3], [], nil],
-        "lsl" => [{ "name" => "x", "vals" => [1.0] }], "m_struct" => { "" => { "a" => 3, "b" => [nil] } },
-        "m_nullval" => { "a" => 1 }, "m_reqval" => { 7 => "seven" },
-        "s" => { "x" => nil, "inner" => { "y" => "y", "z" => [] } }, "s_req" => { "x" => 3, "y" => nil } },
-      { "id" => 4, "l_nullable" => nil, "l_required_el" => nil, "l_required" => [], "ll" => [[]], "lsl" => [nil],
-        "m_struct" => { "only" => nil }, "m_nullval" => nil, "m_reqval" => {},
-        "s" => { "x" => 5, "inner" => { "y" => "q", "z" => [nil, 1] } }, "s_req" => { "x" => 4, "y" => "" } }
+      {"id" => 0, "l_nullable" => nil, "l_required_el" => nil, "l_required" => [], "ll" => nil, "lsl" => nil,
+       "m_struct" => nil, "m_nullval" => nil, "m_reqval" => nil, "s" => nil, "s_req" => {"x" => 0, "y" => nil}},
+      {"id" => 1, "l_nullable" => [], "l_required_el" => [], "l_required" => [1], "ll" => [], "lsl" => [],
+       "m_struct" => {}, "m_nullval" => {}, "m_reqval" => {}, "s" => {"x" => nil, "inner" => nil}, "s_req" => {"x" => 1, "y" => ""}},
+      {"id" => 2, "l_nullable" => [nil], "l_required_el" => [""], "l_required" => [I64_MIN, I64_MAX], "ll" => [nil, [], [nil], [1, nil, 2]],
+       "lsl" => [nil, {"name" => nil, "vals" => nil}, {"name" => "n", "vals" => []}, {"name" => "é", "vals" => [nil, 1.5, Float::NAN]}],
+       "m_struct" => {"a" => nil, "b" => {"a" => nil, "b" => nil}, "c" => {"a" => 1, "b" => []}, "d" => {"a" => 2, "b" => ["x", nil]}},
+       "m_nullval" => {"k" => nil, "k2" => 5}, "m_reqval" => {1 => "one", -1 => ""},
+       "s" => {"x" => 1, "inner" => {"y" => nil, "z" => nil}}, "s_req" => {"x" => -1, "y" => "why"}},
+      {"id" => 3, "l_nullable" => [nil, nil, nil], "l_required_el" => %w[a b c], "l_required" => [0] * 20, "ll" => [[1], [2, 3], [], nil],
+       "lsl" => [{"name" => "x", "vals" => [1.0]}], "m_struct" => {"" => {"a" => 3, "b" => [nil]}},
+       "m_nullval" => {"a" => 1}, "m_reqval" => {7 => "seven"},
+       "s" => {"x" => nil, "inner" => {"y" => "y", "z" => []}}, "s_req" => {"x" => 3, "y" => nil}},
+      {"id" => 4, "l_nullable" => nil, "l_required_el" => nil, "l_required" => [], "ll" => [[]], "lsl" => [nil],
+       "m_struct" => {"only" => nil}, "m_nullval" => nil, "m_reqval" => {},
+       "s" => {"x" => 5, "inner" => {"y" => "q", "z" => [nil, 1]}}, "s_req" => {"x" => 4, "y" => ""}}
     ]
     rows = fixed.first(n)
     (fixed.size...n).each do |i|
@@ -205,16 +205,16 @@ module WriterHelpers
       arr = ->(max, &b) { Array.new(rng.rand(0..max)) { b.call } }
       rows << {
         "id" => i,
-        "l_nullable" => maybe.(arr.(4) { maybe.(int.()) }),
-        "l_required_el" => maybe.(arr.(3) { str.() }),
-        "l_required" => arr.(5) { rng.rand(I64_MIN..I64_MAX) },
-        "ll" => maybe.(arr.(3) { maybe.(arr.(3) { maybe.(int.()) }) }),
-        "lsl" => maybe.(arr.(3) { maybe.({ "name" => maybe.(str.()), "vals" => maybe.(arr.(3) { maybe.(rng.rand) }) }) }),
-        "m_struct" => maybe.(arr.(3) { [str.(), maybe.({ "a" => maybe.(int.()), "b" => maybe.(arr.(2) { maybe.(str.()) }) })] }.to_h),
-        "m_nullval" => maybe.(arr.(4) { [str.(), maybe.(int.())] }.to_h),
-        "m_reqval" => maybe.(arr.(4) { [int.(), str.()] }.to_h),
-        "s" => maybe.({ "x" => maybe.(int.()), "inner" => maybe.({ "y" => maybe.(str.()), "z" => maybe.(arr.(3) { maybe.(int.()) }) }) }),
-        "s_req" => { "x" => int.(), "y" => maybe.(str.()) }
+        "l_nullable" => maybe.call(arr.call(4) { maybe.call(int.call) }),
+        "l_required_el" => maybe.call(arr.call(3) { str.call }),
+        "l_required" => arr.call(5) { rng.rand(I64_MIN..I64_MAX) },
+        "ll" => maybe.call(arr.call(3) { maybe.call(arr.call(3) { maybe.call(int.call) }) }),
+        "lsl" => maybe.call(arr.call(3) { maybe.call({"name" => maybe.call(str.call), "vals" => maybe.call(arr.call(3) { maybe.call(rng.rand) })}) }),
+        "m_struct" => maybe.call(arr.call(3) { [str.call, maybe.call({"a" => maybe.call(int.call), "b" => maybe.call(arr.call(2) { maybe.call(str.call) })})] }.to_h),
+        "m_nullval" => maybe.call(arr.call(4) { [str.call, maybe.call(int.call)] }.to_h),
+        "m_reqval" => maybe.call(arr.call(4) { [int.call, str.call] }.to_h),
+        "s" => maybe.call({"x" => maybe.call(int.call), "inner" => maybe.call({"y" => maybe.call(str.call), "z" => maybe.call(arr.call(3) { maybe.call(int.call) })})}),
+        "s_req" => {"x" => int.call, "y" => maybe.call(str.call)}
       }
     end
     rows
@@ -322,23 +322,23 @@ module WriterTestSchemas
     Array.new(n) do |i|
       maybe = ->(v) { (i % 7 == 3) ? nil : v }
       {
-        "i32" => maybe.([I32_MIN, I32_MAX, 0, rng.rand(-100..100)][i % 4]),
+        "i32" => maybe.call([I32_MIN, I32_MAX, 0, rng.rand(-100..100)][i % 4]),
         "i64" => [I64_MIN, I64_MAX, 0, rng.rand(I64_MIN..I64_MAX)][i % 4],
-        "i32_bss" => maybe.(rng.rand(I32_MIN..I32_MAX)),
-        "i64_bss" => maybe.(rng.rand(I64_MIN..I64_MAX)),
-        "f32" => maybe.([1.5, -0.0, Float::NAN, Float::INFINITY, 0.25][i % 5]),
-        "f64" => maybe.([rng.rand, -0.0, Float::NAN, -Float::INFINITY][i % 4]),
-        "s_dlba" => maybe.(["", "é" * (i % 5), "abc#{i}"][i % 3]),
-        "s_dba" => maybe.(["prefix/#{i / 3}/x", "", "prefix/"][i % 3]),
-        "b_dba" => maybe.(rng.bytes(i % 6)),
-        "fx_dba" => maybe.(["aaaa", "aaab", "\x00\x00\x00\x00".b, "zzzz"][i % 4]),
-        "fx_bss" => maybe.(rng.bytes(3)),
-        "dec_bss" => maybe.(BigDecimal(rng.rand(-10**27..10**27)) / 100),
-        "bool_rle" => maybe.(i % 11 < 8),
+        "i32_bss" => maybe.call(rng.rand(I32_MIN..I32_MAX)),
+        "i64_bss" => maybe.call(rng.rand(I64_MIN..I64_MAX)),
+        "f32" => maybe.call([1.5, -0.0, Float::NAN, Float::INFINITY, 0.25][i % 5]),
+        "f64" => maybe.call([rng.rand, -0.0, Float::NAN, -Float::INFINITY][i % 4]),
+        "s_dlba" => maybe.call(["", "é" * (i % 5), "abc#{i}"][i % 3]),
+        "s_dba" => maybe.call(["prefix/#{i / 3}/x", "", "prefix/"][i % 3]),
+        "b_dba" => maybe.call(rng.bytes(i % 6)),
+        "fx_dba" => maybe.call(["aaaa", "aaab", "\x00\x00\x00\x00".b, "zzzz"][i % 4]),
+        "fx_bss" => maybe.call(rng.bytes(3)),
+        "dec_bss" => maybe.call(BigDecimal(rng.rand(-10**27..10**27)) / 100),
+        "bool_rle" => maybe.call(i % 11 < 8),
         "bool_rle_req" => i.odd?,
-        "l_delta" => maybe.(Array.new(i % 4) { |j| j == 1 ? nil : rng.rand(I64_MIN..I64_MAX) }),
-        "d_delta" => maybe.(Date.new(2000, 1, 1) + i * 1000 - 20_000),
-        "u64_delta" => maybe.([2**64 - 1, 0, 2**63][i % 3])
+        "l_delta" => maybe.call(Array.new(i % 4) { |j| (j == 1) ? nil : rng.rand(I64_MIN..I64_MAX) }),
+        "d_delta" => maybe.call(Date.new(2000, 1, 1) + i * 1000 - 20_000),
+        "u64_delta" => maybe.call([2**64 - 1, 0, 2**63][i % 3])
       }
     end
   end

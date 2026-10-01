@@ -270,7 +270,7 @@ class InspectorTest < Minitest::Test
     spark = inspect_file(File.join(PT, "int96_from_spark.parquet")).key_value_metadata
     assert(spark.any? { |kv| kv[:format] == "json" && kv[:json].is_a?(Hash) })
     sorted = inspect_file(File.join(PT, "sort_columns.parquet")).row_groups[0].sorting_columns
-    assert_equal [{ column: "a", descending: true, nulls_first: true }, { column: "b", descending: false, nulls_first: false }], sorted
+    assert_equal [{column: "a", descending: true, nulls_first: true}, {column: "b", descending: false, nulls_first: false}], sorted
   end
 
   def test_column_totals
@@ -338,9 +338,9 @@ class InspectorTest < Minitest::Test
 
   def test_verify_checksums_of_parquet_testing_fixtures
     without_decompression do
-      { "datapage_v1-uncompressed-checksum" => [4, 0, 0], "datapage_v1-snappy-compressed-checksum" => [4, 0, 0],
-        "plain-dict-uncompressed-checksum" => [4, 0, 0], "rle-dict-snappy-checksum" => [2, 0, 2],
-        "datapage_v1-corrupt-checksum" => [2, 2, 0], "rle-dict-uncompressed-corrupt-checksum" => [0, 2, 2] }.each do |f, (ok, bad, absent)|
+      {"datapage_v1-uncompressed-checksum" => [4, 0, 0], "datapage_v1-snappy-compressed-checksum" => [4, 0, 0],
+       "plain-dict-uncompressed-checksum" => [4, 0, 0], "rle-dict-snappy-checksum" => [2, 0, 2],
+       "datapage_v1-corrupt-checksum" => [2, 2, 0], "rle-dict-uncompressed-corrupt-checksum" => [0, 2, 2]}.each do |f, (ok, bad, absent)|
         i, s = checksums_of(File.join(PT, "#{f}.parquet"))
         assert_equal [ok, bad, absent], [s[:ok], s[:mismatch], s[:absent]], f
         assert_equal bad, s[:mismatches].size, f
@@ -385,7 +385,7 @@ class InspectorTest < Minitest::Test
         broken = Inspector.new(StringIO.new(bytes))
         s = broken.verify_checksums
         assert_equal 1, s[:mismatch], where
-        assert_equal [{ row_group: 0, column: "name", page: page.index, type: page.type, offset: page.offset }],
+        assert_equal [{row_group: 0, column: "name", page: page.index, type: page.type, offset: page.offset}],
           s[:mismatches].map { |m| m.slice(:row_group, :column, :page, :type, :offset) }, where
         assert_equal :mismatch, broken.row_groups[0].column("name").pages[page.index].checksum
       end
@@ -395,7 +395,7 @@ class InspectorTest < Minitest::Test
   def test_checksums_in_to_h_and_report
     path = File.join(PT, "datapage_v1-corrupt-checksum.parquet")
     h = File.open(path, "rb") { |io| Inspector.new(io).tap(&:verify_checksums).to_h }
-    assert_equal({ ok: 2, mismatch: 2, absent: 0 }, h[:summary][:checksums])
+    assert_equal({ok: 2, mismatch: 2, absent: 0}, h[:summary][:checksums])
     assert_equal 2, h[:checksum_mismatches].size
     statuses = h[:row_groups][0][:columns].flat_map { |c| c[:pages].map { |p| p[:checksum] } }
     assert_equal %w[mismatch ok ok mismatch], statuses
@@ -436,7 +436,7 @@ class InspectorTest < Minitest::Test
     "timestamp_int96" => ["ts: timestamp[us]"]
   }.freeze
 
-  def arrow_lines(fields) = fields.map { |f| "#{f[:name]}: #{f[:type]}#{f[:nullable] ? "" : " not null"}" }
+  def arrow_lines(fields) = fields.map { |f| "#{f[:name]}: #{f[:type]}#{" not null" unless f[:nullable]}" }
 
   def test_arrow_schema_matches_pyarrow
     ARROW_EXPECTED.each do |f, expected|
@@ -468,12 +468,12 @@ class InspectorTest < Minitest::Test
     assert_equal ["key: string not null", "value: list<item: int16>"], arrow_lines(entries[:children])
 
     dict = inspect_file(File.join(GEN, "dictionary_arrow_type.parquet")).arrow_schema[:fields].first
-    assert_equal({ index_type: "int32", ordered: false, id: 0 }, dict[:dictionary])
+    assert_equal({index_type: "int32", ordered: false, id: 0}, dict[:dictionary])
 
     misc = inspect_file(File.join(GEN, "logical_misc.parquet")).arrow_schema[:fields]
     assert_equal ["arrow.uuid", nil, nil, "arrow.json"], misc.first(4).map { |f| f[:extension] }
     unknown = inspect_file(File.join(PT, "unknown-logical-type.parquet")).arrow_schema[:fields]
-    assert_equal({ "ARROW:extension:metadata" => "{}", "ARROW:extension:name" => "geoarrow.wkb" }, unknown[1][:metadata])
+    assert_equal({"ARROW:extension:metadata" => "{}", "ARROW:extension:name" => "geoarrow.wkb"}, unknown[1][:metadata])
     assert_equal "geoarrow.wkb", unknown[1][:extension]
     assert_nil unknown[0][:metadata]
 
@@ -518,10 +518,10 @@ class InspectorTest < Minitest::Test
       "ree: run_end_encoded<run_ends: int32, values: string>", "sv: string_view",
       "dict: dictionary<values=large_string, indices=int8, ordered=1>", "ts: timestamp[ns, tz=+01:00]", "st: struct<inner: uint16>"
     ], arrow_lines(s[:fields])
-    assert_equal({ "origin" => "herringbone test" }, s[:metadata])
-    assert_equal({ "comment" => "primary key", "PARQUET:field_id" => "1" }, s[:fields][0][:metadata])
-    assert_equal({ "k" => "v" }, s[:fields].last[:children][0][:metadata])
-    assert_equal({ index_type: "int8", ordered: true, id: 0 }, s[:fields][12][:dictionary])
+    assert_equal({"origin" => "herringbone test"}, s[:metadata])
+    assert_equal({"comment" => "primary key", "PARQUET:field_id" => "1"}, s[:fields][0][:metadata])
+    assert_equal({"k" => "v"}, s[:fields].last[:children][0][:metadata])
+    assert_equal({index_type: "int8", ordered: true, id: 0}, s[:fields][12][:dictionary])
     lines = Inspector::ArrowSchema.lines(s[:fields])
     assert_includes lines, 'id: int64 (not null; metadata comment="primary key", PARQUET:field_id="1")'
     assert_includes lines, '  inner: uint16 (metadata k="v")'
@@ -560,7 +560,7 @@ class InspectorTest < Minitest::Test
       assert_raises(Inspector::ArrowSchema::Error, label) { Inspector::ArrowSchema.decode(v) }
       io = StringIO.new("".b)
       schema = Herringbone::Schema.define { int64 :id }
-      Herringbone::Writer.open(io, schema, metadata: { "ARROW:schema" => v }) { |w| w << [1] }
+      Herringbone::Writer.open(io, schema, metadata: {"ARROW:schema" => v}) { |w| w << [1] }
       i = Inspector.new(StringIO.new(io.string))
       assert_nil i.arrow_schema, label
       assert_match(/could not decode ARROW:schema/, i.arrow_schema_error, label)
@@ -597,9 +597,9 @@ class InspectorTest < Minitest::Test
     ci.null_counts = [2]
     c.instance_variable_set(:@column_index, ci)
     c.remove_instance_variable(:@index_mismatches) if c.instance_variable_defined?(:@index_mismatches)
-    assert_equal [{ page: page.index, data_page: 0, field: :null_count, page_value: 1, index_value: 2 },
-      { page: page.index, data_page: 0, field: :min, page_value: 0, index_value: 1 }], c.index_mismatches
-    assert_equal [{ row_group: 0, column: "Int32_list" }], i.index_mismatches.map { |m| m.slice(:row_group, :column) }.uniq
+    assert_equal [{page: page.index, data_page: 0, field: :null_count, page_value: 1, index_value: 2},
+      {page: page.index, data_page: 0, field: :min, page_value: 0, index_value: 1}], c.index_mismatches
+    assert_equal [{row_group: 0, column: "Int32_list"}], i.index_mismatches.map { |m| m.slice(:row_group, :column) }.uniq
     assert_equal 2, c.to_h[:index_mismatches].size
     assert_match(/page statistics vs column index: 2 disagreements/, i.report)
     assert_match(/row group 0 Int32_list page 1: min in page header 0, in column index 1/, i.report)
@@ -619,7 +619,6 @@ class InspectorTest < Minitest::Test
     ci.null_pages = [false, false]
     strings.instance_variable_set(:@column_index, ci)
     strings.remove_instance_variable(:@index_mismatches)
-    assert_equal [{ page: nil, data_page: nil, field: :page_count, page_value: 1, index_value: 2 }], strings.index_mismatches
+    assert_equal [{page: nil, data_page: nil, field: :page_count, page_value: 1, index_value: 2}], strings.index_mismatches
   end
-
 end

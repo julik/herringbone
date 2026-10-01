@@ -40,7 +40,7 @@ schema = Herringbone::Schema.define do
   int64 :id, null: false
   string :email, null: false
 end
-rows = Array.new(ROWS) { |i| { "id" => i * 7_919 + 1, "email" => format("u%010d@example.com", i) } }
+rows = Array.new(ROWS) { |i| {"id" => i * 7_919 + 1, "email" => format("u%010d@example.com", i)} }
 
 def write(schema, rows, bloom_filters)
   io = StringIO.new("".b)

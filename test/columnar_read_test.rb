@@ -16,12 +16,6 @@ class ColumnarReadTest < Minitest::Test
     Marshal.dump(a) == Marshal.dump(b)
   end
 
-  # Equality that treats NaNs as equal. Deliberately not assert_equal: on a mismatch it would
-  # pretty-print a diff of every row, which takes minutes on the large fixtures.
-  def same?(a, b)
-    Marshal.dump(a) == Marshal.dump(b)
-  end
-
   # Rows rebuilt from column batches must equal what the row API returns
   def test_columns_match_rows_for_every_fixture
     checked = 0
@@ -33,7 +27,7 @@ class ColumnarReadTest < Minitest::Test
           next # files the row API cannot read either (covered by the conformance tests)
         end
         # Tiny batches only on small files, to keep the test fast
-        (rows.size <= 2000 ? [7, 1024] : [4096]).each do |size|
+        ((rows.size <= 2000) ? [7, 1024] : [4096]).each do |size|
           rebuilt = []
           r.each_batch(size, as: :columns) do |batch|
             n = batch.values.first&.size || 0
@@ -59,7 +53,7 @@ class ColumnarReadTest < Minitest::Test
 
   def test_batches_are_full_and_span_row_groups
     io = StringIO.new("".b)
-    Herringbone.write(io, Array.new(2500) { |i| { id: i, tags: ["t#{i % 3}"] * (i % 3) } }, row_group_rows: 700)
+    Herringbone.write(io, Array.new(2500) { |i| {id: i, tags: ["t#{i % 3}"] * (i % 3)} }, row_group_rows: 700)
     r = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal 4, r.row_groups.size
     sizes = []
@@ -91,13 +85,13 @@ class ColumnarReadTest < Minitest::Test
 
   def test_projection_keys_and_helpers
     io = StringIO.new("".b)
-    Herringbone.write(io, [{ a: 1, b: "x", c: 1.5 }, { a: 2, b: nil, c: nil }])
+    Herringbone.write(io, [{a: 1, b: "x", c: 1.5}, {a: 2, b: nil, c: nil}])
     bytes = io.string
     r = Herringbone::Reader.new(StringIO.new(bytes))
-    assert_equal({ "a" => [1, 2], "c" => [1.5, nil] }, r.each_batch(10, as: :columns, columns: %w[a c]).first)
-    assert_equal({ a: [1, 2], b: ["x", nil], c: [1.5, nil] }, Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol).read(as: :columns))
-    assert_equal({ "b" => ["x", nil] }, r.read(as: :columns, columns: ["b"]))
-    assert_equal [{ "a" => 1 }, { "a" => 2 }], r.read(columns: ["a"])
+    assert_equal({"a" => [1, 2], "c" => [1.5, nil]}, r.each_batch(10, as: :columns, columns: %w[a c]).first)
+    assert_equal({a: [1, 2], b: ["x", nil], c: [1.5, nil]}, Herringbone::Reader.new(StringIO.new(bytes), keys: :symbol).read(as: :columns))
+    assert_equal({"b" => ["x", nil]}, r.read(as: :columns, columns: ["b"]))
+    assert_equal [{"a" => 1}, {"a" => 2}], r.read(columns: ["a"])
     assert_raises(ArgumentError) { r.each_batch(10, as: :cells).first }
     assert_raises(ArgumentError) { r.read(as: :cells) }
   end
@@ -107,6 +101,6 @@ class ColumnarReadTest < Minitest::Test
     Herringbone::Writer.open(io, Herringbone::Schema.define { int32 :a }) { |_| }
     r = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal [], r.each_batch(10, as: :columns).to_a
-    assert_equal({ "a" => [] }, r.read(as: :columns))
+    assert_equal({"a" => []}, r.read(as: :columns))
   end
 end

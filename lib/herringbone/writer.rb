@@ -142,7 +142,7 @@ module Herringbone
       rescue EncodeError => e
         rollback_row(marks)
         raise EncodeError, "Row #{@total_rows + @buffered_rows}: #{e.message}"
-      rescue StandardError
+      rescue
         rollback_row(marks)
         raise
       end
@@ -270,7 +270,7 @@ module Herringbone
         held = if values.is_a?(ByteValues)
           values.memory_bytes
         else
-          values.size * (col.type == T::INT96 ? 48 : 8)
+          values.size * ((col.type == T::INT96) ? 48 : 8)
         end
         held + buf.defs.bytesize + (buf.reps ? buf.reps.bytesize : 0)
       end
@@ -514,9 +514,9 @@ module Herringbone
       return Format::BoundaryOrder::ASCENDING if ranges.size < 2
       cmp = ->(a, b) { order.equal?(IDENTITY) ? a <=> b : order.call(a) <=> order.call(b) }
       pairs = ranges.each_cons(2)
-      if pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.(a_min, b_min) <= 0 && cmp.(a_max, b_max) <= 0 }
+      if pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.call(a_min, b_min) <= 0 && cmp.call(a_max, b_max) <= 0 }
         Format::BoundaryOrder::ASCENDING
-      elsif pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.(a_min, b_min) >= 0 && cmp.(a_max, b_max) >= 0 }
+      elsif pairs.all? { |(a_min, a_max), (b_min, b_max)| cmp.call(a_min, b_min) >= 0 && cmp.call(a_max, b_max) >= 0 }
         Format::BoundaryOrder::DESCENDING
       else
         Format::BoundaryOrder::UNORDERED
@@ -571,7 +571,7 @@ module Herringbone
       raise ArgumentError, "bloom_filters: ndv must be positive for #{path}" if ndv && !ndv.positive?
       fpp = Float(settings.fetch(:fpp, BloomFilter::DEFAULT_FPP))
       raise ArgumentError, "bloom_filters: fpp must be between 0 and 1 for #{path}" unless fpp > 0 && fpp < 1
-      { ndv: ndv, fpp: fpp, max_bytes: Integer(settings.fetch(:max_bytes, BloomFilter::DEFAULT_MAX_BYTES)) }
+      {ndv: ndv, fpp: fpp, max_bytes: Integer(settings.fetch(:max_bytes, BloomFilter::DEFAULT_MAX_BYTES))}
     end
 
     # A filter holding the chunk's values: +dict_values+ (already distinct) for dictionary-encoded
@@ -637,7 +637,7 @@ module Herringbone
       n = buf.defs.size
       bytes = n + value_bytes
       pages = (bytes + @page_bytes - 1) / @page_bytes
-      per = pages <= 1 ? n : (n + pages - 1) / pages
+      per = (pages <= 1) ? n : (n + pages - 1) / pages
       per = @page_rows if per > @page_rows
       return [[0, n]] if per >= n
       reps = buf.reps
@@ -673,11 +673,11 @@ module Herringbone
         body = Encodings::RLE.encode_hybrid(values.map { |v| v ? 1 : 0 }, 1)
         [body.bytesize].pack("V") << body
       when E::DELTA_BINARY_PACKED
-        Encodings::Delta.encode_binary_packed(values, type == T::INT32 ? 32 : 64)
+        Encodings::Delta.encode_binary_packed(values, (type == T::INT32) ? 32 : 64)
       when E::DELTA_LENGTH_BYTE_ARRAY then Encodings::Delta.encode_length_byte_array(values)
       when E::DELTA_BYTE_ARRAY then Encodings::Delta.encode_byte_array(values)
       when E::BYTE_STREAM_SPLIT
-        width = { T::INT32 => 4, T::FLOAT => 4, T::INT64 => 8, T::DOUBLE => 8 }[type] || type_length
+        width = {T::INT32 => 4, T::FLOAT => 4, T::INT64 => 8, T::DOUBLE => 8}[type] || type_length
         Encodings::ByteStreamSplit.encode(Encodings::Plain.encode(values, type, type_length), width)
       end
     end
@@ -687,7 +687,7 @@ module Herringbone
       compressed ||= Compression.compress(@codec, body)
       header.uncompressed_page_size ||= body.bytesize
       header.compressed_page_size = compressed.bytesize
-      header.crc = Zlib.crc32(compressed).then { |c| c >= 0x8000_0000 ? c - 0x1_0000_0000 : c }
+      header.crc = Zlib.crc32(compressed).then { |c| (c >= 0x8000_0000) ? c - 0x1_0000_0000 : c }
       encoded = header.encode
       write_raw(encoded)
       write_raw(compressed)
@@ -751,7 +751,7 @@ module Herringbone
       when T::BOOLEAN then ->(v) { v ? 1 : 0 }
       when T::INT32, T::INT64
         return IDENTITY unless kind == :integer && !signed
-        mask = col.type == T::INT32 ? 0xFFFF_FFFF : 0xFFFF_FFFF_FFFF_FFFF
+        mask = (col.type == T::INT32) ? 0xFFFF_FFFF : 0xFFFF_FFFF_FFFF_FFFF
         ->(v) { v & mask }
       when T::FLOAT, T::DOUBLE then IDENTITY
       when T::BYTE_ARRAY, T::FIXED_LEN_BYTE_ARRAY
@@ -794,7 +794,7 @@ module Herringbone
     # Long byte-array bounds are truncated: a prefix is still a lower bound for the minimum, and
     # a prefix with its last byte incremented is an upper bound for the maximum
     def truncate_min(bytes)
-      bytes.bytesize > STAT_TRUNCATE_BYTES ? bytes.byteslice(0, STAT_TRUNCATE_BYTES) : bytes
+      (bytes.bytesize > STAT_TRUNCATE_BYTES) ? bytes.byteslice(0, STAT_TRUNCATE_BYTES) : bytes
     end
 
     def truncate_max(bytes)

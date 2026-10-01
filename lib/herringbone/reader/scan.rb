@@ -75,7 +75,7 @@ module Herringbone
             end
             nulls = column_index.null_counts&.[](i)
             next unless Filter.may_match?(c.test, min, max, nulls, column_index.null_pages[i])
-            stop = i + 1 < locs.size ? locs[i + 1].first_row_index : n
+            stop = (i + 1 < locs.size) ? locs[i + 1].first_row_index : n
             candidates << [loc.first_row_index, stop]
           end
           ranges = Filter.intersect(ranges, Filter.merge(candidates))
@@ -113,7 +113,11 @@ module Herringbone
         case test
         when nil then v.nil?
         when Array then test.any? { |t| matches?(t, v) }
-        when Range then !v.nil? && (test.cover?(v) rescue false)
+        when Range then !v.nil? && begin
+          test.cover?(v)
+        rescue
+          false
+        end
         when String then v.is_a?(String) && (v == test || (v.bytesize == test.bytesize && v.b == test.b))
         else
           if test.respond_to?(:call) then test.call(v)
@@ -150,7 +154,7 @@ module Herringbone
         end
       end
 
-      BOOLEAN_ORDER = { false => 0, true => 1 }.freeze
+      BOOLEAN_ORDER = {false => 0, true => 1}.freeze
 
       def self.compare(a, b)
         a = a.b if a.is_a?(String)
@@ -158,7 +162,7 @@ module Herringbone
         a = BOOLEAN_ORDER.fetch(a, a)
         b = BOOLEAN_ORDER.fetch(b, b)
         a <=> b
-      rescue StandardError
+      rescue
         nil
       end
 
@@ -192,14 +196,14 @@ module Herringbone
         when Format::Type::INT96 then return nil # no defined order
         when Format::Type::BYTE_ARRAY, Format::Type::FIXED_LEN_BYTE_ARRAY
           # Truncated bounds (shorter than the type length) still bound byte-wise
-          return type == Format::Type::FIXED_LEN_BYTE_ARRAY && bytes.bytesize != column.type_length ? nil : convert(column, bytes.dup)
+          return (type == Format::Type::FIXED_LEN_BYTE_ARRAY && bytes.bytesize != column.type_length) ? nil : convert(column, bytes.dup)
         when Format::Type::BOOLEAN then bytes.getbyte(0) == 1
         else
-          return nil if bytes.bytesize < { Format::Type::INT32 => 4, Format::Type::FLOAT => 4 }.fetch(type, 8)
+          return nil if bytes.bytesize < {Format::Type::INT32 => 4, Format::Type::FLOAT => 4}.fetch(type, 8)
           Encodings::Plain.decode(bytes, 0, 1, type).first.first
         end
         convert(column, value)
-      rescue StandardError
+      rescue
         nil
       end
 
@@ -225,7 +229,7 @@ module Herringbone
           s = [a[i][0], b[j][0]].max
           e = [a[i][1], b[j][1]].min
           out << [s, e] if s < e
-          a[i][1] < b[j][1] ? i += 1 : j += 1
+          (a[i][1] < b[j][1]) ? i += 1 : j += 1
         end
         out
       end
@@ -248,7 +252,7 @@ module Herringbone
         filter = reader.bloom_filter(rg_index, condition.column.path)
         return true unless filter
         values.any? { |v| filter.might_contain?(v) }
-      rescue StandardError
+      rescue
         true # values the column cannot store never rule a row group out here; rows are checked anyway
       end
     end

@@ -40,7 +40,7 @@ class SnappyTest < Minitest::Test
 
   def test_roundtrip_over_one_block
     r = Random.new(2)
-    data = Array.new(20_000) { r.rand < 0.5 ? "row#{r.rand(100)}," : r.bytes(3) }.join
+    data = Array.new(20_000) { (r.rand < 0.5) ? "row#{r.rand(100)}," : r.bytes(3) }.join
     assert_operator data.bytesize, :>, 65_536
     roundtrip(data)
   end
@@ -120,7 +120,7 @@ class SnappyTest < Minitest::Test
       "\x08\x00a\x01\x02".b,      # copy offset beyond output
       "\x03\x00a".b,              # output shorter than declared
       "\x01\x04ab".b,             # output longer than declared
-      "\x02\x00a\x05\x01".b,      # copy overruns declared length
+      "\x02\x00a\x05\x01".b      # copy overruns declared length
     ].each do |bad|
       assert_raises(Snappy::Error, bad.inspect) { Snappy.decompress(bad) }
     end
@@ -184,7 +184,7 @@ class SnappyBackendTest < Minitest::Test
   end
 
   def test_files_round_trip_with_either_backend
-    rows = Array.new(5_000) { |i| { id: i, name: "name #{i % 97}", score: i * 0.5 } }
+    rows = Array.new(5_000) { |i| {id: i, name: "name #{i % 97}", score: i * 0.5} }
     %i[ruby native].each do |backend|
       next if backend == :native && !native?
       bytes = with_backend(backend) do
