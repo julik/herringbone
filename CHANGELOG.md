@@ -8,8 +8,8 @@
 - `Herringbone.write(io, rows) { json :payload }` declares fields that replace inferred ones.
 - `Herringbone::SchemaMismatch` (an `EncodeError`) explains a row that doesn't fit an inferred
   schema and stops the write; `EncodeError` has `row`, `column` and `value`.
-- **Breaking:** `herringbone inspect` takes `--format=text|json|html` instead of `--json`/`--html`.
 - `herringbone inspect --format=html` opens the page in the browser when run in a terminal.
+- **Breaking:** `herringbone inspect` takes `--format=text|json|html` instead of `--json`/`--html`.
 
 ## 0.3.0
 
