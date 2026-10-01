@@ -553,15 +553,15 @@ module Herringbone
 
         # @param n [Integer] number of values to decode
         # @return [Array<String>] the next +n+ values as binary Strings
-        # @raise [FormatError] when there are too few values or a prefix is longer than the
-        #   previous value
+        # @raise [FormatError] when there are too few values or a prefix is negative or longer than
+        #   the previous value
         def read(n)
           raise FormatError, "DELTA_BYTE_ARRAY has too few values" if @i + n > @prefixes.size
           suffixes = @suffixes.read(n)
           prev = @prev
           out = Array.new(n) do |k|
             prefix = @prefixes[@i + k]
-            raise FormatError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
+            raise FormatError, "DELTA_BYTE_ARRAY prefix length #{prefix} out of range" if prefix > prev.bytesize || prefix.negative?
             prev = prefix.zero? ? suffixes[k] : prev.byteslice(0, prefix) + suffixes[k]
           end
           @prev = prev

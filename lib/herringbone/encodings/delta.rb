@@ -29,12 +29,14 @@ module Herringbone
       end
 
       # Decodes DELTA_BINARY_PACKED integers. +bits+ is 32 or 64 (for wraparound).
-      # Returns [values, new_pos]. If +count+ is nil, the total from the header is used.
+      # Returns [values, new_pos]. If +count+ is nil, the total from the header is used. A smaller
+      # +count+ decodes only that many values, but the returned offset is still the end of the
+      # whole encoded block, so data following it can be read from there.
       # @param data [String] binary page data
       # @param pos [Integer] byte offset of the block header
       # @param bits [Integer] integer width that deltas wrap around in, 32 or 64
       # @param count [Integer, nil] maximum number of values to decode
-      # @return [Array(Array<Integer>, Integer)] the decoded values and the offset where decoding stopped
+      # @return [Array(Array<Integer>, Integer)] the decoded values and the offset just past the encoded block
       # @raise [FormatError] on an invalid header or miniblock bit width, or truncated data
       def decode_binary_packed(data, pos, bits = 64, count = nil)
         block_size, pos = RLE.read_uleb(data, pos)
@@ -44,29 +46,34 @@ module Herringbone
         raise FormatError, "Invalid DELTA_BINARY_PACKED header" if miniblocks.zero? || block_size % miniblocks != 0
         per_mini = block_size / miniblocks
         raise FormatError, "Invalid miniblock size #{per_mini}" if per_mini % 8 != 0
-        total = count if count && count < total
+        want = (count && count < total) ? count : total
         values = []
         return [values, pos] if total.zero?
         last = zigzag_decode(first)
-        values << last
+        values << last if want.positive?
         half = 1 << (bits - 1)
         mask = (1 << bits) - 1
-        while values.size < total
+        left = total - 1 # deltas still encoded, decoded or skipped
+        while left.positive?
           min_delta, pos = RLE.read_uleb(data, pos)
           min_delta = zigzag_decode(min_delta)
           widths = data.byteslice(pos, miniblocks).unpack("C*")
           pos += miniblocks
           widths.each do |w|
-            break if values.size >= total
+            # Miniblocks past the last value have a width byte but no body
+            break unless left.positive?
             raise FormatError, "Invalid delta bit width #{w}" if w > bits
-            deltas = RLE.unpack_bits(data, pos, per_mini, w)
-            pos += per_mini * w / 8
-            take = total - values.size
-            deltas = deltas.first(take) if take < per_mini
-            deltas.each do |d|
-              last = ((last + min_delta + d + half) & mask) - half
-              values << last
+            if values.size < want
+              deltas = RLE.unpack_bits(data, pos, per_mini, w)
+              take = want - values.size
+              deltas = deltas.first(take) if take < per_mini
+              deltas.each do |d|
+                last = ((last + min_delta + d + half) & mask) - half
+                values << last
+              end
             end
+            pos += per_mini * w / 8
+            left -= per_mini
           end
         end
         [values, pos]
@@ -135,14 +142,14 @@ module Herringbone
       # @param pos [Integer] byte offset of the prefix lengths block
       # @param count [Integer] number of values to decode
       # @return [Array(Array<String>, Integer)] binary values and the offset just past them
-      # @raise [FormatError] if a prefix is longer than the previous value, or the data is malformed
+      # @raise [FormatError] if a prefix is negative or longer than the previous value, or the data is malformed
       def decode_byte_array(data, pos, count)
         prefixes, pos = decode_binary_packed(data, pos, 32, count)
         suffixes, pos = decode_length_byte_array(data, pos, count)
         prev = "".b
         out = Array.new(count) do |i|
           prefix = prefixes[i]
-          raise FormatError, "DELTA_BYTE_ARRAY prefix longer than previous value" if prefix > prev.bytesize
+          raise FormatError, "DELTA_BYTE_ARRAY prefix length #{prefix} out of range" if prefix > prev.bytesize || prefix.negative?
           prev = prefix.zero? ? suffixes[i] : prev.byteslice(0, prefix) + suffixes[i]
         end
         [out, pos]

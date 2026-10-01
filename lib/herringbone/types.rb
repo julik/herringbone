@@ -335,7 +335,7 @@ module Herringbone
     #   date:      Date, Time/DateTime (its calendar date), ISO-8601 String, Integer days since epoch
     #   timestamp: Time, DateTime, ActiveSupport::TimeWithZone, Date (midnight UTC), ISO-8601 String,
     #              Integer in the column's unit
-    #   time:      Time (its time of day), "HH:MM:SS[.fraction]" String, Integer in the column's unit
+    #   time:      Time (its time of day), "HH:MM[:SS[.fraction]]" String, Integer in the column's unit
     #   json:      String (used as-is) or any other object (serialized with JSON.generate)
     #   string:    String, Symbol or anything responding to to_s
     #   boolean:   true/false, 1/0, "true"/"false", "t"/"f", "1"/"0", "yes"/"no"

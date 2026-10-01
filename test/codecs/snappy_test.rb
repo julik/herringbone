@@ -183,6 +183,18 @@ class SnappyBackendTest < Minitest::Test
     end
   end
 
+  def test_compress_rejects_oversized_input_on_either_backend
+    huge = "x".b
+    def huge.bytesize = Snappy::MAX_UNCOMPRESSED + 1
+    fake_native = Module.new do
+      def self.deflate(_) = raise("the native compressor must not see oversized input")
+    end
+    [false, fake_native].each do |native|
+      Snappy.instance_variable_set(:@native, native)
+      assert_raises(Snappy::Error) { Snappy.compress(huge) }
+    end
+  end
+
   def test_files_round_trip_with_either_backend
     rows = Array.new(5_000) { |i| {id: i, name: "name #{i % 97}", score: i * 0.5} }
     %i[ruby native].each do |backend|

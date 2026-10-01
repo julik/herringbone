@@ -295,7 +295,6 @@ module Herringbone
           load_page! while @page.nil? || @page.remaining.zero?
           t = @page.remaining
           t = k if k < t
-          nil
           nv = t
           if (valid = @page.read_validity_numo(t, @max_def))
             nv = valid.count_true

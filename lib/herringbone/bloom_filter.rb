@@ -127,12 +127,13 @@ module Herringbone
     # XXH64, uncompressed, and a size that is a multiple of 32 bytes up to MAX_BYTES
     #
     # @param header [Format::BloomFilterHeader] decoded header
-    # @return [Boolean] truthy when supported, falsy otherwise (not strictly true or false)
+    # @return [Boolean] true when supported
     def self.supported_header?(header)
       n = header.num_bytes
       n.is_a?(Integer) && n >= BLOCK_BYTES && (n % BLOCK_BYTES).zero? && n <= MAX_BYTES &&
-        header.algorithm&.block && header.hash_function&.xxhash &&
-        (header.compression.nil? || header.compression.uncompressed)
+        !(header.algorithm && header.algorithm.block).nil? &&
+        !(header.hash_function && header.hash_function.xxhash).nil? &&
+        (header.compression.nil? || !header.compression.uncompressed.nil?)
     end
 
     # @return [Schema::Column, nil] column whose encoder converts values, nil for raw Strings
@@ -146,20 +147,16 @@ module Herringbone
     #   with +bitset+
     # @param bitset [String, nil] existing bitset (little-endian 32-bit words)
     # @param column [Schema::Column, nil] column the filter is for
-    # @raise [ArgumentError] when the size is not a multiple of 32 bytes or exceeds MAX_BYTES
+    # @raise [ArgumentError] when the size (or +bitset+'s size) is not a multiple of 32 bytes or
+    #   exceeds MAX_BYTES
     # @raise [UnsupportedError] when the column's physical type cannot have a bloom filter
     def initialize(num_bytes = nil, bitset: nil, column: nil)
-      if bitset
-        @words = bitset.unpack("V*")
-      else
-        num_bytes = Integer(num_bytes || MIN_BYTES)
-        unless num_bytes >= BLOCK_BYTES && (num_bytes % BLOCK_BYTES).zero? && num_bytes <= MAX_BYTES
-          raise ArgumentError, "Bloom filter size must be a multiple of 32 bytes up to 128MB, got #{num_bytes}"
-        end
-        @words = Array.new(num_bytes / 4, 0)
+      num_bytes = bitset ? bitset.bytesize : Integer(num_bytes || MIN_BYTES)
+      unless num_bytes >= BLOCK_BYTES && (num_bytes % BLOCK_BYTES).zero? && num_bytes <= MAX_BYTES
+        raise ArgumentError, "Bloom filter size must be a multiple of 32 bytes up to 128MB, got #{num_bytes}"
       end
+      @words = bitset ? bitset.unpack("V*") : Array.new(num_bytes / 4, 0)
       @num_blocks = @words.size / 8
-      raise ArgumentError, "Bloom filter bitset must be a multiple of 32 bytes" if @num_blocks.zero? || @words.size % 8 != 0
       @column = column
       if column && !TYPES.include?(column.type)
         raise UnsupportedError, "Bloom filters are not supported for #{T::NAMES[column.type]} column #{column.dotted_path}"
@@ -328,8 +325,7 @@ module Herringbone
     # @return [BloomFilter, nil] the filter, or nil when there is none or it is unsupported
     # @raise [IndexError] when there is no such row group
     # @raise [ArgumentError] when there is no such column
-    # @raise [FormatError] when the filter is truncated
-    # @raise [Thrift::Error] when the filter header cannot be decoded
+    # @raise [FormatError] when the filter is truncated or its header cannot be decoded
     def bloom_filter(row_group_index, column)
       col = bloom_filter_column(column)
       rg = row_groups.fetch(row_group_index) { raise IndexError, "No row group #{row_group_index}" }
@@ -352,6 +348,8 @@ module Herringbone
       bitset = @io.read(header.num_bytes)
       raise FormatError, "Truncated bloom filter" if bitset.nil? || bitset.bytesize != header.num_bytes
       BloomFilter.new(bitset: bitset, column: col)
+    rescue Thrift::Error => e
+      raise FormatError, "Corrupt bloom filter header for #{col.dotted_path}: #{e.message}"
     end
 
     private

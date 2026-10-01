@@ -203,6 +203,35 @@ class BloomFilterTest < Minitest::Test
     assert_raises(ArgumentError) { filter.might_contain?(nil) }
   end
 
+  def test_bitset_size_is_validated
+    assert_raises(ArgumentError) { BF.new(bitset: "\0".b * 33) }
+    assert_raises(ArgumentError) { BF.new(bitset: "\0".b * 31) }
+    assert_raises(ArgumentError) { BF.new(bitset: "".b) }
+    assert_equal 64, BF.new(bitset: "\0".b * 64).num_bytes
+  end
+
+  def test_supported_header_is_a_boolean
+    header = Herringbone::Format::BloomFilterHeader.decode(BF.new(32).encode).first
+    assert_same true, BF.supported_header?(header)
+    header.compression = nil
+    assert_same true, BF.supported_header?(header)
+    assert_same false, BF.supported_header?(header.dup.tap { |h| h.algorithm = nil })
+    header.hash_function = nil
+    assert_same false, BF.supported_header?(header)
+    assert_same false, BF.supported_header?(Herringbone::Format::BloomFilterHeader.new)
+  end
+
+  def test_corrupt_filter_header_is_a_format_error
+    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{id: 1}], bloom_filters: true).dup
+    offset = reader_for(bytes).row_groups[0].columns[0].meta_data.bloom_filter_offset
+    bytes[offset, 4] = "\xFF".b * 4
+    reader = reader_for(bytes)
+    assert_raises(Herringbone::FormatError) { reader.bloom_filter(0, "id") }
+    reader.row_groups[0].columns[0].meta_data.bloom_filter_length = nil
+    assert_raises(Herringbone::FormatError) { reader.bloom_filter(0, "id") }
+    assert_equal [{"id" => 1}], reader.read(where: {id: 1}) # where: treats it as "may match"
+  end
+
   def test_hand_computed_bits
     # A single block: the word bits come straight from the spec's salts
     filter = BF.new(32)

@@ -30,7 +30,7 @@ module Herringbone
 
         # Pad to a whole number of 32-bit words plus one spare word, so reads never go out of range
         pad = (-chunk.bytesize % 4) + 4
-        words = (pad.zero? ? chunk : chunk + ("\0" * pad)).unpack("V*")
+        words = (chunk + ("\0" * pad)).unpack("V*")
         mask = (1 << width) - 1
         out = Array.new(count)
         bitpos = 0
@@ -243,8 +243,10 @@ module Herringbone
       # @param width [Integer] bits per value
       # @param count [Integer] number of values to decode
       # @return [Array<Integer>] +count+ levels
+      # @raise [FormatError] if +data+ ends before +count+ levels
       def decode_legacy_bit_packed(data, pos, width, count)
         nbytes = (count * width + 7) / 8
+        raise FormatError, "Truncated BIT_PACKED levels" if pos + nbytes > data.bytesize
         bits = data.byteslice(pos, nbytes).unpack1("B*")
         Array.new(count) { |i| bits[i * width, width].to_i(2) }
       end

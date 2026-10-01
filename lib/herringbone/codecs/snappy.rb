@@ -236,14 +236,15 @@ module Herringbone
 
       # @param input [String] bytes to compress
       # @return [String] raw snappy block in ASCII-8BIT
-      # @raise [Error] if the input is larger than MAX_UNCOMPRESSED (pure-Ruby path only)
+      # @raise [Error] if the input is larger than MAX_UNCOMPRESSED
       def compress(input)
         src = (input.encoding == Encoding::BINARY) ? input : input.b
+        n = src.bytesize
+        # Checked for libsnappy too: it would truncate the 32-bit length preamble without complaint
+        raise Error, "input too large for snappy" if n > MAX_UNCOMPRESSED
         if (lib = native)
           return lib.deflate(src)
         end
-        n = src.bytesize
-        raise Error, "input too large for snappy" if n > MAX_UNCOMPRESSED
 
         out = String.new(capacity: 32 + n + n / 6, encoding: Encoding::BINARY)
         write_varint(out, n)

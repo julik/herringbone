@@ -114,7 +114,7 @@ module Herringbone
       raise ArgumentError, "Batch size must be positive, got #{size}" unless size.positive?
       raise ArgumentError, "as: must be :rows, :columns or :numo, got #{as.inspect}" unless AS_MODES.include?(as)
       raise ArgumentError, "limit: must not be negative" if limit&.negative?
-      return self if limit&.zero?
+      return validate_read_options(columns, where, from) if limit&.zero?
       if as == :numo
         each_numo_batch(size, columns, where, from, limit) { |batch| yield batch }
         return self
@@ -254,7 +254,9 @@ module Herringbone
       if as == :numo
         raise ArgumentError, "limit: must not be negative" if limit&.negative?
         out = nil
-        unless limit&.zero?
+        if limit&.zero?
+          validate_read_options(columns, where, from)
+        else
           # One batch (num_rows is not trusted: some writers store 0), so the column types are
           # decided from all the rows read
           each_numo_batch(1 << 62, columns, where, from, limit) { |batch| out = batch }
@@ -393,6 +395,21 @@ module Herringbone
         end
       end
       flush.call if pending_rows.positive?
+    end
+
+    # Checks the columns:, where: and from: options of a read that returns no rows (limit: 0),
+    # so it raises for bad options like any other read
+    #
+    # @param columns [Array<String, Symbol>, String, Symbol, nil] top-level fields to return
+    # @param where [Hash{String, Symbol => Object}, nil] column => condition, see Filter
+    # @param from [Integer, nil] number of rows at the start of the file to skip
+    # @return [Reader] self
+    # @raise [ArgumentError] for an unknown column, a bad condition or a negative +from+
+    def validate_read_options(columns, where, from)
+      select_fields(columns)
+      Filter.new(@schema, where) if where && !where.empty?
+      raise ArgumentError, "from: must not be negative" if Integer(from || 0).negative?
+      self
     end
 
     # read(as: :numo) of no rows: an empty array of each column's type
@@ -564,14 +581,15 @@ module Herringbone
     #
     # @return [Format::FileMetaData] the decoded footer
     # @raise [FormatError] when the file is too short, lacks the magic or the footer is corrupt
+    # @raise [UnsupportedError] for an encrypted file (+PARE+ magic)
     def read_footer
       @io.seek(0, IO::SEEK_END)
       size = @io.pos
       raise FormatError, "File too small to be Parquet (#{size} bytes)" if size < 12
       @io.seek(size - 8)
       tail = @io.read(8)
-      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
       raise UnsupportedError, "Encrypted Parquet files are not supported" if tail.byteslice(4, 4) == "PARE"
+      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
       footer_len = tail.unpack1("V")
       raise FormatError, "Footer length #{footer_len} exceeds file size" if footer_len + 12 > size
       @io.seek(size - 8 - footer_len)

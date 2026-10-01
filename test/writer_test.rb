@@ -98,6 +98,30 @@ class WriterTest < Minitest::Test
     assert_raises(ArgumentError) { write_to_string(schema, [{"d" => 1.0}], encodings: {"d" => :delta_binary_packed}) }
   end
 
+  def test_invalid_explicit_encoding_raises_in_constructor
+    schema = Herringbone::Schema.define { string :s }
+    # Encoding ids that are not data page encodings we can write, given as Integers
+    [E::PLAIN_DICTIONARY, E::RLE_DICTIONARY, 99].each do |id|
+      error = assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, encodings: {"s" => id}) }
+      assert_match(/s/, error.message)
+    end
+    # Valid encoding, wrong type: rejected before any row is written
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, encodings: {"s" => :byte_stream_split}) }
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, encodings: {"s" => E::BYTE_STREAM_SPLIT}) }
+  end
+
+  def test_float_dictionary_respects_size_limit
+    writer = Herringbone::Writer.new(StringIO.new, Herringbone::Schema.define { double :d })
+    # Half the values distinct (passes the cardinality rule), but 140_000 * 8 bytes > 1MB
+    values = Array.new(280_000) { |i| (i / 2).to_f }
+    assert writer.send(:build_dictionary, values, T::DOUBLE, nil).nil?, "DOUBLE dictionary over the size limit"
+    assert writer.send(:build_dictionary, values, T::FLOAT, nil).nil?, "FLOAT dictionary over the size limit"
+    small = Array.new(1000) { |i| (i % 10).to_f }
+    dict, indices = writer.send(:build_dictionary, small, T::DOUBLE, nil)
+    assert_equal 10, dict.size
+    assert_equal small, indices.map { |i| dict[i] }
+  end
+
   def test_rle_dictionary_with_single_distinct_value
     schema = Herringbone::Schema.define { string :s }
     rows = Array.new(100) { {"s" => "same"} }
@@ -628,6 +652,10 @@ class WriterTest < Minitest::Test
     assert_raises(ArgumentError) { Herringbone::Schema.infer([]) }
     assert_equal :string, Herringbone::Types.logical_of(Herringbone::Schema.infer([{"a" => nil}]).columns.first.node).first
     assert_raises(ArgumentError) { Herringbone::Schema.infer([{"a" => 1}, {"a" => "x"}]) }
+    # Positional rows carry no field names
+    error = assert_raises(ArgumentError) { Herringbone::Schema.infer([[1, "x"]]) }
+    assert_match(/schema/, error.message)
+    assert_raises(ArgumentError) { Herringbone.write(StringIO.new, [[1, "x"]]) }
   end
 
   def test_writer_open_with_block_writes_file

@@ -266,4 +266,17 @@ class VisualizerTest < Minitest::Test
     assert status.success?
     assert_equal 2, embedded_data(html)["file"]["checksums"]["mismatch"]
   end
+
+  def test_unknown_page_types_keep_their_raw_type
+    path = File.join(FIXTURES_DIR, "generated", "codec_snappy.parquet")
+    File.open(path, "rb") do |io|
+      inspector = Herringbone::Inspector.new(io)
+      page = inspector.column_chunks.first.pages.first.dup
+      page.type = 9
+      row = Visualizer.new(inspector).send(:page_row, page)
+      assert_equal 9, row[0]
+      page.type = :INDEX_PAGE
+      assert_equal 1, Visualizer.new(inspector).send(:page_row, page)[0]
+    end
+  end
 end

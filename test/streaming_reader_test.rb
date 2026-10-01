@@ -212,6 +212,14 @@ class StreamingReaderTest < Minitest::Test
     assert_equal [], reader.read
   end
 
+  def test_encrypted_footer_is_unsupported
+    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{"id" => 1}])
+    encrypted = bytes.byteslice(0, bytes.bytesize - 4) + "PARE"
+    error = assert_raises(Herringbone::UnsupportedError) { reader_for(encrypted) }
+    assert_match(/Encrypted/, error.message)
+    assert_raises(Herringbone::FormatError) { reader_for(bytes.byteslice(0, bytes.bytesize - 4) + "XXXX") }
+  end
+
   def test_symbol_keys
     schema = Herringbone::Schema.define do
       int64 :id

@@ -66,8 +66,8 @@ module Herringbone
     }.freeze
 
     # Largest dictionary build_dictionary keeps; above it the chunk is written without a dictionary.
-    # Not checked for FLOAT/DOUBLE, and byte-array columns are dictionary-encoded by ByteValues,
-    # which does not apply this limit either.
+    # Byte-array columns are dictionary-encoded by ByteValues, which applies its own
+    # ByteValues::MAX_DICTIONARY_BYTES as values arrive.
     MAX_DICTIONARY_BYTES = 1024 * 1024
     # The row group byte size is first estimated after this many rows, then after every row group
     ESTIMATE_AFTER_ROWS = 1000
@@ -153,8 +153,10 @@ module Herringbone
       raise ArgumentError, "data_page_version must be 1 or 2" unless [1, 2].include?(@data_page_version)
       @dictionary = dictionary
       @encodings = encodings.to_h { |path, enc| [path.to_s, encoding_id(path, enc)] }
-      unknown = @encodings.keys - schema.columns.map(&:dotted_path)
+      columns = schema.columns.to_h { |c| [c.dotted_path, c] }
+      unknown = @encodings.keys - columns.keys
       raise ArgumentError, "encodings: no such column #{unknown.join(", ")}" unless unknown.empty?
+      @encodings.each { |path, enc| check_encoding!(columns[path], enc) }
       @metadata = metadata
       @bloom_filters = bloom_filter_config(bloom_filters)
       @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter] for the row group being written
@@ -382,10 +384,22 @@ module Herringbone
     # @param path [String, Symbol] column path, for the error message
     # @param enc [Symbol, String, Integer] encoding name from ENCODING_NAMES, or an encoding id
     # @return [Integer] encoding id
-    # @raise [ArgumentError] for an unknown encoding name
+    # @raise [ArgumentError] for an unknown encoding name, or an id that is not in VALID_ENCODINGS
     def encoding_id(path, enc)
-      return enc if enc.is_a?(Integer)
+      if enc.is_a?(Integer)
+        return enc if VALID_ENCODINGS.key?(enc)
+        raise ArgumentError, "Encoding #{E::NAMES.fetch(enc, enc)} cannot be requested for #{path}"
+      end
       ENCODING_NAMES.fetch(enc.to_s.downcase.to_sym) { raise ArgumentError, "Unknown encoding #{enc.inspect} for #{path}" }
+    end
+
+    # @param col [Schema::Column] column the encoding is requested for
+    # @param enc [Integer] encoding id, a key of VALID_ENCODINGS
+    # @return [void]
+    # @raise [ArgumentError] when the encoding is not valid for the column's physical type
+    def check_encoding!(col, enc)
+      return if VALID_ENCODINGS.fetch(enc).include?(col.type)
+      raise ArgumentError, "Encoding #{E::NAMES[enc]} is not valid for #{T::NAMES[col.type]} column #{col.dotted_path}"
     end
 
     # Reads a struct member, by String or Symbol key
@@ -519,7 +533,6 @@ module Herringbone
     # @param col [Schema::Column] column being written
     # @param buffer [ColumnBuffer] the column's buffered levels and values
     # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
-    # @raise [ArgumentError] when the configured encoding is not valid for the column's type
     def write_column_chunk(col, buffer)
       type = col.type
       path = col.dotted_path
@@ -540,11 +553,7 @@ module Herringbone
       value_encoding = if dict_values
         E::RLE_DICTIONARY
       else
-        enc = @encodings[path] || E::PLAIN
-        unless VALID_ENCODINGS.fetch(enc).include?(type)
-          raise ArgumentError, "Encoding #{E::NAMES[enc]} is not valid for #{T::NAMES[type]} column #{path}"
-        end
-        enc
+        @encodings[path] || E::PLAIN
       end
 
       chunk_start = @pos
@@ -795,7 +804,7 @@ module Herringbone
     end
 
     # Returns [dictionary_values, indices] or nil when a dictionary is not worthwhile: more than about
-    # half the values are distinct, or (except for floats) the dictionary exceeds MAX_DICTIONARY_BYTES
+    # half the values are distinct, or the dictionary exceeds MAX_DICTIONARY_BYTES
     #
     # @param values [Array] non-null physical values of the chunk
     # @param type [Integer] physical type
@@ -807,6 +816,7 @@ module Herringbone
         keys = values.pack("G*").unpack("Q>*")
         uniq = keys.uniq
         return nil if uniq.size > values.size / 2 + 1 && values.size > 16
+        return nil if uniq.size * 8 > MAX_DICTIONARY_BYTES
         index = uniq.each_with_index.to_h
         return [uniq.pack("Q>*").unpack("G*"), keys.map(&index)]
       end

@@ -299,9 +299,11 @@ module Herringbone
 
       # @param row [Hash, #attributes, #to_h] sampled row
       # @return [Hash] the row as a Hash keyed by field name (String or Symbol keys)
-      # @raise [ArgumentError] when the row is neither a Hash nor converts to one
+      # @raise [ArgumentError] when the row is positional (an Array), or neither a Hash nor converts
+      #   to one
       def row_hash(row)
         return row if row.is_a?(Hash)
+        raise ArgumentError, "Cannot infer a schema from Array rows (values in schema order); pass a schema" if row.is_a?(Array)
         return row.attributes if row.respond_to?(:attributes)
         return row.to_h if row.respond_to?(:to_h)
         raise ArgumentError, "Cannot infer a schema from a #{row.class}"
@@ -602,10 +604,7 @@ module Herringbone
       # @return [Node] the added group node
       # @raise [ArgumentError] when the block declares no fields (or is missing), or for a duplicate name
       def struct(name, null: true, field_id: nil, &block)
-        inner = Builder.new
-        inner.instance_eval(&block)
-        raise ArgumentError, "struct #{name} has no fields" if inner.nodes.empty?
-        add Node.new(name: name, repetition: rep(null), children: inner.nodes, field_id: field_id)
+        add Node.new(name: name, repetition: rep(null), children: struct_fields(name, &block), field_id: field_id)
       end
 
       # list :tags, :string
@@ -737,7 +736,8 @@ module Herringbone
       # @param type_opts [Hash{Symbol => Object}] type options passed to Types.physical_attributes
       # @yield block evaluated with +instance_eval+ on a new Builder
       # @return [Node] the element node, not added to #nodes
-      # @raise [ArgumentError] when the block is missing or declares the wrong number of fields
+      # @raise [ArgumentError] when the block is missing, declares the wrong number of fields, or
+      #   declares no fields for a +:struct+
       def element_node(name, type, nullable, type_opts, &block)
         if type.nil?
           raise ArgumentError, "Give an element type or a block declaring the element" unless block
@@ -748,13 +748,24 @@ module Herringbone
           node.name = name
           node
         elsif type.to_sym == :struct
-          raise ArgumentError, "A struct element needs a block" unless block
-          inner = Builder.new
-          inner.instance_eval(&block)
-          Node.new(name: name, repetition: rep(nullable), children: inner.nodes)
+          Node.new(name: name, repetition: rep(nullable), children: struct_fields(name, &block))
         else
           leaf_node(name, type, rep(nullable), type_opts)
         end
+      end
+
+      # Evaluates a struct's block on a new Builder; Parquet groups need at least one child.
+      #
+      # @param name [String, Symbol] struct name, for the error message
+      # @yield block evaluated with +instance_eval+ on a new Builder, declaring the struct's fields
+      # @return [Array<Node>] the declared fields
+      # @raise [ArgumentError] when the block is missing or declares no fields
+      def struct_fields(name, &block)
+        raise ArgumentError, "struct #{name} needs a block declaring its fields" unless block
+        inner = Builder.new
+        inner.instance_eval(&block)
+        raise ArgumentError, "struct #{name} has no fields" if inner.nodes.empty?
+        inner.nodes
       end
 
       # @param name [String, Symbol] field name

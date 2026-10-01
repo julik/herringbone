@@ -200,6 +200,15 @@ class ErgonomicsTest < Minitest::Test
     assert_match(/\ARow 0: Cannot write "abc" to id/, error.message)
   end
 
+  def test_struct_declarations_need_fields
+    error = assert_raises(ArgumentError) { Herringbone::Schema.define { struct :address } }
+    assert_match(/address/, error.message)
+    assert_raises(ArgumentError) { Herringbone::Schema.define { struct(:address) {} } }
+    error = assert_raises(ArgumentError) { Herringbone::Schema.define { list(:points, :struct) {} } }
+    assert_match(/no fields/, error.message)
+    assert_raises(ArgumentError) { Herringbone::Schema.define { map(:things, :string, :struct) {} } }
+  end
+
   def test_infer_improvements
     rows = [
       {"a" => 1, "b" => nil, "c" => 1.5, "d" => DateTime.new(2024, 1, 1), "e" => {"x" => 1}, "f" => [1]},

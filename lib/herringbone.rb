@@ -67,7 +67,8 @@ module Herringbone
   # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
   #   columns to write split block bloom filters for, see Writer
   # @return [Integer] number of rows written
-  # @raise [ArgumentError] when the schema has to be inferred and +records+ is empty, or an option is invalid
+  # @raise [ArgumentError] when the schema has to be inferred and +records+ is empty or holds Array
+  #   rows, or an option is invalid
   # @raise [EncodeError] when a row does not fit the schema
   def write(io, records, schema: nil, **options)
     model = if records.respond_to?(:klass) then records.klass

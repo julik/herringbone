@@ -44,14 +44,15 @@ module Herringbone
     end
 
     # One page header of a column chunk. +checksum+ is nil until the CRCs are verified
-    # (Inspector#verify_checksums), then :ok, :mismatch or :absent (the page has no CRC).
+    # (Inspector#verify_checksums), then :ok, :mismatch or :absent (the page has no CRC);
+    # +actual_crc+ is then the CRC32 of the page's stored bytes (nil when it has no CRC).
     # +index+ is the page's position in the chunk, +offset+ where its header starts; +type+ is
     # a PageType name such as :DATA_PAGE (the raw Integer when unknown). +first_row_index+ and,
     # for v1 pages of repeated columns, +num_rows+ are only known from the OffsetIndex.
     PageInfo = Struct.new(:index, :type, :offset, :header_size, :compressed_size, :uncompressed_size,
       :num_values, :num_nulls, :num_rows, :first_row_index, :encoding, :definition_level_encoding,
       :repetition_level_encoding, :definition_levels_byte_length, :repetition_levels_byte_length,
-      :is_compressed, :is_sorted, :statistics, :crc, :checksum, keyword_init: true) do
+      :is_compressed, :is_sorted, :statistics, :crc, :checksum, :actual_crc, keyword_init: true) do
       # @return [Integer] bytes taken by the page in the file: header plus compressed body
       def total_size = header_size + compressed_size
 
@@ -72,9 +73,10 @@ module Herringbone
       def expected_crc = crc && (crc & 0xFFFF_FFFF)
 
       # @return [Hash{Symbol => Object}] the set members, JSON-safe; +:crc+ becomes a Boolean
-      #   saying whether the header has a CRC
+      #   saying whether the header has a CRC, +:actual_crc+ is left out
       def to_h
         h = super
+        h.delete(:actual_crc)
         h[:statistics] = statistics&.to_h
         h[:crc] = !crc.nil?
         Inspector.jsonable(h.compact)
@@ -565,7 +567,7 @@ module Herringbone
 
     # After #verify_checksums: { ok:, mismatch:, absent:, mismatches: [{ row_group:, column:, page:, type:, offset:, crc:, actual: }] }
     # The counts are pages per status; in each mismatch +crc+ is the CRC from the page header and
-    # +actual+ the CRC32 of the stored bytes (recomputed, so this reads from the IO).
+    # +actual+ the CRC32 of the stored bytes (kept from the verification, so the IO is not needed).
     # @return [Hash{Symbol => Object}, nil] nil before #verify_checksums
     def checksum_summary
       return nil unless checksums_verified?
@@ -575,7 +577,7 @@ module Herringbone
         ok: tally.fetch(:ok, 0), mismatch: tally.fetch(:mismatch, 0), absent: tally.fetch(:absent, 0),
         mismatches: all.select { |_, p| p.checksum == :mismatch }.map do |c, p|
           {row_group: c.row_group.index, column: c.path, page: p.index, type: p.type, offset: p.offset,
-           crc: p.expected_crc, actual: page_crc(p)}
+           crc: p.expected_crc, actual: p.actual_crc}
         end
       }
     end
@@ -665,8 +667,8 @@ module Herringbone
           num_data_pages: chunks.sum { |c| c.data_pages.size },
           dictionary_pages: chunks.count(&:dictionary_page),
           dictionary_bytes: chunks.sum { |c| c.dictionary_page&.total_size.to_i },
-          min: mins.all? ? safe_extreme(mins, :min) : nil,
-          max: maxes.all? ? safe_extreme(maxes, :max) : nil
+          min: mins.include?(nil) ? nil : safe_extreme(mins, :min),
+          max: maxes.include?(nil) ? nil : safe_extreme(maxes, :max)
         }.compact
       end
     end
@@ -810,7 +812,7 @@ module Herringbone
           "at #{rg.start_offset}..#{rg.end_offset}#{", sorted by #{sorting.join(", ")}" unless sorting.empty?}"
         rg.columns.each do |c|
           st = c.statistics
-          range = (st && (st.min || st.max)) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
+          range = (st && !(st.min.nil? && st.max.nil?)) ? " [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" : ""
           extras = []
           extras << "dict #{c.dictionary_size} entries" if c.dictionary_page
           extras << "column index" if c.column_index_range
@@ -826,7 +828,7 @@ module Herringbone
             out << "    #{p.index}: #{p.type} @#{p.offset} header #{p.header_size} + #{p.compressed_size}/#{p.uncompressed_size} bytes, " \
               "#{p.num_values} values#{", #{p.num_nulls} nulls" if p.num_nulls}#{", #{p.num_rows} rows" if p.num_rows}" \
               "#{" #{p.encoding}" if p.encoding}#{crc_text(p)}" \
-              "#{" [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" if st && (st.min || st.max)}"
+              "#{" [#{Inspector.display(st.min)} .. #{Inspector.display(st.max)}]" if st && !(st.min.nil? && st.max.nil?)}"
           end
         end
       end
@@ -843,8 +845,8 @@ module Herringbone
     # Walks page headers from the chunk's first page. Returns [pages, error_message_or_nil].
     # Mirrors the reader's tolerance: a chunk may extend past its declared total_compressed_size.
     # @param chunk [ColumnChunkInfo] chunk whose pages to walk
-    # @return [Array(Array<PageInfo>, String)] the pages found, and why the walk stopped early (nil
-    #   when every value was accounted for)
+    # @return [Array(Array<PageInfo>, String), Array(Array<PageInfo>, nil)] the pages found, and why
+    #   the walk stopped early (nil when every value was accounted for)
     def walk_pages(chunk)
       return [[], "column chunk stored in external file #{chunk.external_file}"] if chunk.external_file
       pages = []
@@ -929,12 +931,13 @@ module Herringbone
       nil
     end
 
-    # :ok, :mismatch or :absent for one page (reads its body)
+    # :ok, :mismatch or :absent for one page (reads its body). Sets PageInfo#actual_crc.
     # @param page [PageInfo] page to check
     # @return [Symbol]
     def page_checksum(page)
       return :absent unless page.crc
-      (page_crc(page) == page.expected_crc) ? :ok : :mismatch
+      page.actual_crc = page_crc(page)
+      (page.actual_crc == page.expected_crc) ? :ok : :mismatch
     end
 
     # CRC32 of a page's body as stored

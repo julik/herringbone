@@ -27,7 +27,8 @@ module Herringbone
     # Footer JSON is embedded only when the footer is smaller than this
     MAX_FOOTER_JSON = 512 * 1024
 
-    # PageType names to their Thrift ids, the page type code the embedded JS expects in page rows.
+    # PageType names to their Thrift ids, the page type code the embedded JS expects in page rows
+    # (unknown page types are passed on as their raw Integer).
     PAGE_TYPES = {DATA_PAGE: 0, INDEX_PAGE: 1, DICTIONARY_PAGE: 2, DATA_PAGE_V2: 3}.freeze
 
     # +inspector+ is an Inspector. +title+ defaults to the file's name.
@@ -178,7 +179,7 @@ module Herringbone
       elsif p.dictionary?
         p.is_sorted ? "sorted" : nil
       end
-      [PAGE_TYPES.fetch(p.type, 1), p.offset, p.header_size, p.compressed_size, p.uncompressed_size, p.num_values,
+      [PAGE_TYPES.fetch(p.type) { p.type }, p.offset, p.header_size, p.compressed_size, p.uncompressed_size, p.num_values,
         p.num_nulls, p.num_rows, p.first_row_index, p.encoding, st && disp(st.min), st && disp(st.max),
         CRC_STATES.fetch(p.checksum) { p.crc.nil? ? 0 : 1 }, extra]
     end
