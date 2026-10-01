@@ -1,5 +1,13 @@
 # Instructions for agents
 
+## Ruby comments
+
+Follow the skill in [llm/skills/ruby-commenting](llm/skills/ruby-commenting/SKILL.md) (read its
+[exemplars](llm/skills/ruby-commenting/exemplars.md) too) for implementation comments in Ruby: no
+comment unless the code can't say it, and terse when there is one. It doesn't cover YARD, which
+documents every method here, private ones included (`bundle exec rake yard:lint` checks it).
+Claude Code picks the skill up through the symlink in `.claude/skills/`.
+
 ## CHANGELOG
 
 `CHANGELOG.md` lists user-visible changes per version, newest first. Add the entry in the same
