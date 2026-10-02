@@ -23,13 +23,13 @@ require "tmpdir"
 ROWS = Integer(ENV.fetch("ROWS", 1_000_000))
 CATEGORIES = Array.new(50) { |i| "category-#{i}" }.freeze
 
-SCHEMA = Herringbone::Schema.define do
-  int64 :id, null: false
-  double :amount
-  int32 :quantity
-  boolean :active
-  double :score # 10% nulls
-  string :category
+SCHEMA = Herringbone::Schema.define do |s|
+  s.int64 :id, null: false
+  s.double :amount
+  s.int32 :quantity
+  s.boolean :active
+  s.double :score # 10% nulls
+  s.string :category
 end
 
 def file_for(compression)

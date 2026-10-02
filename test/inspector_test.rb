@@ -282,7 +282,7 @@ class InspectorTest < Minitest::Test
 
   # false is a real min/max, not a missing one
   def test_boolean_min_max_in_totals_and_report
-    schema = Herringbone::Schema.define { boolean :b }
+    schema = Herringbone::Schema.define { |s| s.boolean :b }
     io = StringIO.new("".b)
     Herringbone::Writer.open(io, schema, row_group_rows: 2, page_rows: 1) do |w|
       [false, false, true, true].each { |v| w << [v] }
@@ -374,10 +374,10 @@ class InspectorTest < Minitest::Test
   end
 
   def test_verify_checksums_of_files_we_write
-    schema = Herringbone::Schema.define do
-      int64 :id
-      string :name
-      list :tags, :string
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :id
+      s.string :name
+      s.list :tags, :string
     end
     [1, 2].each do |version|
       %i[none snappy gzip].each do |codec|
@@ -424,7 +424,7 @@ class InspectorTest < Minitest::Test
   end
 
   def test_checksum_results_survive_closing_the_file
-    schema = Herringbone::Schema.define { int64 :id }
+    schema = Herringbone::Schema.define { |s| s.int64 :id }
     io = StringIO.new("".b)
     Herringbone::Writer.open(io, schema, compression: :none, dictionary: false, page_rows: 1000) do |w|
       30_000.times { |k| w << [k] }
@@ -597,7 +597,7 @@ class InspectorTest < Minitest::Test
     broken.each do |label, v|
       assert_raises(Inspector::ArrowSchema::Error, label) { Inspector::ArrowSchema.decode(v) }
       io = StringIO.new("".b)
-      schema = Herringbone::Schema.define { int64 :id }
+      schema = Herringbone::Schema.define { |s| s.int64 :id }
       Herringbone::Writer.open(io, schema, metadata: {"ARROW:schema" => v}) { |w| w << [1] }
       i = Inspector.new(StringIO.new(io.string))
       assert_nil i.arrow_schema, label

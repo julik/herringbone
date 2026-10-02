@@ -248,12 +248,19 @@ module Herringbone
 
     # Builds a schema with the DSL, see Schema::Builder
     #
-    # @yield block evaluated with +instance_eval+ on a Builder, declaring the top-level fields
+    #   Herringbone::Schema.define do |s|
+    #     s.int64 :id, null: false
+    #     s.string :name
+    #   end
+    #
+    # @yield [s] declares the top-level fields
+    # @yieldparam s [Builder] the builder to declare fields on
+    # @yieldreturn [void]
     # @return [Schema]
-    # @raise [ArgumentError] when no field is declared, or a declaration is invalid
+    # @raise [ArgumentError] when no field is declared, a declaration is invalid, or the block takes
+    #   no parameter
     def self.define(&block)
-      builder = Builder.new
-      builder.instance_eval(&block) if block
+      builder = Builder.build("Herringbone::Schema.define { |s| s.int64 :id }", &block)
       raise ArgumentError, "A schema needs at least one field" if builder.nodes.empty?
       new(Node.new(name: "schema", repetition: :required, children: builder.nodes))
     end
@@ -267,19 +274,19 @@ module Herringbone
     # Time/DateTime -> timestamp(micros), Date -> date, BigDecimal -> decimal(38, max scale seen),
     # Hash -> struct, Array -> list. Columns that are nil in every sampled row become strings.
     # Fields declared in the block (Builder DSL) replace the inferred ones of the same name:
-    #   Schema.infer(rows) { json :payload }
+    #   Schema.infer(rows) { |s| s.json :payload }
     #
     # @param rows [Enumerable<Hash, Object>] rows to sample; only the first INFER_SAMPLE are read
-    # @yield optional block evaluated with +instance_eval+ on a Builder, declaring fields that
-    #   replace inferred ones (or are added after them)
+    # @yield [s] optional, declares fields that replace inferred ones (or are added after them)
+    # @yieldparam s [Builder] the builder to declare fields on
+    # @yieldreturn [void]
     # @return [Schema]
-    # @raise [ArgumentError] when there are no rows, a row is not Hash-like, or a column mixes
-    #   values that map to no single Parquet type
+    # @raise [ArgumentError] when there are no rows, a row is not Hash-like, a column mixes values
+    #   that map to no single Parquet type, or the block takes no parameter
     def self.infer(rows, &block)
+      overrides = Builder.build("Herringbone::Schema.infer(rows) { |s| s.json :payload }", &block)
       sample_rows = rows.first(INFER_SAMPLE).map { |r| Inference.row_hash(r) }
       raise ArgumentError, "Cannot infer a schema from zero rows" if sample_rows.empty?
-      overrides = Builder.new
-      overrides.instance_eval(&block) if block
       declared = overrides.nodes.to_h { |n| [n.name, n] }
       names = sample_rows.flat_map { |r| r.keys.map(&:to_s) }.uniq
       nodes = names.map do |name|
@@ -355,7 +362,7 @@ module Herringbone
         else
           classes = values.map(&:class).uniq
           raise ArgumentError, "Cannot infer a Parquet type for #{name} from #{classes.map(&:name).join(", ")}; " \
-            "declare it in a block: Schema.infer(rows) { string :#{name} }"
+            "declare it in a block: Schema.infer(rows) { |s| s.string :#{name} }"
         end
       end
     end
@@ -511,24 +518,52 @@ module Herringbone
 
     # DSL for defining schemas:
     #
-    #   Herringbone::Schema.define do
-    #     int64 :id, null: false
-    #     string :name
-    #     list :tags, :string
-    #     map :scores, :string, :double
-    #     struct :address do
-    #       string :city
+    #   Herringbone::Schema.define do |s|
+    #     s.int64 :id, null: false
+    #     s.string :name
+    #     s.list :tags, :string
+    #     s.map :scores, :string, :double
+    #     s.struct :address do |address|
+    #       address.string :city
     #     end
-    #     decimal :price, precision: 12, scale: 2
-    #     timestamp :created_at, unit: :micros
+    #     s.decimal :price, precision: 12, scale: 2
+    #     s.timestamp :created_at, unit: :micros
     #   end
     #
-    # Fields are nullable unless null: false is given.
+    # Fields are nullable unless null: false is given. The blocks of #struct, #list and #map get
+    # a Builder of their own.
     class Builder
       # @return [Array<Node>] fields declared so far, in declaration order
       attr_reader :nodes
 
-      # Starts with no fields; Schema.define evaluates the block against this builder
+      # Yields a new Builder to the block.
+      #
+      # @param usage [String] how the entry point is called with a block, for the error message
+      # @yield [s] declares fields
+      # @yieldparam s [Builder] the new builder
+      # @yieldreturn [void]
+      # @return [Builder] the builder, with no fields when there is no block
+      # @raise [ArgumentError] when the block takes no parameter
+      def self.build(usage, &block)
+        check_block!(block, usage)
+        builder = new
+        block&.call(builder)
+        builder
+      end
+
+      # A block without a parameter was most likely written for the +instance_eval+ DSL of
+      # earlier versions, and would fail on its first declaration with a NoMethodError
+      #
+      # @param block [Proc, nil] the block given to the entry point
+      # @param usage [String] how the entry point is called with a block, for the error message
+      # @return [void]
+      # @raise [ArgumentError] when the block takes no parameter
+      def self.check_block!(block, usage)
+        return if block.nil? || !block.parameters.empty?
+        raise ArgumentError, "The block receives the schema builder as a parameter: #{usage}"
+      end
+
+      # Starts with no fields
       def initialize
         @nodes = []
       end
@@ -595,17 +630,21 @@ module Herringbone
       # @param name [String, Symbol] field name
       # @param null [Boolean] whether the struct as a whole may be null
       # @param field_id [Integer, nil] field id to store in the schema
-      # @yield block evaluated with +instance_eval+ on a new Builder, declaring the struct's fields
+      # @yield [struct] declares the struct's fields
+      # @yieldparam struct [Builder] a new builder for the struct's fields
+      # @yieldreturn [void]
       # @return [Node] the added group node
-      # @raise [ArgumentError] when the block declares no fields (or is missing), or for a duplicate name
+      # @raise [ArgumentError] when the block is missing, takes no parameter or declares no fields,
+      #   or for a duplicate name
       def struct(name, null: true, field_id: nil, &block)
-        add Node.new(name: name, repetition: rep(null), children: struct_fields(name, &block), field_id: field_id)
+        children = struct_fields(name, usage(name, "struct :#{name}", "string :city"), &block)
+        add Node.new(name: name, repetition: rep(null), children: children, field_id: field_id)
       end
 
-      # list :tags, :string
-      # list :tags, :string, element_null: false
-      # list :points, :struct do double :x; double :y; end
-      # list :matrix do list :element, :double end   (block declares the element)
+      #   s.list :tags, :string
+      #   s.list :tags, :string, element_null: false
+      #   s.list :points, :struct do |points| points.double :x; points.double :y end
+      #   s.list :matrix do |matrix| matrix.list :element, :double end # block declares the element
       #
       # Written as the standard 3-level LIST: an optional (or required) group holding a repeated
       # group "list" whose single child is "element".
@@ -623,21 +662,28 @@ module Herringbone
       # @option type_opts [Symbol] :unit time or timestamp unit
       # @option type_opts [Boolean] :utc time or timestamp UTC adjustment
       # @option type_opts [Integer] :length FIXED_LEN_BYTE_ARRAY width
-      # @yield block evaluated with +instance_eval+ on a new Builder: the struct's fields for a
-      #   +:struct+ element, or exactly one field (renamed to "element") when +type+ is nil
+      # @yield [list] declares the struct's fields for a +:struct+ element, or exactly one field
+      #   (renamed to "element") when +type+ is nil
+      # @yieldparam list [Builder] a new builder for the element
+      # @yieldreturn [void]
       # @return [Node] the added LIST group node
-      # @raise [ArgumentError] when neither a type nor a block is given, the block declares the wrong
-      #   number of fields, or for a duplicate name
+      # @raise [ArgumentError] when neither a type nor a block is given, the block takes no parameter
+      #   or declares the wrong number of fields, or for a duplicate name
       def list(name, type = nil, null: true, element_null: true, field_id: nil, **type_opts, &block)
-        element = element_node("element", type, element_null, type_opts, &block)
+        example = if type
+          usage(name, "list :#{name}, :#{type}", "double :x")
+        else
+          usage(name, "list :#{name}", "list :element, :double")
+        end
+        element = element_node("element", type, element_null, type_opts, example, &block)
         repeated = Node.new(name: "list", repetition: :repeated, children: [element])
         add Node.new(name: name, repetition: rep(null), children: [repeated],
           logical_type: Format::LogicalType.new(list: Format::ListType.new),
           converted_type: Format::ConvertedType::LIST, field_id: field_id)
       end
 
-      # map :scores, :string, :double
-      # map :things, :string, :struct do int32 :a end
+      #   s.map :scores, :string, :double
+      #   s.map :things, :string, :struct do |things| things.int32 :a end
       #
       # Written as the standard MAP: a group holding a repeated group "key_value" with a required
       # "key" and a "value". Keys are never null.
@@ -655,13 +701,17 @@ module Herringbone
       # @option type_opts [Symbol] :unit time or timestamp unit
       # @option type_opts [Boolean] :utc time or timestamp UTC adjustment
       # @option type_opts [Integer] :length FIXED_LEN_BYTE_ARRAY width
-      # @yield block evaluated with +instance_eval+ on a new Builder: the struct's fields for a
-      #   +:struct+ value, or exactly one field (renamed to "value") when +value_type+ is nil
+      # @yield [map] declares the struct's fields for a +:struct+ value, or exactly one field
+      #   (renamed to "value") when +value_type+ is nil
+      # @yieldparam map [Builder] a new builder for the value
+      # @yieldreturn [void]
       # @return [Node] the added MAP group node
-      # @raise [ArgumentError] for an invalid key or value declaration, or a duplicate name
+      # @raise [ArgumentError] for an invalid key or value declaration, a block that takes no
+      #   parameter, or a duplicate name
       def map(name, key_type, value_type = nil, null: true, value_null: true, field_id: nil, **type_opts, &block)
-        key = element_node("key", key_type, false, {})
-        value = element_node("value", value_type, value_null, type_opts, &block)
+        head = ["map :#{name}", ":#{key_type}", (":#{value_type}" if value_type)].compact.join(", ")
+        key = element_node("key", key_type, false, {}, nil)
+        value = element_node("value", value_type, value_null, type_opts, usage(name, head, "int32 :a"), &block)
         kv = Node.new(name: "key_value", repetition: :repeated, children: [key, value])
         add Node.new(name: name, repetition: rep(null), children: [kv],
           logical_type: Format::LogicalType.new(map: Format::MapType.new),
@@ -729,38 +779,52 @@ module Herringbone
       # @param type [Symbol, String, nil] DSL type, +:struct+, or nil to take the field the block declares
       # @param nullable [Boolean] whether the node may be null (not applied to a block-declared field)
       # @param type_opts [Hash{Symbol => Object}] type options passed to Types.physical_attributes
-      # @yield block evaluated with +instance_eval+ on a new Builder
+      # @param example [String, nil] the declaration called with a block, for the error message
+      # @yield [inner] declares the element, or the fields of a +:struct+
+      # @yieldparam inner [Builder] a new builder
+      # @yieldreturn [void]
       # @return [Node] the element node, not added to #nodes
-      # @raise [ArgumentError] when the block is missing, declares the wrong number of fields, or
-      #   declares no fields for a +:struct+
-      def element_node(name, type, nullable, type_opts, &block)
+      # @raise [ArgumentError] when the block is missing or takes no parameter, declares the wrong
+      #   number of fields, or declares no fields for a +:struct+
+      def element_node(name, type, nullable, type_opts, example, &block)
         if type.nil?
           raise ArgumentError, "Give an element type or a block declaring the element" unless block
-          inner = Builder.new
-          inner.instance_eval(&block)
+          inner = Builder.build(example, &block)
           raise ArgumentError, "The element block must declare exactly one field" unless inner.nodes.size == 1
           node = inner.nodes.first
           node.name = name
           node
         elsif type.to_sym == :struct
-          Node.new(name: name, repetition: rep(nullable), children: struct_fields(name, &block))
+          Node.new(name: name, repetition: rep(nullable), children: struct_fields(name, example, &block))
         else
           leaf_node(name, type, rep(nullable), type_opts)
         end
       end
 
-      # Evaluates a struct's block on a new Builder; Parquet groups need at least one child.
+      # Yields a new Builder for a struct's fields; Parquet groups need at least one child.
       #
       # @param name [String, Symbol] struct name, for the error message
-      # @yield block evaluated with +instance_eval+ on a new Builder, declaring the struct's fields
+      # @param example [String] the declaration called with a block, for the error message
+      # @yield [inner] declares the struct's fields
+      # @yieldparam inner [Builder] a new builder
+      # @yieldreturn [void]
       # @return [Array<Node>] the declared fields
-      # @raise [ArgumentError] when the block is missing or declares no fields
-      def struct_fields(name, &block)
+      # @raise [ArgumentError] when the block is missing, takes no parameter or declares no fields
+      def struct_fields(name, example, &block)
         raise ArgumentError, "struct #{name} needs a block declaring its fields" unless block
-        inner = Builder.new
-        inner.instance_eval(&block)
+        inner = Builder.build(example, &block)
         raise ArgumentError, "struct #{name} has no fields" if inner.nodes.empty?
         inner.nodes
+      end
+
+      # @param name [String, Symbol] field name, which names the block parameter when it can
+      # @param head [String] the declaration without its block, e.g. "struct :address"
+      # @param declaration [String] a declaration for the block's body, e.g. "string :city"
+      # @return [String] the declaration with a block taking a parameter, e.g.
+      #   "s.struct :address do |address| address.string :city end"
+      def usage(name, head, declaration)
+        var = name.to_s.match?(/\A[a-z_][a-z0-9_]*\z/) ? name : "inner"
+        "s.#{head} do |#{var}| #{var}.#{declaration} end"
       end
 
       # @param name [String, Symbol] field name

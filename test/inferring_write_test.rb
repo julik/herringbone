@@ -35,7 +35,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_write_takes_schema_overrides_in_a_block
     io = StringIO.new("".b)
-    Herringbone.write(io, one_shot([{id: 1, payload: {"a" => [1]}}])) { json :payload }
+    Herringbone.write(io, one_shot([{id: 1, payload: {"a" => [1]}}])) { |s| s.json :payload }
     reader = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal :json, Herringbone::Types.logical_of(reader.schema.column("payload").node).first
     assert_equal [{"id" => 1, "payload" => '{"a":[1]}'}], reader.read
@@ -73,7 +73,7 @@ class InferringWriteTest < Minitest::Test
       Column types are decided from the first 1000 rows (or all of them, when there are
       fewer), so a later value of a different type cannot be written to the same column.
       Declare the column with a type that holds every value, for example:
-        Herringbone::SimpleWriter.new(io) { string :age }
+        Herringbone::SimpleWriter.new(io) { |s| s.string :age }
       or pass a complete schema. The file was left unfinished (no footer).
     MESSAGE
     later = assert_raises(Herringbone::Error) { sw << [1001, 3] }
@@ -95,7 +95,7 @@ class InferringWriteTest < Minitest::Test
   def test_write_raises_schema_mismatch_with_its_own_fix
     rows = one_shot((1..1000).map { |i| {amount: i} } + [{amount: {"a" => 1}}])
     error = assert_raises(Herringbone::SchemaMismatch) { Herringbone.write(StringIO.new("".b), rows) }
-    assert_includes error.message, "Herringbone.write(io, rows) { json :amount }"
+    assert_includes error.message, "Herringbone.write(io, rows) { |s| s.json :amount }"
   end
 
   def test_simple_writer_like_csv
@@ -130,12 +130,12 @@ class InferringWriteTest < Minitest::Test
 
   def test_simple_writer_takes_schema_overrides_in_a_block
     io = StringIO.new("".b)
-    sw = Herringbone::SimpleWriter.new(io) { string :code }
+    sw = Herringbone::SimpleWriter.new(io) { |s| s.string :code }
     sw.headers!(:id, :code)
     sw << [1, 7] << [2, "B12"]
     sw.close
     assert_equal %w[7 B12], read(io).map { |r| r["code"] }
-    sw = Herringbone::SimpleWriter.new(StringIO.new("".b)) { string :other }
+    sw = Herringbone::SimpleWriter.new(StringIO.new("".b)) { |s| s.string :other }
     sw.headers!(:id)
     assert_raises(ArgumentError) { sw.close }
   end

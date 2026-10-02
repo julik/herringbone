@@ -9,71 +9,71 @@ module WriterHelpers
   # zstd and brotli only when their optional gems are installed (CI also runs without them)
   CODECS = Herringbone.codecs.freeze
 
-  ALL_TYPES_SCHEMA = Herringbone::Schema.define do
-    int64 :id, null: false
-    boolean :bool
-    boolean :bool_req, null: false
-    int8 :i8
-    int16 :i16
-    int32 :i32
-    int64 :i64
-    uint8 :u8
-    uint16 :u16
-    uint32 :u32
-    uint64 :u64
-    float :f32
-    double :f64
-    float16 :f16
-    string :str
-    string :str_req, null: false
-    binary :bin
-    json :js
-    enum :en
-    uuid :uid
-    date :date
-    time :t_ms, unit: :millis
-    time :t_us, unit: :micros
-    time :t_ns, unit: :nanos
-    timestamp :ts_ms, unit: :millis
-    timestamp :ts_us, unit: :micros
-    timestamp :ts_ns, unit: :nanos
-    timestamp :ts_local, unit: :micros, utc: false
-    int96 :i96
-    decimal :dec_small, precision: 9, scale: 2
-    decimal :dec_med, precision: 18, scale: 4
-    decimal :dec_large, precision: 38, scale: 10
-    decimal :dec_bin, precision: 25, scale: 3, physical: :binary
-    fixed :fx, length: 5
+  ALL_TYPES_SCHEMA = Herringbone::Schema.define do |s|
+    s.int64 :id, null: false
+    s.boolean :bool
+    s.boolean :bool_req, null: false
+    s.int8 :i8
+    s.int16 :i16
+    s.int32 :i32
+    s.int64 :i64
+    s.uint8 :u8
+    s.uint16 :u16
+    s.uint32 :u32
+    s.uint64 :u64
+    s.float :f32
+    s.double :f64
+    s.float16 :f16
+    s.string :str
+    s.string :str_req, null: false
+    s.binary :bin
+    s.json :js
+    s.enum :en
+    s.uuid :uid
+    s.date :date
+    s.time :t_ms, unit: :millis
+    s.time :t_us, unit: :micros
+    s.time :t_ns, unit: :nanos
+    s.timestamp :ts_ms, unit: :millis
+    s.timestamp :ts_us, unit: :micros
+    s.timestamp :ts_ns, unit: :nanos
+    s.timestamp :ts_local, unit: :micros, utc: false
+    s.int96 :i96
+    s.decimal :dec_small, precision: 9, scale: 2
+    s.decimal :dec_med, precision: 18, scale: 4
+    s.decimal :dec_large, precision: 38, scale: 10
+    s.decimal :dec_bin, precision: 25, scale: 3, physical: :binary
+    s.fixed :fx, length: 5
   end
 
-  NESTED_SCHEMA = Herringbone::Schema.define do
-    int32 :id, null: false
-    list :l_nullable, :int32
-    list :l_required_el, :string, element_null: false
-    list :l_required, :int64, null: false
-    list :ll do
-      list :element, :int32
+  NESTED_SCHEMA = Herringbone::Schema.define do |s|
+    s.int32 :id, null: false
+    s.list :l_nullable, :int32
+    s.list :l_required_el, :string, element_null: false
+    s.list :l_required, :int64, null: false
+    s.list :ll do |ll|
+      ll.list :element, :int32
     end
-    list :lsl, :struct do
-      string :name
-      list :vals, :double
+    s.list :lsl, :struct do |lsl|
+      lsl.string :name
+      lsl.list :vals, :double
     end
-    map :m_struct, :string, :struct do
-      int32 :a
-      list :b, :string
+    s.map :m_struct, :string, :struct do |m_struct|
+      m_struct.int32 :a
+      m_struct.list :b, :string
     end
-    map :m_nullval, :string, :int64
-    map :m_reqval, :int32, :string, value_null: false
-    struct :s do
-      int32 :x
-      struct :inner do
-        string :y
-        list :z, :int32
+    s.map :m_nullval, :string, :int64
+    s.map :m_reqval, :int32, :string, value_null: false
+    s.struct :s do |nested|
+      nested.int32 :x
+      nested.struct :inner do |inner|
+        inner.string :y
+        inner.list :z, :int32
       end
     end
-    struct :s_req, null: false do
-      int32 :x, null: false
-      string :y
+    s.struct :s_req, null: false do |s_req|
+      s_req.int32 :x, null: false
+      s_req.string :y
     end
   end
 
@@ -288,24 +288,24 @@ module WriterTestSchemas
   I64_MIN = WriterHelpers::I64_MIN
   I64_MAX = WriterHelpers::I64_MAX
 
-  ENCODING_SCHEMA = Herringbone::Schema.define do
-    int32 :i32
-    int64 :i64, null: false
-    int32 :i32_bss
-    int64 :i64_bss
-    float :f32
-    double :f64
-    string :s_dlba
-    string :s_dba
-    binary :b_dba
-    fixed :fx_dba, length: 4
-    fixed :fx_bss, length: 3
-    decimal :dec_bss, precision: 30, scale: 2
-    boolean :bool_rle
-    boolean :bool_rle_req, null: false
-    list :l_delta, :int64
-    date :d_delta
-    uint64 :u64_delta
+  ENCODING_SCHEMA = Herringbone::Schema.define do |s|
+    s.int32 :i32
+    s.int64 :i64, null: false
+    s.int32 :i32_bss
+    s.int64 :i64_bss
+    s.float :f32
+    s.double :f64
+    s.string :s_dlba
+    s.string :s_dba
+    s.binary :b_dba
+    s.fixed :fx_dba, length: 4
+    s.fixed :fx_bss, length: 3
+    s.decimal :dec_bss, precision: 30, scale: 2
+    s.boolean :bool_rle
+    s.boolean :bool_rle_req, null: false
+    s.list :l_delta, :int64
+    s.date :d_delta
+    s.uint64 :u64_delta
   end
 
   ENCODINGS = {

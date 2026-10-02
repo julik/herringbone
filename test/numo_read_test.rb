@@ -130,30 +130,30 @@ class NumoReadTest < Minitest::Test
   end
 
   def test_type_mapping
-    schema = Herringbone::Schema.define do
-      int8 :i8, null: false
-      int16 :i16, null: false
-      int32 :i32, null: false
-      int64 :i64, null: false
-      uint8 :u8, null: false
-      uint16 :u16, null: false
-      uint32 :u32, null: false
-      uint64 :u64, null: false
-      float :f32
-      double :f64
-      float16 :f16
-      boolean :bool
-      time :tod, unit: :micros
-      string :s
-      date :d
-      timestamp :ts
-      decimal :dec, precision: 10, scale: 2
-      list :emb, :float, element_null: false
-      list :tags, :string
-      struct :st do
-        int32 :a
+    schema = Herringbone::Schema.define do |s|
+      s.int8 :i8, null: false
+      s.int16 :i16, null: false
+      s.int32 :i32, null: false
+      s.int64 :i64, null: false
+      s.uint8 :u8, null: false
+      s.uint16 :u16, null: false
+      s.uint32 :u32, null: false
+      s.uint64 :u64, null: false
+      s.float :f32
+      s.double :f64
+      s.float16 :f16
+      s.boolean :bool
+      s.time :tod, unit: :micros
+      s.string :s
+      s.date :d
+      s.timestamp :ts
+      s.decimal :dec, precision: 10, scale: 2
+      s.list :emb, :float, element_null: false
+      s.list :tags, :string
+      s.struct :st do |st|
+        st.int32 :a
       end
-      map :m, :string, :int32
+      s.map :m, :string, :int32
     end
     rows = Array.new(3) do |i|
       [-i, -300 * i, -70_000 * i, -(2**40) * i, 200 + i, 60_000 + i, 4_000_000_000 + i, 2**64 - 1 - i,
@@ -187,12 +187,12 @@ class NumoReadTest < Minitest::Test
       {i: nil, f: nil, s: nil, b: nil, l: nil},
       {i: 3, f: 3.5, s: 3.5, b: false, l: 3}
     ]
-    schema = Herringbone::Schema.define do
-      int32 :i
-      double :f
-      float :s
-      boolean :b
-      int64 :l
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :i
+      s.double :f
+      s.float :s
+      s.boolean :b
+      s.int64 :l
     end
     r = write(rows, schema)
     cols = r.read(as: :numo)
@@ -213,9 +213,9 @@ class NumoReadTest < Minitest::Test
   end
 
   def test_fixed_length_lists_become_2d
-    schema = Herringbone::Schema.define do
-      list :emb, :float
-      list :ids, :int64, element_null: false
+    schema = Herringbone::Schema.define do |s|
+      s.list :emb, :float
+      s.list :ids, :int64, element_null: false
     end
     rows = Array.new(50) { |i| [Array.new(4) { |j| i + j / 4.0 }, [i, -i]] }
     r = write(rows, schema, page_rows: 7)
@@ -249,18 +249,18 @@ class NumoReadTest < Minitest::Test
        "n64" => null ? nil : i * 3, "nf" => null ? nil : i / 4.0, "nflag" => null ? nil : i.even?,
        "small" => i % 5} # few distinct values: dictionary pages of short indices
     end
-    schema = Herringbone::Schema.define do
-      int64 :id, null: false
-      int32 :i32, null: false
-      int64 :i64
-      float :f32
-      double :f64
-      boolean :flag
-      int32 :n32
-      int64 :n64
-      double :nf
-      boolean :nflag
-      int32 :small
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :id, null: false
+      s.int32 :i32, null: false
+      s.int64 :i64
+      s.float :f32
+      s.double :f64
+      s.boolean :flag
+      s.int32 :n32
+      s.int64 :n64
+      s.double :nf
+      s.boolean :nflag
+      s.int32 :small
     end
     variants = []
     [1, 2].each do |version|

@@ -37,10 +37,10 @@ class PageIndexTest < Minitest::Test
   def test_offset_index_locates_every_data_page
     rows = Array.new(10_000) { |i| {id: i, name: "n#{i % 50}", tags: Array.new(i % 4) { |k| "t#{k}" }} }
     [1, 2].each do |version|
-      bytes = write(Herringbone::Schema.define {
-        int64 :id
-        string :name
-        list :tags, :string
+      bytes = write(Herringbone::Schema.define { |s|
+        s.int64 :id
+        s.string :name
+        s.list :tags, :string
       }, rows, page_rows: 700, data_page_version: version)
       indexes(bytes).each do |chunk, _, oi|
         headers = page_headers(bytes, oi)
@@ -62,12 +62,12 @@ class PageIndexTest < Minitest::Test
     rows = Array.new(1000) do |i|
       {asc: i, desc: -i, mixed: (i * 7919) % 1000, maybe: (i < 200 || i.odd?) ? nil : i.to_f, s: format("k%04d", i)}
     end
-    schema = Herringbone::Schema.define {
-      int64 :asc
-      int32 :desc
-      int64 :mixed
-      double :maybe
-      string :s
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :asc
+      s.int32 :desc
+      s.int64 :mixed
+      s.double :maybe
+      s.string :s
     }
     bytes = write(schema, rows, page_rows: 100)
     by_name = indexes(bytes).to_h { |chunk, ci, oi| [chunk.meta_data.path_in_schema.first, [ci, oi]] }
@@ -101,10 +101,10 @@ class PageIndexTest < Minitest::Test
       {u: 2**63 + 1, d: BigDecimal("12345678901234567890.5"), h: -2.0},
       {u: 0, d: BigDecimal("0.25"), h: Float::NAN}
     ]
-    schema = Herringbone::Schema.define do
-      uint64 :u
-      decimal :d, precision: 30, scale: 2
-      float16 :h
+    schema = Herringbone::Schema.define do |s|
+      s.uint64 :u
+      s.decimal :d, precision: 30, scale: 2
+      s.float16 :h
     end
     bytes = write(schema, rows)
     (u, u_ci), (d, d_ci), (_, h_ci) = indexes(bytes).map { |chunk, ci, _| [chunk, ci] }
@@ -121,7 +121,7 @@ class PageIndexTest < Minitest::Test
   def test_long_strings_are_truncated
     long_min = "a" * 100
     long_max = "b" * 64 + "\xFF".b * 10
-    bytes = write(Herringbone::Schema.define { binary :s }, [{s: long_min}, {s: long_max}])
+    bytes = write(Herringbone::Schema.define { |s| s.binary :s }, [{s: long_min}, {s: long_max}])
     chunk, ci, = indexes(bytes).first
     assert_equal "a" * 64, ci.min_values[0]
     assert_equal "b" * 63 + "c", ci.max_values[0]
@@ -133,7 +133,7 @@ class PageIndexTest < Minitest::Test
   end
 
   def test_int96_gets_offset_index_only
-    schema = Herringbone::Schema.define { int96 :t }
+    schema = Herringbone::Schema.define { |s| s.int96 :t }
     chunk, ci, oi = indexes(write(schema, [{t: Time.utc(2024)}])).first
     assert_nil ci
     assert_nil chunk.column_index_offset
@@ -141,14 +141,14 @@ class PageIndexTest < Minitest::Test
   end
 
   def test_nan_only_page_has_no_column_index
-    _, ci, oi = indexes(write(Herringbone::Schema.define { double :f }, [{f: Float::NAN}, {f: Float::NAN}])).first
+    _, ci, oi = indexes(write(Herringbone::Schema.define { |s| s.double :f }, [{f: Float::NAN}, {f: Float::NAN}])).first
     assert_nil ci
     refute_nil oi
   end
 
   def test_indexes_for_every_row_group
     rows = Array.new(3000) { |i| {a: i} }
-    bytes = write(Herringbone::Schema.define { int64 :a }, rows, row_group_rows: 1000, page_rows: 250)
+    bytes = write(Herringbone::Schema.define { |s| s.int64 :a }, rows, row_group_rows: 1000, page_rows: 250)
     reader = Herringbone::Reader.new(StringIO.new(bytes))
     assert_equal 3, reader.row_groups.size
     3.times do |g|
@@ -169,9 +169,9 @@ class PageIndexTest < Minitest::Test
       path = File.join(dir, "pruning.parquet")
       rows = Array.new(50_000) { |i| {id: i, v: (i % 97) * 1.5} }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: Herringbone::Schema.define {
-          int64 :id, null: false
-          double :v
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { |s|
+          s.int64 :id, null: false
+          s.double :v
         }, page_rows: 5000)
       end
       script = File.join(__dir__, "support", "datafusion_prune.py")

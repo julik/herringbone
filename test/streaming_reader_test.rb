@@ -144,11 +144,11 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_nested_rows_longer_than_many_pages
-    schema = Herringbone::Schema.define do
-      int32 :id, null: false
-      list :l, :int64
-      map :m, :string, :struct do
-        list :xs, :int32
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :id, null: false
+      s.list :l, :int64
+      s.map :m, :string, :struct do |m|
+        m.list :xs, :int32
       end
     end
     rows = [
@@ -192,7 +192,7 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_each_batch_spans_row_groups
-    schema = Herringbone::Schema.define { int64 :id, null: false }
+    schema = Herringbone::Schema.define { |s| s.int64 :id, null: false }
     rows = Array.new(95) { |i| {"id" => i} }
     reader = reader_for(write_to_string(schema, rows, row_group_rows: 10))
     assert_equal 10, reader.row_groups.size
@@ -206,14 +206,14 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_empty_file
-    schema = Herringbone::Schema.define { int64 :id }
+    schema = Herringbone::Schema.define { |s| s.int64 :id }
     reader = reader_for(write_to_string(schema, []))
     assert_equal [], reader.each_batch.to_a
     assert_equal [], reader.read
   end
 
   def test_encrypted_footer_is_unsupported
-    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{"id" => 1}])
+    bytes = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{"id" => 1}])
     encrypted = bytes.byteslice(0, bytes.bytesize - 4) + "PARE"
     error = assert_raises(Herringbone::UnsupportedError) { reader_for(encrypted) }
     assert_match(/Encrypted/, error.message)
@@ -221,20 +221,20 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_symbol_keys
-    schema = Herringbone::Schema.define do
-      int64 :id
-      struct :s do
-        string :a
-        struct :inner do
-          int32 :b
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :id
+      s.struct :s do |nested|
+        nested.string :a
+        nested.struct :inner do |inner|
+          inner.int32 :b
         end
       end
-      map :m, :string, :struct do
-        int32 :x
+      s.map :m, :string, :struct do |m|
+        m.int32 :x
       end
-      map :plain, :string, :int32
-      list :ls, :struct do
-        string :name
+      s.map :plain, :string, :int32
+      s.list :ls, :struct do |ls|
+        ls.string :name
       end
     end
     row = {"id" => 1, "s" => {"a" => "A", "inner" => {"b" => 2}}, "m" => {"k" => {"x" => 3}},
@@ -253,7 +253,7 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_reader_needs_an_io_and_leaves_it_open
-    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{id: 1}])
+    bytes = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{id: 1}])
     Dir.mktmpdir do |dir|
       path = File.join(dir, "io.parquet")
       File.binwrite(path, bytes)
@@ -269,14 +269,14 @@ class StreamingReaderTest < Minitest::Test
     end
   end
 
-  TS_SCHEMA = Herringbone::Schema.define do
-    timestamp :ts
-    timestamp :ts_ms, unit: :millis
-    timestamp :ts_ns, unit: :nanos
-    timestamp :local, utc: false
-    int96 :i96
-    list :tl, :timestamp
-    date :d
+  TS_SCHEMA = Herringbone::Schema.define do |s|
+    s.timestamp :ts
+    s.timestamp :ts_ms, unit: :millis
+    s.timestamp :ts_ns, unit: :nanos
+    s.timestamp :local, utc: false
+    s.int96 :i96
+    s.list :tl, :timestamp
+    s.date :d
   end
   T0 = Time.utc(2024, 3, 31, 0, 30, 0, 123_456)
 
@@ -372,9 +372,9 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_page_reads_are_lazy
-    schema = Herringbone::Schema.define {
-      int64 :id, null: false
-      string :s
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :id, null: false
+      s.string :s
     }
     rows = Array.new(5000) { |i| {"id" => i, "s" => "row #{i}"} }
     bytes = write_to_string(schema, rows, page_bytes: 1024, compression: :none)
@@ -397,9 +397,9 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_under_reported_chunk_sizes_are_tolerated
-    schema = Herringbone::Schema.define {
-      int64 :id, null: false
-      list :l, :string
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :id, null: false
+      s.list :l, :string
     }
     rows = Array.new(300) { |i| {"id" => i, "l" => [i.to_s] * (i % 4)} }
     bytes = write_to_string(schema, rows, page_bytes: 256)
@@ -417,7 +417,7 @@ class StreamingReaderTest < Minitest::Test
   end
 
   def test_truncated_file_raises_format_error
-    schema = Herringbone::Schema.define { int64 :id, null: false }
+    schema = Herringbone::Schema.define { |s| s.int64 :id, null: false }
     bytes = write_to_string(schema, Array.new(1000) { |i| {"id" => i} }, page_bytes: 512, compression: :none)
     reader = reader_for(bytes)
     reader.row_groups[0].num_rows = 2000

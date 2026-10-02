@@ -122,7 +122,7 @@ class VisualizerTest < Minitest::Test
 
   def test_html_escapes_hostile_names
     io = StringIO.new("".b)
-    schema = Herringbone::Schema.define { string :"</script><script>alert(1)</script>" }
+    schema = Herringbone::Schema.define { |s| s.string :"</script><script>alert(1)</script>" }
     Herringbone::Writer.open(io, schema) { |w| w << ["</script><!--"] }
     html = Visualizer.new(Herringbone::Inspector.new(StringIO.new(io.string)), title: "<b>%%DATA%%</b>").to_html
     check_html(html, "hostile")
@@ -221,7 +221,7 @@ class VisualizerTest < Minitest::Test
     assert_equal 11, kv["arrow_schema"]["fields"].size
     assert_nil data["arrow_error"]
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, Herringbone::Schema.define { int64 :id }, metadata: {"ARROW:schema" => "/////w=="}) { |w| w << [1] }
+    Herringbone::Writer.open(io, Herringbone::Schema.define { |s| s.int64 :id }, metadata: {"ARROW:schema" => "/////w=="}) { |w| w << [1] }
     broken = embedded_data(Herringbone::Inspector.new(StringIO.new(io.string)).to_html)
     assert_match(/could not decode ARROW:schema/, broken["arrow_error"])
     assert_match(/could not decode/, broken["kv"][0]["arrow_error"])

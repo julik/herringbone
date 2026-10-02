@@ -23,7 +23,7 @@ module Herringbone
   # Columns declared in a block (Schema::Builder DSL) replace inferred ones, e.g. for a column that
   # holds both numbers and text:
   #
-  #   Herringbone::SimpleWriter.new(io) { string :code }
+  #   Herringbone::SimpleWriter.new(io) { |s| s.string :code }
   class SimpleWriter
     # Opens a writer, yields it and closes it, finishing the file. If the block raises, the file is
     # left unfinished (no footer), as with Writer.open. To declare columns, use #initialize and #close.
@@ -60,13 +60,16 @@ module Herringbone
     # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
     # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
     #   (other Writer options are passed on as well)
-    # @yield optional block evaluated with +instance_eval+ on a Schema::Builder, declaring columns
-    #   (named in #headers!) that replace inferred ones
+    # @yield [s] optional, declares columns (named in #headers!) that replace inferred ones
+    # @yieldparam s [Schema::Builder] the builder to declare columns on
+    # @yieldreturn [void]
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
+    # @raise [ArgumentError] when the block takes no parameter
     def initialize(io, **options, &overrides)
+      Schema::Builder.check_block!(overrides, "Herringbone::SimpleWriter.new(io) { |s| s.string :code }")
       @headers = nil
       @overrides = overrides
-      fix = "Herringbone::SimpleWriter.new(io) { %s }"
+      fix = "Herringbone::SimpleWriter.new(io) { |s| s.%s }"
       @writer = InferringWriter.new(io, fix: fix, **options) { |sample| schema_for(sample) }
     end
 

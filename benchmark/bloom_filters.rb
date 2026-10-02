@@ -41,9 +41,9 @@ backends.each do |backend|
 end
 puts
 
-schema = Herringbone::Schema.define do
-  int64 :id, null: false
-  string :email, null: false
+schema = Herringbone::Schema.define do |s|
+  s.int64 :id, null: false
+  s.string :email, null: false
 end
 rows = Array.new(ROWS) { |i| {"id" => i * 7_919 + 1, "email" => format("u%010d@example.com", i)} }
 

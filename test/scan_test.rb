@@ -35,17 +35,17 @@ class ScanTest < Minitest::Test
       addr: (i % 7 == 0) ? nil : {city: %w[AMS BER PAR][i % 3], zip: format("%04d", i % 10_000)}
     }
   end
-  SCHEMA = Herringbone::Schema.define do
-    int64 :id, null: false
-    date :day
-    string :status
-    string :email
-    decimal :amount, precision: 12, scale: 2
-    int64 :maybe
-    list :tags, :string
-    struct :addr do
-      string :city
-      string :zip
+  SCHEMA = Herringbone::Schema.define do |s|
+    s.int64 :id, null: false
+    s.date :day
+    s.string :status
+    s.string :email
+    s.decimal :amount, precision: 12, scale: 2
+    s.int64 :maybe
+    s.list :tags, :string
+    s.struct :addr do |addr|
+      addr.string :city
+      addr.string :zip
     end
   end
 

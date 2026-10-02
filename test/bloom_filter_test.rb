@@ -137,7 +137,7 @@ class BloomFilterTest < Minitest::Test
       assert_equal ((type == t::DOUBLE) ? 5 : 4), hashes.size
     end
     rows = [0.0, -0.0, 0.0, Float::NAN].map { |v| {d: v} }
-    reader = reader_for(write_to_string(Herringbone::Schema.define { double :d }, rows, bloom_filters: true))
+    reader = reader_for(write_to_string(Herringbone::Schema.define { |s| s.double :d }, rows, bloom_filters: true))
     [0.0, -0.0, Float::NAN].each { |v| assert_equal [0], may_contain(reader, "d", v), v.inspect }
   end
 
@@ -222,7 +222,7 @@ class BloomFilterTest < Minitest::Test
   end
 
   def test_corrupt_filter_header_is_a_format_error
-    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, [{id: 1}], bloom_filters: true).dup
+    bytes = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{id: 1}], bloom_filters: true).dup
     offset = reader_for(bytes).row_groups[0].columns[0].meta_data.bloom_filter_offset
     bytes[offset, 4] = "\xFF".b * 4
     reader = reader_for(bytes)
@@ -328,20 +328,20 @@ class BloomFilterTest < Minitest::Test
   end
 
   def test_logical_values_and_absent_values
-    schema = Herringbone::Schema.define do
-      int32 :i32
-      int64 :i64
-      uint64 :u64
-      float :f32
-      double :f64
-      string :str
-      binary :bin
-      fixed :fx, length: 4
-      uuid :uid
-      date :date
-      timestamp :ts, unit: :micros
-      decimal :dec, precision: 9, scale: 2
-      decimal :dec_fixed, precision: 30, scale: 3
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :i32
+      s.int64 :i64
+      s.uint64 :u64
+      s.float :f32
+      s.double :f64
+      s.string :str
+      s.binary :bin
+      s.fixed :fx, length: 4
+      s.uuid :uid
+      s.date :date
+      s.timestamp :ts, unit: :micros
+      s.decimal :dec, precision: 9, scale: 2
+      s.decimal :dec_fixed, precision: 30, scale: 3
     end
     n = 1000
     rows = Array.new(n) do |i|
@@ -370,10 +370,10 @@ class BloomFilterTest < Minitest::Test
   end
 
   def test_sizes_from_counted_distinct_values_or_ndv
-    schema = Herringbone::Schema.define {
-      int64 :id, null: false
-      string :cat
-      string :s
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :id, null: false
+      s.string :cat
+      s.string :s
     }
     rows = Array.new(5000) { |i| {id: i, cat: "c#{i % 10}", s: "s#{i}"} }
     bytes = write_to_string(schema, rows, bloom_filters: {"id" => {ndv: 100_000, fpp: 0.05}, "cat" => true, "s" => {fpp: 0.1}})
@@ -387,21 +387,21 @@ class BloomFilterTest < Minitest::Test
 
   def test_max_bytes_and_default_off
     rows = Array.new(2000) { |i| {id: i} }
-    bytes = write_to_string(Herringbone::Schema.define { int64 :id }, rows, bloom_filters: {id: {max_bytes: 256}})
+    bytes = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, rows, bloom_filters: {id: {max_bytes: 256}})
     assert_equal 256, reader_for(bytes).bloom_filter(0, "id").num_bytes
-    plain = reader_for(write_to_string(Herringbone::Schema.define { int64 :id }, rows))
+    plain = reader_for(write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, rows))
     assert_nil plain.bloom_filter(0, "id")
     assert_nil plain.row_groups[0].columns[0].meta_data.bloom_filter_offset
     assert_equal [0], may_contain(plain, "id", -1) # no filter: may contain anything
   end
 
   def test_nested_and_null_columns
-    schema = Herringbone::Schema.define do
-      list :tags, :string
-      struct :s do
-        int32 :x
+    schema = Herringbone::Schema.define do |s|
+      s.list :tags, :string
+      s.struct :s do |nested|
+        nested.int32 :x
       end
-      string :empty
+      s.string :empty
     end
     rows = Array.new(50) { |i| {tags: ["t#{i}", "u#{i}"], s: {x: i}, empty: nil} }
     reader = reader_for(write_to_string(schema, rows, bloom_filters: ["tags.list.element", "s.x", "empty"]))
@@ -413,9 +413,9 @@ class BloomFilterTest < Minitest::Test
   end
 
   def test_options_are_validated
-    schema = Herringbone::Schema.define {
-      boolean :b
-      int32 :i
+    schema = Herringbone::Schema.define { |s|
+      s.boolean :b
+      s.int32 :i
     }
     assert_raises(ArgumentError) { write_to_string(schema, [], bloom_filters: ["b"]) }
     assert_raises(ArgumentError) { write_to_string(schema, [], bloom_filters: ["nope"]) }
@@ -479,9 +479,9 @@ class BloomFilterTest < Minitest::Test
       path = File.join(dir, "bloom.parquet")
       rows = Array.new(3000) { |i| {id: i, s: "value-#{i}"} }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: Herringbone::Schema.define {
-          int64 :id
-          string :s
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { |s|
+          s.int64 :id
+          s.string :s
         }, bloom_filters: true, row_group_rows: 1000)
       end
       script = <<~PY
@@ -515,9 +515,9 @@ class BloomFilterTest < Minitest::Test
       # Values are spread so every row group's min/max covers the probe: only the bloom filter can prune
       rows = Array.new(30_000) { |i| {id: (i * 7919) % 30_000, s: "key-#{(i * 7919) % 30_000}"} }
       File.open(path, "wb") do |f|
-        Herringbone.write(f, rows, schema: Herringbone::Schema.define {
-          int64 :id
-          string :s
+        Herringbone.write(f, rows, schema: Herringbone::Schema.define { |s|
+          s.int64 :id
+          s.string :s
         }, bloom_filters: true, row_group_rows: 10_000)
       end
       script = File.join(__dir__, "support", "datafusion_bloom_prune.py")
