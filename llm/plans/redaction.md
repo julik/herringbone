@@ -167,3 +167,25 @@ https://github.com/Factual/parquet-rewriter ,
 https://docs.cloud.google.com/sensitive-data-protection/docs/pseudonymization ,
 https://en.wikipedia.org/wiki/Crypto-shredding ,
 https://parquet.apache.org/docs/file-format/data-pages/encryption/
+
+## Deviations
+
+What the implementation does where the plan was silent or said otherwise:
+
+- All three tiers are implemented, including the chunk-level rewrite of a replaced struct member.
+- `where` conditions of later statements also see values replaced by earlier statements, not only
+  the blocks. Row groups are still ruled out on the original values: if no statement matches a
+  row's original values, no statement changes it.
+- `rows_changed` compares each replace's result with the value before that statement, so a value
+  changed and changed back still counts.
+- Constants are checked up front (nil on a required column, a value the column can't store); a
+  block returning such a value raises `EncodeError` mid-write and leaves the output unfinished.
+- A struct member of a row whose struct is null is left alone.
+- `affects?` is true for any `drop`, even on an empty file, since the schema changes.
+- `row_group_bytes:` and `row_group_rows:` raise ArgumentError instead of splitting row groups.
+- When columns are dropped, the `ARROW:schema` and `pandas` metadata keys are not copied.
+- Copied chunk extents are found by walking the page headers (and the OffsetIndex) rather than
+  trusting `total_compressed_size`. Bloom filters stored without a length are decoded and encoded
+  again rather than copied.
+- A where-matched row group is rewritten only if a value actually changed or a row was deleted;
+  otherwise it is copied.
