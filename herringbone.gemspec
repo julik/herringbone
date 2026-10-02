@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
     "available when the zstd-ruby / brotli gems are installed."
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
-  spec.files = Dir["lib/**/*.rb", "bin/*", "README.md", "CHANGELOG.md", "LICENSE"]
+  spec.files = Dir["lib/**/*.rb", "bin/*", "README.md", "MANUAL.md", "CHANGELOG.md", "LICENSE"]
   spec.bindir = "bin"
   spec.executables = ["herringbone"]
   spec.require_paths = ["lib"]

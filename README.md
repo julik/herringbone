@@ -7,10 +7,24 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
   LZO, from Hadoop-era files, can be read but not written
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
-- Optimized reads with batches and pages 
+- Optimized reads with batches and pages
 - Ruby 3.0+
 
-## Diving in: dumping records in Rails
+This README covers the common cases. The [MANUAL](MANUAL.md) has everything else: reader and
+writer options, schemas and column types, bloom filters, Numo arrays, the redaction rules,
+type mapping and the inspector.
+
+## Installation
+
+```ruby
+gem "herringbone"
+```
+
+Optionally add `snappy` (faster), `zstd-ruby` and `brotli` (more codecs), `xxhash` (faster bloom
+filters) or `numo-narray-alt` (`read(as: :numo)`). Herringbone uses whichever of them are loaded,
+see [Optional gems](MANUAL.md#optional-gems).
+
+## Exporting from Rails
 
 Stream a relation straight into S3, no temp file needed:
 
@@ -22,225 +36,39 @@ s3.upload_stream(bucket: "exports", key: "payments.parquet") do |io|
 end
 ```
 
-## Installation
+Or to a local file:
 
 ```ruby
-gem "herringbone"
-```
-
-Add these libraries to speed up and enable certain functionality:
-
-```ruby
-gem "snappy"          # native Snappy, 2-3x faster reads and writes of typical files
-gem "zstd-ruby"       # ZSTD
-gem "brotli"          # Brotli
-gem "xxhash"          # faster bloom filters
-gem "numo-narray-alt" # read(as: :numo)
-```
-
-Herringbone never requires them itself: it uses whichever are loaded. Bundler.require (as in Rails)
-loads them, otherwise require them yourself:
-
-```ruby
-require "herringbone"
-require "zstd-ruby"
-require "numo/narray"
-```
-
-On Ruby 3.1 and later, Herringbone works from any Ractor. Pass a schema to a Ractor with
-`Ractor.make_shareable(schema)`. Rows made shareable the same way reach a writing Ractor by
-reference, without being copied:
-
-```ruby
-writer = Ractor.new("out.parquet", Ractor.make_shareable(schema)) do |path, schema|
-  File.open(path, "wb") do |f|
-    Herringbone::Writer.open(f, schema) do |w|
-      while (row = Ractor.receive) != :done
-        w << row
-      end
-    end
-  end
+File.open("orders.parquet", "wb") do |file|
+  Herringbone.write(file, Order.where(created_at: 1.year.ago..), compression: :zstd)
 end
-rows.each { |row| writer.send(Ractor.make_shareable(row)) }
-writer.send(:done)
 ```
+
+Any Enumerable of Hashes, Structs or Arrays works too; the schema is inferred from the first 1000
+rows. See [ActiveRecord](MANUAL.md#activerecord) and [Writing to S3](MANUAL.md#writing-to-s3).
 
 ## Reading
 
-Herringbone can read from any IO-ish object with random access (the IO should be seekable).
-
 ```ruby
-require "herringbone"
-
 File.open("data.parquet", "rb") do |file|
   reader = Herringbone::Reader.new(file)
-  reader.schema
   reader.num_rows
 
-  reader.each_row { |row| p row }             # Hashes with String keys, nested values as Hash/Array
-  reader.each_batch(1000) { |rows| ... }      # Arrays of up to 1000 rows
-  reader.each_batch(10_000, as: :columns) { |batch| batch["amount"].sum } # { "id" => [...], ... }
-  reader.read                                 # all rows at once; read(as: :columns) for column Arrays
+  reader.each_row { |row| p row }        # Hashes with String keys, nested values as Hash/Array
+  reader.each_batch(1000) { |rows| ... } # Arrays of up to 1000 rows
+  reader.read                            # all rows at once
+
+  reader.read(columns: %w[id name], where: { user_id: 42 })
+  reader.read(where: { status: %w[paid shipped], created_at: 1.week.ago.. })
 end
 ```
 
-Reads stream: pages are read and decoded one at a time per column and rows are assembled in
-batches, so memory depends on the batch and page sizes rather than on the row group size (1M
-rows in a single row group peak at about 60–160 MB RSS growth instead of 660 MB). Column-order
-batches (`as: :columns`) skip building a Hash per row and are 25–30% faster.
+Reads stream page by page, and `where:` skips row groups and pages it can rule out using
+statistics, page indexes and bloom filters. See [Reading](MANUAL.md#reading).
 
-`Reader.new` takes `keys: :symbol` for Symbol keys (in rows and in structs; map keys stay as
-stored) and `time_zone:` to return timestamps in a zone instead of UTC: a UTC offset (`"+02:00"`,
-or seconds), `"UTC"`, a `TZInfo::Timezone`, or anything responding to `#at` such as `Time.zone`
-in Rails (which yields `ActiveSupport::TimeWithZone`). Zone names like `"Europe/Amsterdam"` work
-when ActiveSupport or TZInfo is loaded. Timestamps stored with `isAdjustedToUTC=false` are
-wall-clock values and stay as they are.
+## Writing CSV-style
 
-### Selecting rows
-
-`each_row`, `each_batch` and `read` take `columns:`, `where:`, `from:` and `limit:`:
-
-```ruby
-reader.read(columns: %w[id name])                                          # projection
-reader.read(where: { user_id: 42 })
-reader.read(where: { status: %w[paid shipped], created_at: 1.week.ago.. })  # IN, Ranges
-reader.read(where: { "address.city" => "Amsterdam", deleted_at: nil })     # struct members, IS NULL
-reader.read(where: { amount: ->(v) { v && v > 100 } })                      # any callable
-reader.read(from: 1_000_000, limit: 100)                                    # rows 1,000,000..1,000,099
-```
-
-All conditions must hold; filtered columns need not be among `columns:`, and any column not inside
-a list or map can be filtered on. Row groups are skipped using min/max statistics, null counts and
-bloom filters, pages using the page index (written by Herringbone, parquet-mr, Arrow and others),
-and `from:` jumps to its row through the offset index; every row read is then checked, so results
-are exact. On a 1M-row file with 20k-row pages, looking up one `id` takes 0.1 s instead of 6.3 s.
-Filters help most on columns the data is sorted or clustered by. `reader.scan_plan(where: ...)`
-shows which row groups and row ranges a read would touch, without reading them.
-
-### Numo arrays
-
-`as: :numo` returns (or yields, with `each_batch`) a Hash of column name => Numo array, and takes
-the same `columns:`, `where:`, `from:` and `limit:`. Add `gem "numo-narray-alt"` (or
-`numo-narray`) to your Gemfile and `require "numo/narray"`: without it, `as: :numo` raises
-`Herringbone::UnsupportedError` naming the gem.
-
-```ruby
-cols = reader.read(as: :numo, columns: %w[id amount])  # { "id" => Numo::Int64, "amount" => Numo::DFloat }
-df = Rover::DataFrame.new(reader.read(as: :numo))       # no conversion needed
-```
-
-Flat numeric and boolean columns are decoded from the page bytes without a Ruby object per value:
-two numeric columns of 1M uncompressed rows read in about 25 ms, against 50 ms with `as: :columns`.
-
-| Parquet | Numo |
-|---|---|
-| INT32, INT64 (also TIME) | `Int32`, `Int64` |
-| INT(8/16) signed; INT(8/16/32/64) unsigned | `Int8`, `Int16`; `UInt8` … `UInt64` |
-| FLOAT, FLOAT16, DOUBLE | `SFloat`, `SFloat`, `DFloat` (nulls are NaN) |
-| integers with nulls | `DFloat` with NaN (exact up to 2**53) |
-| BOOLEAN | `Bit`; with nulls `RObject` of true/false/nil |
-| list of numbers, every row the same length and no nulls | 2-D `[rows, length]` (e.g. embeddings) |
-| strings, binary, decimals, dates, timestamps, UUIDs, structs, maps, other lists | `RObject` of the values `read` returns |
-
-Whether a column has nulls (or a list column is rectangular) is decided from the rows read, so
-with `each_batch` it can differ between batches.
-
-## Writing
-
-```ruby
-schema = Herringbone::Schema.define do |s|
-  s.int64 :id, null: false
-  s.string :name
-  s.enum :status, values: %w[pending paid shipped]
-  s.list :tags, :string
-  s.map :scores, :string, :double
-  s.struct :address do |address|
-    address.string :city
-    address.string :zip
-  end
-  s.decimal :price, precision: 12, scale: 2
-  s.json :payload
-  s.timestamp :created_at
-end
-
-File.open("out.parquet", "wb") do |file|
-  Herringbone::Writer.open(file, schema) do |w|
-    w << { "id" => 1, "name" => "Anna", "status" => "paid", "tags" => ["a", "b"],
-           "scores" => { "x" => 1.5 }, "address" => { "city" => "Amsterdam" },
-           "price" => BigDecimal("9.99"), "payload" => { "any" => ["json"] }, "created_at" => Time.now }
-    w << { id: 2, status: :pending }  # Symbol keys and values work; missing keys are nulls
-    w << [3, "Bo", nil, nil, nil, nil, nil, nil, nil, nil] # Arrays in schema order
-    w << order                         # anything with #attributes (ActiveRecord) or #to_h (Struct, Data)
-  end
-end
-```
-
-`Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
-first 1000 rows unless `schema:` is given; fields declared in a block replace inferred ones:
-`Herringbone.write(io, rows) { |s| s.json :payload }`. The rows are iterated once, holding back only
-those first 1000, so lazy Enumerators and cursors that can't be rewound work. A later row that
-doesn't fit the inferred types raises `Herringbone::SchemaMismatch`, which explains what was
-inferred and how to declare the column, and leaves the file unfinished.
-
-The writer writes to any IO that responds to `#write` (a `File`, `StringIO`, `Tempfile`, socket or
-pipe), sequentially, and never seeks, rewinds or closes it (it does switch it to binary mode). If
-the `Writer.open` block raises (or `#abort` is called), no footer is written and what was written
-so far is left for you to discard. To replace a file only once it is complete, write to a temporary
-file and rename it.
-
-The block receives the schema builder, and the blocks of `struct`, `list` and `map` receive a
-builder of their own, so the block can still call your methods and read your instance variables.
-A block that takes no parameter raises `ArgumentError`.
-
-Column types: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
-string binary json bson enum uuid date int96 time timestamp decimal fixed`, plus `struct`, `list`
-and `map`; `s.column :name, :int32` declares one by name. Fields are nullable unless `null: false`
-is given; list elements unless `element_null: false`, map values unless `value_null: false`.
-Nested lists: `s.list :matrix do |matrix| matrix.list :element, :double end`. `time` and `timestamp` take `unit:`
-(`:millis`, `:micros`, `:nanos`) and `utc:`.
-
-`enum` is a string column. `values:` restricts what may be written, and also takes a Rails-style
-Hash (`values: Order.statuses`), in which case both labels and stored integers are accepted and
-the label is written. `parquet_enum: true` adds the Parquet ENUM annotation (pyarrow and pandas
-read such columns as binary, which is why it is off by default).
-
-Columns accept the values Ruby and Rails code usually has at hand:
-
-| column | accepts |
-|---|---|
-| `date` | `Date`, `Time`/`DateTime` (their date), `"2024-05-01"` |
-| `timestamp` | `Time`, `DateTime`, `ActiveSupport::TimeWithZone`, `Date` (midnight UTC), ISO-8601 strings, Integers in the column's unit |
-| `time` | `Time` (its time of day, as Rails returns for `time` columns), `"13:45:30.25"`, Integers |
-| `json` | Strings as-is, anything else through `JSON.generate` |
-| `string`, `enum` | Strings, Symbols, anything with `to_s` |
-| `boolean` | `true`/`false`, `1`/`0`, `"t"`/`"f"`, `"true"`/`"false"`, `"yes"`/`"no"` |
-| integers | Integers, whole-number Floats/BigDecimals/Rationals, numeric Strings; out-of-range values raise |
-| `decimal` | `BigDecimal`, Integer, Rational, Float, numeric Strings |
-| `uuid` | Strings with or without dashes, or 16 raw bytes |
-
-Values that don't fit raise `Herringbone::EncodeError` naming the row number and column path; the
-failed row is discarded and the writer can carry on.
-
-Writer options:
-
-| option | default | |
-|---|---|---|
-| `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
-| `compression_level` | codec default | level for `:zstd` (up to 22, default 3), `:gzip` (0-9) or `:brotli` (0-11) |
-| `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory, which bounds memory use (a 15-column table peaks around 290 MB RSS) |
-| `row_group_rows` | none | also flush after this many rows |
-| `page_bytes` | 1MB | approximate data page size |
-| `page_rows` | `20_000` | at most this many rows per data page |
-| `data_page_version` | `1` | `1` or `2` |
-| `dictionary` | `true` | `false`, or an Array of column paths to dictionary-encode |
-| `encodings` | `{}` | e.g. `{ "id" => :delta_binary_packed, "x" => :byte_stream_split }` |
-| `metadata` | `{}` | footer key/value metadata, read back with `reader.metadata` |
-| `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => { ndv:, fpp:, max_bytes: } }` |
-
-### Coming from CSV
-
-`SimpleWriter` writes like the CSV gem: name the columns, then append Arrays. The types are
-inferred from the first 1000 rows, as above.
+`SimpleWriter` writes like the CSV gem: name the columns, then append rows. The types are inferred.
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
@@ -252,49 +80,13 @@ File.open("people.parquet", "wb") do |file|
 end
 ```
 
-Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
-`Herringbone::SimpleWriter.new(io) { |s| s.string :code }` (then call `close` when done).
+To control the types, declare a schema and use `Herringbone::Writer`, see
+[Writing](MANUAL.md#writing).
 
-### Statistics, page indexes and bloom filters
-
-Every column chunk gets min/max/null-count statistics and the Parquet page index (per-page min/max
-and row offsets), which Herringbone, DuckDB, Spark, Trino, Arrow and DataFusion use to skip pages.
-With 20,000 rows per page, `WHERE id BETWEEN ...` on a sorted column reads a handful of pages
-instead of the whole row group, so sort rows by the columns you filter on.
-
-Min/max cannot rule out a value inside a row group's range, the usual case for unsorted IDs,
-emails or UUIDs; a bloom filter can. They are off by default. `bloom_filters: ["user_id", "email"]`
-(or `true` for every non-boolean column) writes Parquet's split block bloom filters, sized from
-each row group's distinct values at a false positive probability of 1% (`fpp:`, up to `max_bytes:`,
-default 1MB) unless `ndv:` gives the number of distinct values. Nested leaves are named by their
-dotted path (`"tags.list.element"`). Hashing is pure Ruby unless the `xxhash` gem is loaded:
-a million rows take about 1.2 s longer to write with a filter on an INT64 column and 2.8 s longer
-with one on a ~22-byte string column, and about 0.5 s longer with `xxhash`.
-
-### Writing to S3
-
-Parquet keeps its metadata in a footer, so a file can be streamed into an S3 multipart upload
-without a local copy, using `upload_stream` from `aws-sdk-s3`:
-
-```ruby
-s3 = Aws::S3::TransferManager.new # aws-sdk-s3 1.197+; before that, Aws::S3::Object#upload_stream
-s3.upload_stream(bucket: "exports", key: "events.parquet", part_size: 16 * 1024 * 1024) do |io|
-  Herringbone::Writer.open(io, schema) do |w|
-    events.each { |event| w << event }
-  end
-end
-s3.upload_stream(bucket: "exports", key: "orders.parquet") { |io| Herringbone.write(io, Order.all) }
-```
-
-If the block raises, the SDK aborts the multipart upload and raises `Aws::S3::MultipartUploadError`,
-so no partial object is left. S3 allows at most 10,000 parts, which with the default 5MB parts caps
-the file at about 48GB; raise `part_size:` for bigger files.
-
-## Redaction
+## Redacting
 
 `Herringbone.redact` rewrites a file with rows removed or values replaced, for GDPR "forget me"
-requests and pseudonymization. One file goes in and one comes out, and the parts of the file
-nothing touches are copied byte for byte.
+requests and pseudonymization. The parts of the file nothing touches are copied byte for byte.
 
 ```ruby
 # Forget me: remove the rows
@@ -307,11 +99,6 @@ Herringbone.redact(input, output) do |r|
   r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
-# Forget me, but keep the row linkable: pseudonymize just that user's email
-Herringbone.redact(input, output) do |r|
-  r.where(user_id: 42).replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
-end
-
 # Pseudonymize a column across the whole file, mask another, drop a third
 Herringbone.redact(input, output) do |r|
   r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
@@ -320,213 +107,18 @@ Herringbone.redact(input, output) do |r|
 end
 ```
 
-A `Herringbone::Redaction` is built once and applies itself to any number of files, which suits a
-forget-me job going over a bucket:
+See [Redaction](MANUAL.md#redaction) for reusable redactions, reports and recipes.
 
-```ruby
-forget = Herringbone::Redaction.new do |r|
-  r.where(user_id: 42).delete
-  r.where(email: "anna@example.com").delete     # separate statements OR together
-  r.where(created_at: ..2.years.ago).delete      # retention works the same way
-end
-
-if forget.affects?(input)      # statistics and bloom filters first, then the where columns only
-  report = forget.apply(input, output)
-  report.rows_deleted          # => 3
-  report.row_groups            # => { copied: 61, rewritten: 1 }
-end
-```
-
-The block receives the redaction being built, like `Writer.open` passes the writer, so it can use
-the methods and instance variables around it; a block without the `|r|` raises `ArgumentError`.
-`where` takes what `read(where:)` takes (values, Arrays, Ranges, `nil`, callables and dotted
-struct paths, but no columns inside lists or maps), and skips row groups and pages the same way.
-`where(...).delete` removes the matching rows. `replace` sets constants,
-`replace(email: nil, name: "[deleted]")`, or computes each value with a block,
-`replace(:email, :phone) { |value| ... }`. A block that takes two parameters also gets the whole
-row, as a Hash with String keys like `read` returns. Without `where`, `replace` applies to every
-row. A column is a top-level field or a struct member by dotted path (`"address.city"`; a member
-of a null struct is left alone). To change what is inside a list or map, replace the whole field
-with a block that receives the Array or Hash. `drop :a, :b` removes columns from the schema.
-
-Statements apply in declared order, row by row: a deleted row is gone for later statements, and
-later statements see what earlier ones replaced, in their conditions as well as in their blocks.
-Mistakes raise `ArgumentError` before anything is written: a `where` without a verb, a column that
-doesn't exist, `nil` (or a value of the wrong type) for a `null: false` column. A block that
-returns something its column can't store raises `Herringbone::EncodeError` when it gets there and
-leaves the output unfinished.
-
-`apply` and `Herringbone.redact` take IOs like `Reader` and `Writer` do: the input must be
-seekable, the output only needs `#write`, and neither is closed. To redact in place, write to a
-temporary file and rename it over the original; on S3, read the object and write the new one
-through `upload_stream`. The `Redaction::Report` that `apply` returns has `rows_read`,
-`rows_deleted`, `rows_changed` and `row_groups` (`{ copied:, rewritten: }`), which is the audit
-trail an erasure needs.
-
-Each row group is handled in the cheapest way that is still exact. If no statement can match it,
-judging by statistics, bloom filters and the page index, or by reading only the `where` columns,
-its column chunks are copied as they are and only their offsets are rebased. If rows match but
-none is deleted and only leaf columns change, just those column chunks are encoded again. If rows
-are deleted, or a nested field is replaced whole, the row group is rewritten, as one row group
-(or none, when every row goes). Rewritten chunks keep the codec of the original chunk (LZO, which
-Herringbone can't write, becomes Snappy) and get a new bloom filter if they had one. Writer
-options (`compression:`, `bloom_filters:`, `page_rows:`...) apply to the rewritten chunks;
-`row_group_bytes:` and `row_group_rows:` are refused, since row groups keep their boundaries. The
-footer's key/value metadata is copied (without `ARROW:schema` and `pandas` when columns are
-dropped, since those describe the columns) unless `metadata:` is given.
-
-No deleted or replaced value survives in the output: not in data pages, dictionary pages, column
-chunk min/max statistics, the page index or bloom filters. What Herringbone can't reach is up to
-you: the original file, its S3 versions and backups still hold the data until you delete them,
-only the columns you name are touched (an email that also sits in a free-text `notes` column stays
-there), and other files with the same person in them need their own pass.
-
-Some recipes. Keyed hashing keeps a column joinable without keeping the value; keep the key out
-of the data, and rotate or destroy it to cut the link:
-
-```ruby
-require "openssl"
-KEY = ENV.fetch("PSEUDONYM_KEY")
-Herringbone.redact(input, output) do |r|
-  r.replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
-end
-```
-
-Masking keeps enough to be recognizable to the person but not to anyone else:
-
-```ruby
-Herringbone.redact(input, output) do |r|
-  r.replace(:card_number) { |number| number && number[-4..].rjust(number.size, "*") }
-  r.replace(:email) { |email| email&.sub(/\A(.).*@/, '\1***@') }
-  r.replace(:birth_date) { |date| date && Date.new(date.year, 1, 1) }
-end
-```
-
-Fake values (with the `faker` gem) make a copy for staging that looks real. Seed Faker from the
-original value to get the same fake for the same person in every file:
-
-```ruby
-require "faker"
-require "zlib"
-Herringbone.redact(input, output) do |r|
-  r.replace(:name) do |name|
-    next nil unless name
-    Faker::Config.random = Random.new(Zlib.crc32(name))
-    Faker::Name.name
-  end
-  r.replace(:address) do |address|
-    address && { "city" => Faker::Address.city, "zip" => Faker::Address.zip_code }
-  end
-end
-```
-
-## ActiveRecord
-
-`Herringbone.write` also takes a model or relation, which it reads with `find_each`, using a schema
-built from the model's columns. It returns the number of rows written:
-
-```ruby
-File.open("orders.parquet", "wb") do |file|
-  Herringbone.write(file, Order.where(created_at: 1.year.ago..), compression: :zstd)
-end
-schema = Herringbone::Schema.from_active_record(Order, only: %w[id status total])
-Herringbone.write(io, Order, schema: schema)
-```
-
-`from_active_record` takes `only:`, `except:` and `parquet_enum: true`. Rails is not a dependency:
-it only calls `columns`, `primary_key` and `defined_enums` on the model. Enum attributes are
-written as their labels, and the writer rejects values outside the enum.
-
-| Column | Parquet |
-|---|---|
-| `integer` | `int16`/`int32`/`int64` by SQL type (`smallint`, `integer`, `bigint`...) or limit; `uintN` for `unsigned`; primary keys are always `int64` |
-| `float` | `double` (`float` for Postgres `float4`) |
-| `decimal` | `decimal(precision, scale)`; `decimal(38, 9)` when the column has no precision |
-| `boolean`, `date`, `binary`, `uuid` | same |
-| `json`, `jsonb` | `json` |
-| `datetime`, `timestamp`, `timestamptz` | `timestamp` (microseconds, UTC) |
-| `time` | `time` (microseconds) |
-| `hstore` | `map` of `string` to `string` |
-| enum attributes | `string` (or `enum`) |
-| `string`, `text`, `citext`, anything else | `string` |
-| Postgres array columns | `list` of the element type |
-
-Columns declared `NOT NULL` (and primary keys) are required, all others nullable. Column order
-follows `Model.columns`.
-
-## Type mapping
-
-| Parquet | Ruby |
-|---|---|
-| BOOLEAN | `true`/`false` |
-| INT32/INT64 (incl. signed/unsigned INTEGER) | `Integer` |
-| FLOAT, DOUBLE, FLOAT16 | `Float` |
-| STRING, ENUM, JSON | `String` (UTF-8) |
-| BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY, BSON | `String` (binary) |
-| DATE | `Date` (proleptic Gregorian) |
-| TIMESTAMP, INT96 | `Time` (UTC) |
-| TIME | `Integer` in the column's unit since midnight |
-| DECIMAL | `BigDecimal` |
-| UUID | `String` like `"0f1e2d3c-..."` |
-| struct / list / map | `Hash` / `Array` / `Hash` |
-
-## Inspecting files
-
-> The inspector and its HTML view are modelled on
-> **[Parquet X-ray](https://huggingface.co/spaces/cfahlgren1/parquet-xray) by cfahlgren1** —
-> the design and the idea are theirs. Go check it out. It is amazing!
-
-`Herringbone::Inspector` examines a file using only its footer, page headers, page indexes and
-bloom filter headers. Nothing is decompressed, so it is fast on big files and works for ZSTD and
-Brotli files without the codec gems.
-
-```ruby
-File.open("data.parquet", "rb") do |file|
-  inspector = Herringbone::Inspector.new(file)
-  inspector.summary      # size, rows, row groups, codecs, page index / bloom filter presence...
-  inspector.row_groups[0].column("name").pages # page headers; also statistics, column_index...
-  puts inspector.report  # the schema, every column chunk, key/value metadata (Arrow schema decoded)
-  inspector.to_h         # all of it, JSON-serializable
-  inspector.to_html      # one self-contained HTML page with a to-scale byte map of the file
-end
-```
-
-`inspector.verify_checksums` reads every page body (still without decompressing) to check the page
-CRCs; the results then appear in `summary`, `report`, `to_h` and `to_html`.
-
-## Command line
+## Looking inside a file
 
 ```
-bin/herringbone cat FILE [N]                           # rows as JSON lines
-bin/herringbone inspect FILE [--pages]                 # text report (--pages lists every page header)
-bin/herringbone inspect FILE --format=json             # everything as JSON
-bin/herringbone inspect FILE --format=html             # the HTML page, opened in your browser
-bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
+bin/herringbone cat FILE [N]                 # rows as JSON lines
+bin/herringbone inspect FILE                 # schema, row groups, column chunks
+bin/herringbone inspect FILE --format=html   # a byte map of the file, opened in your browser
 ```
 
-Add `--verify-checksums` to any `inspect` form to check page CRCs.
-
-`--format` is `text` (the default), `json` or `html`; `--pages` only goes with `text`.
-In a terminal, `--format=html` writes the page to a temp file, prints its path and opens it with `open` on
-macOS, `start` on Windows or `xdg-open` elsewhere. When stdout is redirected or piped it prints the
-page instead.
-
-## Supported format features
-
-- Encodings (read and write): PLAIN, PLAIN_DICTIONARY/RLE_DICTIONARY, RLE, DELTA_BINARY_PACKED,
-  DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY, BYTE_STREAM_SPLIT; legacy BIT_PACKED levels (read)
-- Data page v1 and v2, dictionary pages, page CRCs (written)
-- Page indexes and split block bloom filters (read and written)
-- Legacy list and map layouts per the Parquet backward-compatibility rules
-- Not supported: encryption, column chunks in external files
+See [Inspecting files](MANUAL.md#inspecting-files) and [Command line](MANUAL.md#command-line).
 
 ## Development
 
-```
-bundle install
-bundle exec rake test
-HERRINGBONE_PYTHON=/path/to/python-with-pyarrow bundle exec rake test   # also run pyarrow interop tests
-```
-
-`test/fixtures/parquet-testing` holds files from [apache/parquet-testing](https://github.com/apache/parquet-testing)
-(Apache-2.0); expectations for them were generated with pyarrow, see `test/fixtures/generate_expectations.py`.
+See [Development](MANUAL.md#development) and [CONTRIBUTING](CONTRIBUTING.md).
