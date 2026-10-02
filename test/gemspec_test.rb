@@ -13,7 +13,7 @@ class GemspecTest < Minitest::Test
   end
 
   def test_packages_only_code_and_docs
-    unexpected = spec.files.reject { |f| f.start_with?("lib/", "bin/") || %w[README.md CHANGELOG.md LICENSE].include?(f) }
+    unexpected = spec.files.reject { |f| f.start_with?("lib/", "bin/") || %w[README.md MANUAL.md CHANGELOG.md LICENSE].include?(f) }
     assert_empty unexpected, "files that should not be in the gem"
     assert_includes spec.files, "lib/herringbone.rb"
     assert_includes spec.files, "bin/herringbone"
