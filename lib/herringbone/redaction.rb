@@ -5,11 +5,11 @@ module Herringbone
   # me") and pseudonymization. A Redaction is built once and applied to any number of files, one
   # file in and one file out:
   #
-  #   forget = Herringbone::Redaction.new do
-  #     where(user_id: 42).delete
-  #     where(email: "anna@example.com").replace(email: nil, name: nil)
-  #     replace(:phone) { |phone| phone&.gsub(/\d(?=\d{3})/, "#") }
-  #     drop :ssn
+  #   forget = Herringbone::Redaction.new do |r|
+  #     r.where(user_id: 42).delete
+  #     r.where(email: "anna@example.com").replace(email: nil, name: nil)
+  #     r.replace(:phone) { |phone| phone&.gsub(/\d(?=\d{3})/, "#") }
+  #     r.drop :ssn
   #   end
   #   File.open("in.parquet", "rb") do |input|
   #     File.open("out.parquet", "wb") { |output| forget.apply(input, output) }
@@ -22,10 +22,6 @@ module Herringbone
   # are replaced gets just those column chunks re-encoded. A row group with deleted rows, or with a
   # nested field replaced as a whole, is rewritten. Either way no deleted or replaced value is
   # left in data pages, dictionary pages, statistics, the page index or bloom filters.
-  #
-  # The block given to Redaction.new is run with instance_exec, so it sees local variables and
-  # constants but not the methods of the object it was written in. Take a block argument
-  # (+Redaction.new { |r| r.where(...).delete }+) when those are needed.
   class Redaction
     # One statement of a Redaction
     #
@@ -101,20 +97,24 @@ module Herringbone
     # @return [Array<String>] fields and struct members to remove from the schema
     attr_reader :drops
 
-    # Builds a redaction. The block declares the statements, see the class description.
+    # Builds a redaction. The block receives the redaction and declares the statements on it,
+    # see the class description.
     #
-    # @yield [redaction] declares the statements; run with instance_exec when it takes no argument
-    # @yieldparam redaction [Redaction] the redaction being built, when the block takes it
+    # @yield [r] declares the statements
+    # @yieldparam r [Redaction] the redaction being built
     # @yieldreturn [void]
-    # @raise [ArgumentError] for an invalid statement, or a #where left without a verb
+    # @raise [ArgumentError] for a block that takes no parameter, an invalid statement, or a
+    #   #where left without a verb
     def initialize(&block)
       @statements = []
       @drops = []
       @scopes = []
-      if block
-        (block.arity == 1) ? yield(self) : instance_exec(&block)
-        check_scopes!
+      return unless block
+      if block.arity.zero?
+        raise ArgumentError, "The block receives the redaction: Redaction.new { |r| r.where(user_id: 42).delete }"
       end
+      yield self
+      check_scopes!
     end
 
     # Selects the rows the next verb applies to. Takes what Reader#read(where:) takes: values,

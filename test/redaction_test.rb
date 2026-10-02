@@ -86,7 +86,7 @@ class RedactionTest < Minitest::Test
 
   def test_delete_removes_rows_and_rewrites_only_their_row_group
     bytes = source
-    out, report = redact(bytes) { where(user_id: 7).delete }
+    out, report = redact(bytes) { |r| r.where(user_id: 7).delete }
     expected = rows.reject { |r| r["user_id"] == 7 }
     assert_roundtrip SCHEMA, expected, out
     assert_equal({copied: 2, rewritten: 1}, report.row_groups)
@@ -103,7 +103,7 @@ class RedactionTest < Minitest::Test
   end
 
   def test_delete_every_row_of_a_row_group_drops_it
-    out, report = redact(source) { where(user_id: 0..9).delete }
+    out, report = redact(source) { |r| r.where(user_id: 0..9).delete }
     assert_equal [100, 100], reader_for(out).row_groups.map(&:num_rows)
     assert_equal({copied: 2, rewritten: 1}, report.row_groups)
     assert_equal 100, report.rows_deleted
@@ -112,7 +112,7 @@ class RedactionTest < Minitest::Test
 
   def test_delete_nothing_copies_everything
     bytes = source
-    out, report = redact(bytes) { where(email: "nobody@example.com").delete }
+    out, report = redact(bytes) { |r| r.where(email: "nobody@example.com").delete }
     assert_equal({copied: 3, rewritten: 0}, report.row_groups)
     assert_equal 0, report.rows_deleted
     3.times do |g|
@@ -125,7 +125,7 @@ class RedactionTest < Minitest::Test
   end
 
   def test_callable_conditions_scan_the_condition_columns
-    out, report = redact(source) { where(name: ->(n) { n == "Name 150" }).delete }
+    out, report = redact(source) { |r| r.where(name: ->(n) { n == "Name 150" }).delete }
     assert_equal({copied: 2, rewritten: 1}, report.row_groups)
     assert_equal 300, report.rows_read # a callable rules nothing out without reading
     assert_roundtrip SCHEMA, rows.reject { |r| r["name"] == "Name 150" }, out
@@ -133,7 +133,7 @@ class RedactionTest < Minitest::Test
 
   def test_replace_leaf_rewrites_only_that_chunk
     bytes = source
-    out, report = redact(bytes) { where(user_id: 7).replace(email: nil, name: "[deleted]") }
+    out, report = redact(bytes) { |r| r.where(user_id: 7).replace(email: nil, name: "[deleted]") }
     assert_equal({copied: 2, rewritten: 1}, report.row_groups)
     assert_equal 10, report.rows_changed
     expected = rows.map { |r| (r["user_id"] == 7) ? r.merge("email" => nil, "name" => "[deleted]") : r }
@@ -150,7 +150,7 @@ class RedactionTest < Minitest::Test
     assert bytes.include?(secret)
     reader = reader_for(bytes)
     assert reader.bloom_filter(0, "email").might_contain?(secret)
-    out, = redact(bytes) { where(email: secret).replace(email: "redacted") }
+    out, = redact(bytes) { |r| r.where(email: secret).replace(email: "redacted") }
     refute out.include?(secret), "the removed value is still in the file"
     reader = reader_for(out)
     stats = chunk(out, 0, "email").meta_data.statistics
@@ -160,14 +160,14 @@ class RedactionTest < Minitest::Test
     assert reader.bloom_filter(0, "email").might_contain?("redacted")
     assert_empty reader.read(where: {email: secret})
 
-    out, = redact(bytes) { where(email: secret).delete }
+    out, = redact(bytes) { |r| r.where(email: secret).delete }
     refute out.include?(secret)
     refute reader_for(out).bloom_filter(0, "email").might_contain?(secret)
   end
 
   def test_deleted_row_values_leave_no_trace_in_any_column
     bytes = source(compression: :none)
-    out, = redact(bytes) { where(user_id: 7).delete }
+    out, = redact(bytes) { |r| r.where(user_id: 7).delete }
     gone = rows.select { |r| r["user_id"] == 7 }.flat_map { |r| [r["email"], r["name"], r["address"]["zip"]] }
     gone.each { |value| refute out.include?([value.bytesize].pack("V") + value), value } # as PLAIN stores them
     refute reader_for(out).bloom_filter(0, "user_id").might_contain?(7)
@@ -175,7 +175,7 @@ class RedactionTest < Minitest::Test
 
   def test_replace_struct_member
     bytes = source
-    out, report = redact(bytes) { replace("address.city") { |city| city.upcase } }
+    out, report = redact(bytes) { |r| r.replace("address.city") { |city| city.upcase } }
     assert_equal({copied: 0, rewritten: 3}, report.row_groups)
     expected = rows.map { |r| r.merge("address" => r["address"].merge("city" => r["address"]["city"].upcase)) }
     assert_roundtrip SCHEMA, expected, out
@@ -184,15 +184,15 @@ class RedactionTest < Minitest::Test
 
   def test_struct_member_of_a_null_struct_is_left_alone
     data = [{"user_id" => 1, "address" => nil}, {"user_id" => 2, "address" => {"city" => "A"}}]
-    out, report = redact(write_to_string(SCHEMA, data)) { replace("address.city" => "X") }
+    out, report = redact(write_to_string(SCHEMA, data)) { |r| r.replace("address.city" => "X") }
     assert_equal [nil, {"city" => "X", "zip" => nil}], reader_for(out).read.map { |r| r["address"] }
     assert_equal 1, report.rows_changed
   end
 
   def test_replace_whole_list_and_struct
-    out, = redact(source) do
-      replace(:tags) { |tags| tags.map(&:upcase) }
-      where(user_id: 3).replace(address: nil)
+    out, = redact(source) do |r|
+      r.replace(:tags) { |tags| tags.map(&:upcase) }
+      r.where(user_id: 3).replace(address: nil)
     end
     expected = rows.map do |r|
       r = r.merge("tags" => r["tags"].map(&:upcase))
@@ -202,16 +202,16 @@ class RedactionTest < Minitest::Test
   end
 
   def test_block_receives_the_row_when_it_asks
-    out, = redact(source) { replace(:name) { |name, row| "#{row["user_id"]}:#{row["address"]["zip"]}" } }
+    out, = redact(source) { |r| r.replace(:name) { |name, row| "#{row["user_id"]}:#{row["address"]["zip"]}" } }
     assert_equal "7:Z7", reader_for(out).read[7]["name"]
     seen = []
-    redact(source) { replace(:name) { |*args| seen << args.size } }
+    redact(source) { |r| r.replace(:name) { |*args| seen << args.size } }
     assert_equal [2], seen.uniq
   end
 
   def test_drop
     bytes = source(metadata: {"ARROW:schema" => "stale", "owner" => "me"})
-    out, report = redact(bytes) { drop :tags, "address.zip" }
+    out, report = redact(bytes) { |r| r.drop :tags, "address.zip" }
     reader = reader_for(out)
     assert_equal %w[user_id email name address.city score], reader.schema.columns.map(&:dotted_path)
     assert_equal({copied: 3, rewritten: 0}, report.row_groups)
@@ -222,20 +222,20 @@ class RedactionTest < Minitest::Test
   end
 
   def test_drop_with_rewrite
-    out, = redact(source) do
-      where(user_id: 7).delete
-      drop :email
+    out, = redact(source) do |r|
+      r.where(user_id: 7).delete
+      r.drop :email
     end
     assert_equal rows.reject { |r| r["user_id"] == 7 }.map { |r| r.except("email") }, reader_for(out).read
   end
 
   def test_statements_apply_in_order
-    out, report = redact(source) do
-      where(user_id: 7).replace(email: nil)
-      where(email: nil).delete # sees the email blanked above
-      where(user_id: 8).delete
-      where(user_id: 8).replace(name: "never") # the row is gone already
-      replace(:name) { |name| name.sub("Name", "N") } # sees nothing deleted
+    out, report = redact(source) do |r|
+      r.where(user_id: 7).replace(email: nil)
+      r.where(email: nil).delete # sees the email blanked above
+      r.where(user_id: 8).delete
+      r.where(user_id: 8).replace(name: "never") # the row is gone already
+      r.replace(:name) { |name| name.sub("Name", "N") } # sees nothing deleted
     end
     expected = rows.reject { |r| [7, 8].include?(r["user_id"]) }.map { |r| r.merge("name" => r["name"].sub("Name", "N")) }
     assert_roundtrip SCHEMA, expected, out
@@ -244,10 +244,10 @@ class RedactionTest < Minitest::Test
   end
 
   def test_where_conditions_are_or_ed_across_statements
-    forget = Herringbone::Redaction.new do
-      where(user_id: 7).delete
-      where(email: "user250@example.com").delete
-      where(score: ..2).delete
+    forget = Herringbone::Redaction.new do |r|
+      r.where(user_id: 7).delete
+      r.where(email: "user250@example.com").delete
+      r.where(score: ..2).delete
     end
     out, report = redact(source, forget)
     assert_equal 14, report.rows_deleted
@@ -257,12 +257,12 @@ class RedactionTest < Minitest::Test
 
   def test_affects
     bytes = source
-    assert Herringbone::Redaction.new { where(user_id: 7).delete }.affects?(StringIO.new(bytes))
-    refute Herringbone::Redaction.new { where(user_id: 12_345).delete }.affects?(StringIO.new(bytes))
-    refute Herringbone::Redaction.new { where(name: ->(n) { n == "x" }).delete }.affects?(StringIO.new(bytes))
-    assert Herringbone::Redaction.new { replace(name: nil) }.affects?(StringIO.new(bytes))
-    assert Herringbone::Redaction.new { drop :tags }.affects?(StringIO.new(bytes))
-    refute Herringbone::Redaction.new { replace(name: nil) }.affects?(StringIO.new(write_to_string(SCHEMA, [])))
+    assert Herringbone::Redaction.new { |r| r.where(user_id: 7).delete }.affects?(StringIO.new(bytes))
+    refute Herringbone::Redaction.new { |r| r.where(user_id: 12_345).delete }.affects?(StringIO.new(bytes))
+    refute Herringbone::Redaction.new { |r| r.where(name: ->(n) { n == "x" }).delete }.affects?(StringIO.new(bytes))
+    assert Herringbone::Redaction.new { |r| r.replace(name: nil) }.affects?(StringIO.new(bytes))
+    assert Herringbone::Redaction.new { |r| r.drop :tags }.affects?(StringIO.new(bytes))
+    refute Herringbone::Redaction.new { |r| r.replace(name: nil) }.affects?(StringIO.new(write_to_string(SCHEMA, [])))
   end
 
   # Column paths of the chunks decoded while the block runs
@@ -280,17 +280,17 @@ class RedactionTest < Minitest::Test
     bytes = source
     result = nil
     decoded = decoded_chunks do
-      result = Herringbone::Redaction.new { where(name: ->(n) { n == "Name 250" }).delete }.affects?(StringIO.new(bytes))
+      result = Herringbone::Redaction.new { |r| r.where(name: ->(n) { n == "Name 250" }).delete }.affects?(StringIO.new(bytes))
     end
     assert result
     assert_equal ["name"] * 3, decoded
-    decoded = decoded_chunks { Herringbone::Redaction.new { where(user_id: 250).delete }.affects?(StringIO.new(bytes)) }
+    decoded = decoded_chunks { Herringbone::Redaction.new { |r| r.where(user_id: 250).delete }.affects?(StringIO.new(bytes)) }
     assert_equal ["user_id"], decoded # row groups 0 and 2 are ruled out by statistics
   end
 
   def test_affects_stops_at_statistics
     io = RecordingIO.new(source)
-    refute Herringbone::Redaction.new { where(user_id: 12_345).delete }.affects?(io)
+    refute Herringbone::Redaction.new { |r| r.where(user_id: 12_345).delete }.affects?(io)
     first_chunk_end = reader_for(io.string).row_groups.last.columns.last.meta_data.then { |m| m.data_page_offset + m.total_compressed_size }
     assert io.reads.all? { |r| r.begin >= first_chunk_end }, "no column chunk is read"
   end
@@ -298,17 +298,17 @@ class RedactionTest < Minitest::Test
   def test_mistakes_raise_before_anything_is_written
     bytes = source
     {
-      -> { where(nope: 1).delete } => /no such column "nope"/,
-      -> { replace(nope: 1) } => /no such column "nope"/,
-      -> { replace(user_id: nil) } => /user_id is required/,
-      -> { replace(score: "not a number") } => /cannot write "not a number" to score/,
-      -> { replace("tags.list.element" => "x") } => /inside the list tags; replace tags instead with a block that receives its Array/,
-      -> { drop :nope } => /drop: no such column/,
-      -> { drop :user_id, :email, :name, :address, :tags, :score } => /cannot drop every column/,
-      -> { drop "address.city", "address.zip" } => /cannot drop every member of address/,
-      -> {
-        drop :address
-        replace("address.city" => nil)
+      ->(r) { r.where(nope: 1).delete } => /no such column "nope"/,
+      ->(r) { r.replace(nope: 1) } => /no such column "nope"/,
+      ->(r) { r.replace(user_id: nil) } => /user_id is required/,
+      ->(r) { r.replace(score: "not a number") } => /cannot write "not a number" to score/,
+      ->(r) { r.replace("tags.list.element" => "x") } => /inside the list tags; replace tags instead with a block that receives its Array/,
+      ->(r) { r.drop :nope } => /drop: no such column/,
+      ->(r) { r.drop :user_id, :email, :name, :address, :tags, :score } => /cannot drop every column/,
+      ->(r) { r.drop "address.city", "address.zip" } => /cannot drop every member of address/,
+      ->(r) {
+        r.drop :address
+        r.replace("address.city" => nil)
       } => /address.city is dropped/
     }.each do |block, message|
       out = StringIO.new("".b)
@@ -319,26 +319,42 @@ class RedactionTest < Minitest::Test
       assert_raises(ArgumentError) { redaction.affects?(StringIO.new(bytes)) }
     end
     out = StringIO.new("".b)
-    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(bytes), out, row_group_rows: 10) { replace(name: nil) } }
-    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(bytes), out, compression: :nope) { replace(name: nil) } }
+    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(bytes), out, row_group_rows: 10) { |r| r.replace(name: nil) } }
+    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(bytes), out, compression: :nope) { |r| r.replace(name: nil) } }
     assert_equal 0, out.size
   end
 
+  def test_block_without_a_parameter_is_refused
+    error = assert_raises(ArgumentError) { Herringbone::Redaction.new { nil } }
+    assert_match(/Redaction.new \{ \|r\| r.where/, error.message)
+    out = StringIO.new("".b)
+    error = assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(source), out) { nil } }
+    assert_match(/Herringbone.redact\(input, output\) \{ \|r\| r.where/, error.message)
+    assert_equal 0, out.size
+  end
+
+  def test_block_sees_the_methods_around_it
+    out, = redact(source) { |r| r.where(user_id: forgotten_user).delete }
+    assert_equal 290, reader_for(out).num_rows
+  end
+
+  def forgotten_user = 7
+
   def test_dsl_mistakes
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { where(user_id: 1) } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { where({}) } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { replace(:email) } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { replace(:email, name: nil) { |v| v } } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { replace(email: nil) { |v| v } } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { replace } }
-    assert_raises(ArgumentError) { Herringbone::Redaction.new { drop } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.where(user_id: 1) } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.where({}) } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.replace(:email) } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.replace(:email, name: nil) { |v| v } } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.replace(email: nil) { |v| v } } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.replace } }
+    assert_raises(ArgumentError) { Herringbone::Redaction.new { |r| r.drop } }
     redaction = Herringbone::Redaction.new
     redaction.where(user_id: 1)
     out = StringIO.new("".b)
     assert_raises(ArgumentError) { redaction.apply(StringIO.new(source), out) }
     assert_equal 0, out.size
     assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(source), out) }
-    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(source), out, redaction) { replace(name: nil) } }
+    assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(source), out, redaction) { |r| r.replace(name: nil) } }
   end
 
   def test_block_argument_and_chaining
@@ -351,7 +367,7 @@ class RedactionTest < Minitest::Test
   end
 
   def test_bad_block_value_raises_with_the_row
-    redaction = Herringbone::Redaction.new { replace(:score) { "oops" } }
+    redaction = Herringbone::Redaction.new { |r| r.replace(:score) { "oops" } }
     out = StringIO.new("".b)
     error = assert_raises(Herringbone::EncodeError) { redaction.apply(StringIO.new(source), out) }
     assert_equal "score", error.column
@@ -360,7 +376,7 @@ class RedactionTest < Minitest::Test
 
   def test_writer_options_apply_to_rewritten_chunks
     bytes = source
-    out, = redact(bytes, compression: :gzip, page_rows: 10, metadata: {"redacted" => "yes"}) { where(user_id: 7).replace(email: nil) }
+    out, = redact(bytes, compression: :gzip, page_rows: 10, metadata: {"redacted" => "yes"}) { |r| r.where(user_id: 7).replace(email: nil) }
     reader = reader_for(out)
     assert_equal F::Codec::GZIP, chunk(out, 0, "email").meta_data.codec
     assert_equal F::Codec::SNAPPY, chunk(out, 0, "name").meta_data.codec
@@ -371,7 +387,7 @@ class RedactionTest < Minitest::Test
 
   def test_rewritten_chunks_keep_codec_and_bloom_filters
     bytes = source(compression: :gzip)
-    out, = redact(bytes) { where(user_id: 7).replace(email: "x", score: 0) }
+    out, = redact(bytes) { |r| r.where(user_id: 7).replace(email: "x", score: 0) }
     assert_equal [F::Codec::GZIP], reader_for(out).row_groups.flat_map { |rg| rg.columns.map { |c| c.meta_data.codec } }.uniq
     reader = reader_for(out)
     assert reader.bloom_filter(0, "email") # rebuilt for the rewritten chunk
@@ -381,14 +397,14 @@ class RedactionTest < Minitest::Test
 
   def test_metadata_is_copied
     bytes = source(metadata: {"a" => "1", "b" => nil})
-    out, = redact(bytes) { where(user_id: 7).delete }
+    out, = redact(bytes) { |r| r.where(user_id: 7).delete }
     assert_equal({"a" => "1", "b" => nil}, reader_for(out).metadata)
   end
 
   def test_lzo_chunks_fall_back_to_snappy
     bytes = File.binread(File.join(FIXTURES_DIR, "lzo", "lzo.parquet"))
     original = reader_for(bytes).read
-    out, report = redact(bytes) { replace(name: "anon") }
+    out, report = redact(bytes) { |r| r.replace(name: "anon") }
     assert_equal({copied: 0, rewritten: 1}, report.row_groups)
     codecs = reader_for(out).row_groups[0].columns.to_h { |c| [c.meta_data.path_in_schema.join("."), c.meta_data.codec] }
     assert_equal({"id" => F::Codec::LZO, "name" => F::Codec::SNAPPY, "score" => F::Codec::LZO}, codecs)
@@ -396,7 +412,7 @@ class RedactionTest < Minitest::Test
   end
 
   def test_redaction_is_reusable
-    forget = Herringbone::Redaction.new { where(user_id: 7).delete }
+    forget = Herringbone::Redaction.new { |r| r.where(user_id: 7).delete }
     a = StringIO.new("".b)
     b = StringIO.new("".b)
     forget.apply(StringIO.new(source), a)
@@ -411,9 +427,9 @@ class RedactionTest < Minitest::Test
     footer = meta.encode
     body = bytes.byteslice(0, bytes.bytesize - 8 - bytes.byteslice(-8, 4).unpack1("V"))
     bytes = body + footer + [footer.bytesize].pack("V") + "PAR1"
-    out, = redact(bytes) do
-      where(user_id: 7).replace(user_id: 0)
-      drop :tags
+    out, = redact(bytes) do |r|
+      r.where(user_id: 7).replace(user_id: 0)
+      r.drop :tags
     end
     sorting = reader_for(out).row_groups.map { |rg| rg.sorting_columns&.map(&:column_idx) }
     assert_equal [[5], [5, 0], [5, 0]], sorting
@@ -434,7 +450,7 @@ class RedactionTest < Minitest::Test
       end
       name = File.basename(path)
       field = reader.schema.fields.find { |f| f.leaf? && f.optional && reader.schema.column(f.name) }
-      out, report = redact(bytes) { replace(field.name => nil) } if field
+      out, report = redact(bytes) { |r| r.replace(field.name => nil) } if field
       if field
         assert_well_formed out, name
         assert_equal Canonical.dump(original.map { |r| Canonical.row(reader.schema, r.merge(field.name => nil)) }),
@@ -444,7 +460,7 @@ class RedactionTest < Minitest::Test
       flat = reader.schema.fields.find { |f| f.leaf? && f.column.type != F::Type::INT96 && original.any? { |r| !r[f.name].nil? } }
       next unless flat
       value = original.find { |r| !r[flat.name].nil? }[flat.name]
-      out, = redact(bytes) { where(flat.name => value).delete }
+      out, = redact(bytes) { |r| r.where(flat.name => value).delete }
       assert_well_formed out, name
       expected = original.reject { |r| Herringbone::Reader::Filter.matches?(value, r[flat.name]) }
       assert_equal Canonical.dump(expected.map { |r| Canonical.row(reader.schema, r) }),

@@ -297,20 +297,20 @@ nothing touches are copied byte for byte.
 
 ```ruby
 # Forget me: remove the rows
-Herringbone.redact(input, output) do
-  where(user_id: 42).delete
+Herringbone.redact(input, output) do |r|
+  r.where(user_id: 42).delete
 end
 
 # Forget me, but keep the row for accounting: blank the personal columns
-Herringbone.redact(input, output) do
-  where(user_id: 42).replace(email: nil, name: nil, address: nil)
+Herringbone.redact(input, output) do |r|
+  r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
 # Pseudonymize a column across the whole file, mask another, drop a third
-Herringbone.redact(input, output) do
-  replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
-  replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
-  drop :ssn, :ip_address
+Herringbone.redact(input, output) do |r|
+  r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
+  r.replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
+  r.drop :ssn, :ip_address
 end
 ```
 
@@ -318,10 +318,10 @@ A `Herringbone::Redaction` is built once and applies itself to any number of fil
 forget-me job going over a bucket:
 
 ```ruby
-forget = Herringbone::Redaction.new do
-  where(user_id: 42).delete
-  where(email: "anna@example.com").delete     # separate statements OR together
-  where(created_at: ..2.years.ago).delete      # retention works the same way
+forget = Herringbone::Redaction.new do |r|
+  r.where(user_id: 42).delete
+  r.where(email: "anna@example.com").delete     # separate statements OR together
+  r.where(created_at: ..2.years.ago).delete      # retention works the same way
 end
 
 if forget.affects?(input)      # statistics and bloom filters first, then the where columns only
@@ -331,6 +331,8 @@ if forget.affects?(input)      # statistics and bloom filters first, then the wh
 end
 ```
 
+The block receives the redaction being built, like `Writer.open` passes the writer, so it can use
+the methods and instance variables around it; a block without the `|r|` raises `ArgumentError`.
 `where` takes what `read(where:)` takes (values, Arrays, Ranges, `nil`, callables and dotted
 struct paths, but no columns inside lists or maps), and skips row groups and pages the same way.
 `where(...).delete` removes the matching rows. `replace` sets constants,
@@ -379,18 +381,18 @@ of the data, and rotate or destroy it to cut the link:
 ```ruby
 require "openssl"
 KEY = ENV.fetch("PSEUDONYM_KEY")
-Herringbone.redact(input, output) do
-  replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email.strip.downcase) }
+Herringbone.redact(input, output) do |r|
+  r.replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
 end
 ```
 
 Masking keeps enough to be recognizable to the person but not to anyone else:
 
 ```ruby
-Herringbone.redact(input, output) do
-  replace(:card_number) { |number| number && number[-4..].rjust(number.size, "*") }
-  replace(:email) { |email| email&.sub(/\A(.).*@/, '\1***@') }
-  replace(:birth_date) { |date| date && Date.new(date.year, 1, 1) }
+Herringbone.redact(input, output) do |r|
+  r.replace(:card_number) { |number| number && number[-4..].rjust(number.size, "*") }
+  r.replace(:email) { |email| email&.sub(/\A(.).*@/, '\1***@') }
+  r.replace(:birth_date) { |date| date && Date.new(date.year, 1, 1) }
 end
 ```
 
@@ -400,13 +402,13 @@ original value to get the same fake for the same person in every file:
 ```ruby
 require "faker"
 require "zlib"
-Herringbone.redact(input, output) do
-  replace(:name) do |name|
+Herringbone.redact(input, output) do |r|
+  r.replace(:name) do |name|
     next nil unless name
     Faker::Config.random = Random.new(Zlib.crc32(name))
     Faker::Name.name
   end
-  replace(:address) do |address|
+  r.replace(:address) do |address|
     address && { "city" => Faker::Address.city, "zip" => Faker::Address.zip_code }
   end
 end

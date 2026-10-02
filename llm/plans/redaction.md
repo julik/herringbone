@@ -13,27 +13,27 @@ one) and calls `apply`.
 
 ```ruby
 # Forget me: remove the rows
-Herringbone.redact(input, output) do
-  where(user_id: 42).delete
+Herringbone.redact(input, output) do |r|
+  r.where(user_id: 42).delete
 end
 
 # Forget me, but keep the row for accounting: blank the personal columns
-Herringbone.redact(input, output) do
-  where(user_id: 42).replace(email: nil, name: nil, address: nil)
+Herringbone.redact(input, output) do |r|
+  r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
 # Pseudonymize a column across the whole file, mask another, drop a third
-Herringbone.redact(input, output) do
-  replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
-  replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
-  drop :ssn, :ip_address
+Herringbone.redact(input, output) do |r|
+  r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
+  r.replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
+  r.drop :ssn, :ip_address
 end
 
 # Built once, applied to many files (a forget-me job over a bucket)
-forget = Herringbone::Redaction.new do
-  where(user_id: 42).delete
-  where(email: "anna@example.com").delete     # separate statements OR together
-  where(created_at: ..2.years.ago).delete      # retention works the same way
+forget = Herringbone::Redaction.new do |r|
+  r.where(user_id: 42).delete
+  r.where(email: "anna@example.com").delete     # separate statements OR together
+  r.where(created_at: ..2.years.ago).delete      # retention works the same way
 end
 
 if forget.affects?(input)      # stats and bloom filters first, then an exact scan of the where columns only
@@ -173,6 +173,9 @@ https://parquet.apache.org/docs/file-format/data-pages/encryption/
 What the implementation does where the plan was silent or said otherwise:
 
 - All three tiers are implemented, including the chunk-level rewrite of a replaced struct member.
+- The block of `Redaction.new` and `Herringbone.redact` receives the redaction (`do |r|
+  r.where(...).delete end`) instead of being instance_exec'd; a block without a parameter raises
+  ArgumentError showing the `|r|` form.
 - `where` conditions of later statements also see values replaced by earlier statements, not only
   the blocks. Row groups are still ruled out on the original values: if no statement matches a
   row's original values, no statement changes it.
