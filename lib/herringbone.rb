@@ -45,6 +45,7 @@ end
 require_relative "herringbone/io_buffer_support"
 require_relative "herringbone/codecs/snappy"
 require_relative "herringbone/codecs/lz4"
+require_relative "herringbone/codecs/lzo"
 require_relative "herringbone/thrift"
 require_relative "herringbone/format"
 require_relative "herringbone/encodings/rle"

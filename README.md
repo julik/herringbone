@@ -3,7 +3,8 @@
 A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) files.
 
 - No Thrift gem and no native extensions of its own: the Thrift compact protocol, all encodings
-  and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems)
+  and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems).
+  LZO, from Hadoop-era files, can be read but not written
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
 - Optimized reads with batches and pages 
