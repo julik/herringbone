@@ -64,6 +64,7 @@ require_relative "herringbone/xxhash"
 require_relative "herringbone/bloom_filter"
 require_relative "herringbone/inspector"
 require_relative "herringbone/visualizer"
+require_relative "herringbone/redaction"
 
 module Herringbone
   module_function
@@ -130,6 +131,39 @@ module Herringbone
     end
     writer.close
     writer.rows_written
+  end
+
+  # Rewrites +input+ into +output+ with rows removed or values replaced, building the Redaction from
+  # the block (or taking +redaction+). A shortcut for Redaction#apply.
+  #
+  #   Herringbone.redact(input, output) do
+  #     where(user_id: 42).delete
+  #     replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
+  #   end
+  #
+  # @param input [IO, StringIO] the Parquet file, read with #seek and #read; not closed
+  # @param output [IO, #write] destination, written sequentially; not closed
+  # @param redaction [Redaction, nil] the redaction to apply, instead of a block
+  # @param writer_options [Hash{Symbol => Object}] Writer options for re-encoded column chunks, and
+  #   +metadata:+ to replace the footer key/value metadata, see Redaction#apply
+  # @option writer_options [Symbol] :compression (codec of each source chunk) codec for re-encoded chunks
+  # @option writer_options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
+  #   columns whose re-encoded chunks get a bloom filter, besides those whose source chunk had one
+  # @option writer_options [Hash{String => String}] :metadata (the input's) footer key/value metadata
+  # @option writer_options [Integer] :page_bytes (1MB) approximate uncompressed data page size
+  # @option writer_options [Integer] :page_rows (20_000) maximum rows per data page
+  # @option writer_options [Integer] :data_page_version (1) 1 or 2
+  # @option writer_options [Boolean, Array<String>] :dictionary (true) see Writer
+  # @option writer_options [Hash{String => Symbol}] :encodings ({}) see Writer
+  # @yield declares the statements, run with instance_exec on a new Redaction (see Redaction.new)
+  # @return [Redaction::Report] what was done
+  # @raise [ArgumentError] when given both or neither of +redaction+ and a block, or when the
+  #   redaction does not fit the file's schema
+  # @raise [EncodeError] when a replacement value cannot be written to its column
+  def redact(input, output, redaction = nil, **writer_options, &block)
+    raise ArgumentError, "Herringbone.redact takes a Redaction or a block, not both" if redaction && block
+    raise ArgumentError, "Herringbone.redact needs a Redaction or a block" unless redaction || block
+    (redaction || Redaction.new(&block)).apply(input, output, **writer_options)
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].

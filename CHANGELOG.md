@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `Herringbone.redact` and `Herringbone::Redaction` rewrite a file with rows deleted, values
+  replaced or columns dropped, for GDPR erasure and pseudonymization, copying the row groups they
+  don't touch byte for byte.
+- `Herringbone::Redaction#affects?` says whether a redaction would change a file, reading only
+  statistics, bloom filters and the `where` columns.
 - **Breaking:** schema DSL blocks receive the builder as a parameter instead of running with
   `instance_eval`: `Herringbone::Schema.define { |s| s.int64 :id }`, likewise for `Schema.infer`,
   `Herringbone.write`, `SimpleWriter.new` and nested `struct`/`list`/`map` blocks. A block without
