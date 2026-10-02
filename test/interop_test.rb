@@ -260,7 +260,7 @@ class InteropTest < Minitest::Test
       specs = Array.new(@rng.rand(1..5)) { spec(1) }
       specs.unshift({kind: :leaf, name: "row_id", type: "i64", null: false})
       decl = method(:declare)
-      schema = Herringbone::Schema.define { |s| specs.each { |s| decl.call(self, s) } }
+      schema = Herringbone::Schema.define { |b| specs.each { |spec| decl.call(b, spec) } }
       rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], (s[:name] == "row_id") ? i : value(s)] } }
       codecs = WriterHelpers::CODECS
       opts = {
@@ -305,7 +305,7 @@ class InteropTest < Minitest::Test
         b.public_send(type, n, null: s[:null], **(opts || {}))
       when :struct
         children = s[:children]
-        b.struct(n, null: s[:null]) { children.each { |ch| decl.call(self, ch) } }
+        b.struct(n, null: s[:null]) { |inner| children.each { |ch| decl.call(inner, ch) } }
       when :list
         el = s[:element]
         case el[:kind]
@@ -313,9 +313,9 @@ class InteropTest < Minitest::Test
           type, opts = LEAVES.fetch(el[:type])
           b.list(n, type, null: s[:null], element_null: el[:null], **(opts || {}))
         when :struct
-          b.list(n, :struct, null: s[:null], element_null: el[:null]) { el[:children].each { |ch| decl.call(self, ch) } }
+          b.list(n, :struct, null: s[:null], element_null: el[:null]) { |inner| el[:children].each { |ch| decl.call(inner, ch) } }
         else
-          b.list(n, null: s[:null]) { decl.call(self, el, as: "element") }
+          b.list(n, null: s[:null]) { |inner| decl.call(inner, el, as: "element") }
         end
       when :map
         key_type, = LEAVES.fetch(s[:key])
@@ -325,9 +325,9 @@ class InteropTest < Minitest::Test
           type, opts = LEAVES.fetch(v[:type])
           b.map(n, key_type, type, null: s[:null], value_null: v[:null], **(opts || {}))
         when :struct
-          b.map(n, key_type, :struct, null: s[:null], value_null: v[:null]) { v[:children].each { |ch| decl.call(self, ch) } }
+          b.map(n, key_type, :struct, null: s[:null], value_null: v[:null]) { |inner| v[:children].each { |ch| decl.call(inner, ch) } }
         else
-          b.map(n, key_type, null: s[:null]) { decl.call(self, v, as: "value") }
+          b.map(n, key_type, null: s[:null]) { |inner| decl.call(inner, v, as: "value") }
         end
       end
     end
