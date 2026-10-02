@@ -148,19 +148,19 @@ with `each_batch` it can differ between batches.
 ## Writing
 
 ```ruby
-schema = Herringbone::Schema.define do
-  int64 :id, null: false
-  string :name
-  enum :status, values: %w[pending paid shipped]
-  list :tags, :string
-  map :scores, :string, :double
-  struct :address do
-    string :city
-    string :zip
+schema = Herringbone::Schema.define do |s|
+  s.int64 :id, null: false
+  s.string :name
+  s.enum :status, values: %w[pending paid shipped]
+  s.list :tags, :string
+  s.map :scores, :string, :double
+  s.struct :address do |address|
+    address.string :city
+    address.string :zip
   end
-  decimal :price, precision: 12, scale: 2
-  json :payload
-  timestamp :created_at
+  s.decimal :price, precision: 12, scale: 2
+  s.json :payload
+  s.timestamp :created_at
 end
 
 File.open("out.parquet", "wb") do |file|
@@ -177,7 +177,7 @@ end
 
 `Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
 first 1000 rows unless `schema:` is given; fields declared in a block replace inferred ones:
-`Herringbone.write(io, rows) { json :payload }`. The rows are iterated once, holding back only
+`Herringbone.write(io, rows) { |s| s.json :payload }`. The rows are iterated once, holding back only
 those first 1000, so lazy Enumerators and cursors that can't be rewound work. A later row that
 doesn't fit the inferred types raises `Herringbone::SchemaMismatch`, which explains what was
 inferred and how to declare the column, and leaves the file unfinished.
@@ -188,11 +188,15 @@ the `Writer.open` block raises (or `#abort` is called), no footer is written and
 so far is left for you to discard. To replace a file only once it is complete, write to a temporary
 file and rename it.
 
+The block receives the schema builder, and the blocks of `struct`, `list` and `map` receive a
+builder of their own, so the block can still call your methods and read your instance variables.
+A block that takes no parameter raises `ArgumentError`.
+
 Column types: `boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
 string binary json bson enum uuid date int96 time timestamp decimal fixed`, plus `struct`, `list`
-and `map`; `column :name, :int32` declares one by name. Fields are nullable unless `null: false`
+and `map`; `s.column :name, :int32` declares one by name. Fields are nullable unless `null: false`
 is given; list elements unless `element_null: false`, map values unless `value_null: false`.
-Nested lists: `list :matrix do list :element, :double end`. `time` and `timestamp` take `unit:`
+Nested lists: `s.list :matrix do |matrix| matrix.list :element, :double end`. `time` and `timestamp` take `unit:`
 (`:millis`, `:micros`, `:nanos`) and `utc:`.
 
 `enum` is a string column. `values:` restricts what may be written, and also takes a Rails-style
@@ -248,7 +252,7 @@ end
 ```
 
 Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
-`Herringbone::SimpleWriter.new(io) { string :code }` (then call `close` when done).
+`Herringbone::SimpleWriter.new(io) { |s| s.string :code }` (then call `close` when done).
 
 ### Statistics, page indexes and bloom filters
 

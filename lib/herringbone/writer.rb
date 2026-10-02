@@ -3,10 +3,10 @@
 module Herringbone
   # Writes Parquet files.
   #
-  #   schema = Herringbone::Schema.define do
-  #     int64 :id, null: false
-  #     string :name
-  #     list :tags, :string
+  #   schema = Herringbone::Schema.define do |s|
+  #     s.int64 :id, null: false
+  #     s.string :name
+  #     s.list :tags, :string
   #   end
   #   File.open("out.parquet", "wb") do |file|
   #     Herringbone::Writer.open(file, schema) do |w|
