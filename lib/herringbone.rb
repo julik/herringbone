@@ -136,9 +136,9 @@ module Herringbone
   # Rewrites +input+ into +output+ with rows removed or values replaced, building the Redaction from
   # the block (or taking +redaction+). A shortcut for Redaction#apply.
   #
-  #   Herringbone.redact(input, output) do
-  #     where(user_id: 42).delete
-  #     replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
+  #   Herringbone.redact(input, output) do |r|
+  #     r.where(user_id: 42).delete
+  #     r.replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
   #   end
   #
   # @param input [IO, StringIO] the Parquet file, read with #seek and #read; not closed
@@ -155,14 +155,19 @@ module Herringbone
   # @option writer_options [Integer] :data_page_version (1) 1 or 2
   # @option writer_options [Boolean, Array<String>] :dictionary (true) see Writer
   # @option writer_options [Hash{String => Symbol}] :encodings ({}) see Writer
-  # @yield declares the statements, run with instance_exec on a new Redaction (see Redaction.new)
+  # @yield [r] declares the statements on a new Redaction (see Redaction.new)
+  # @yieldparam r [Redaction] the redaction being built
+  # @yieldreturn [void]
   # @return [Redaction::Report] what was done
-  # @raise [ArgumentError] when given both or neither of +redaction+ and a block, or when the
-  #   redaction does not fit the file's schema
+  # @raise [ArgumentError] when given both or neither of +redaction+ and a block, a block that takes
+  #   no parameter, or when the redaction does not fit the file's schema
   # @raise [EncodeError] when a replacement value cannot be written to its column
   def redact(input, output, redaction = nil, **writer_options, &block)
     raise ArgumentError, "Herringbone.redact takes a Redaction or a block, not both" if redaction && block
     raise ArgumentError, "Herringbone.redact needs a Redaction or a block" unless redaction || block
+    if block&.arity&.zero?
+      raise ArgumentError, "The block receives the redaction: Herringbone.redact(input, output) { |r| r.where(user_id: 42).delete }"
+    end
     (redaction || Redaction.new(&block)).apply(input, output, **writer_options)
   end
 
