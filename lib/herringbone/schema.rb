@@ -569,7 +569,7 @@ module Herringbone
       end
 
       # Types that need no options; each gets a DSL method taking a name and the options of #column,
-      # e.g. +int64 :id, null: false+
+      # e.g. +s.int64 :id, null: false+
       PRIMITIVES = %i[
         boolean int8 int16 int32 int64 uint8 uint16 uint32 uint64 float double float16
         string binary json bson uuid date int96
@@ -718,7 +718,7 @@ module Herringbone
           converted_type: Format::ConvertedType::MAP, field_id: field_id)
       end
 
-      # Generic column declaration: column :name, :int32, null: false
+      # Generic column declaration: s.column :name, :int32, null: false
       #
       # @param name [String, Symbol] field name
       # @param type [Symbol, String] DSL type: one of PRIMITIVES, or +:time+, +:timestamp+,

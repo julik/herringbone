@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking:** schema DSL blocks receive the builder as a parameter instead of running with
+  `instance_eval`: `Herringbone::Schema.define { |s| s.int64 :id }`, likewise for `Schema.infer`,
+  `Herringbone.write`, `SimpleWriter.new` and nested `struct`/`list`/`map` blocks. A block without
+  a parameter raises `ArgumentError`.
+
 ## 0.4.0
 
 - herringbone is now Ractor-enabled! Reading and writing work from any Ractor on Ruby 3.1+, and schemas can be passed to Ractors with
