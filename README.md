@@ -289,6 +289,129 @@ If the block raises, the SDK aborts the multipart upload and raises `Aws::S3::Mu
 so no partial object is left. S3 allows at most 10,000 parts, which with the default 5MB parts caps
 the file at about 48GB; raise `part_size:` for bigger files.
 
+## Redaction
+
+`Herringbone.redact` rewrites a file with rows removed or values replaced, for GDPR "forget me"
+requests and pseudonymization. One file goes in and one comes out, and the parts of the file
+nothing touches are copied byte for byte.
+
+```ruby
+# Forget me: remove the rows
+Herringbone.redact(input, output) do
+  where(user_id: 42).delete
+end
+
+# Forget me, but keep the row for accounting: blank the personal columns
+Herringbone.redact(input, output) do
+  where(user_id: 42).replace(email: nil, name: nil, address: nil)
+end
+
+# Pseudonymize a column across the whole file, mask another, drop a third
+Herringbone.redact(input, output) do
+  replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
+  replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
+  drop :ssn, :ip_address
+end
+```
+
+A `Herringbone::Redaction` is built once and applies itself to any number of files, which suits a
+forget-me job going over a bucket:
+
+```ruby
+forget = Herringbone::Redaction.new do
+  where(user_id: 42).delete
+  where(email: "anna@example.com").delete     # separate statements OR together
+  where(created_at: ..2.years.ago).delete      # retention works the same way
+end
+
+if forget.affects?(input)      # statistics and bloom filters first, then the where columns only
+  report = forget.apply(input, output)
+  report.rows_deleted          # => 3
+  report.row_groups            # => { copied: 61, rewritten: 1 }
+end
+```
+
+`where` takes what `read(where:)` takes (values, Arrays, Ranges, `nil`, callables and dotted
+struct paths, but no columns inside lists or maps), and skips row groups and pages the same way.
+`where(...).delete` removes the matching rows. `replace` sets constants,
+`replace(email: nil, name: "[deleted]")`, or computes each value with a block,
+`replace(:email, :phone) { |value| ... }`. A block that takes two parameters also gets the whole
+row, as a Hash with String keys like `read` returns. Without `where`, `replace` applies to every
+row. A column is a top-level field or a struct member by dotted path (`"address.city"`; a member
+of a null struct is left alone). To change what is inside a list or map, replace the whole field
+with a block that receives the Array or Hash. `drop :a, :b` removes columns from the schema.
+
+Statements apply in declared order, row by row: a deleted row is gone for later statements, and
+later statements see what earlier ones replaced, in their conditions as well as in their blocks.
+Mistakes raise `ArgumentError` before anything is written: a `where` without a verb, a column that
+doesn't exist, `nil` (or a value of the wrong type) for a `null: false` column. A block that
+returns something its column can't store raises `Herringbone::EncodeError` when it gets there and
+leaves the output unfinished.
+
+`apply` and `Herringbone.redact` take IOs like `Reader` and `Writer` do: the input must be
+seekable, the output only needs `#write`, and neither is closed. To redact in place, write to a
+temporary file and rename it over the original; on S3, read the object and write the new one
+through `upload_stream`. The `Redaction::Report` that `apply` returns has `rows_read`,
+`rows_deleted`, `rows_changed` and `row_groups` (`{ copied:, rewritten: }`), which is the audit
+trail an erasure needs.
+
+Each row group is handled in the cheapest way that is still exact. If no statement can match it,
+judging by statistics, bloom filters and the page index, or by reading only the `where` columns,
+its column chunks are copied as they are and only their offsets are rebased. If rows match but
+none is deleted and only leaf columns change, just those column chunks are encoded again. If rows
+are deleted, or a nested field is replaced whole, the row group is rewritten, as one row group
+(or none, when every row goes). Rewritten chunks keep the codec of the original chunk (LZO, which
+Herringbone can't write, becomes Snappy) and get a new bloom filter if they had one. Writer
+options (`compression:`, `bloom_filters:`, `page_rows:`...) apply to the rewritten chunks;
+`row_group_bytes:` and `row_group_rows:` are refused, since row groups keep their boundaries. The
+footer's key/value metadata is copied (without `ARROW:schema` and `pandas` when columns are
+dropped, since those describe the columns) unless `metadata:` is given.
+
+No deleted or replaced value survives in the output: not in data pages, dictionary pages, column
+chunk min/max statistics, the page index or bloom filters. What Herringbone can't reach is up to
+you: the original file, its S3 versions and backups still hold the data until you delete them,
+only the columns you name are touched (an email that also sits in a free-text `notes` column stays
+there), and other files with the same person in them need their own pass.
+
+Some recipes. Keyed hashing keeps a column joinable without keeping the value; keep the key out
+of the data, and rotate or destroy it to cut the link:
+
+```ruby
+require "openssl"
+KEY = ENV.fetch("PSEUDONYM_KEY")
+Herringbone.redact(input, output) do
+  replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email.strip.downcase) }
+end
+```
+
+Masking keeps enough to be recognizable to the person but not to anyone else:
+
+```ruby
+Herringbone.redact(input, output) do
+  replace(:card_number) { |number| number && number[-4..].rjust(number.size, "*") }
+  replace(:email) { |email| email&.sub(/\A(.).*@/, '\1***@') }
+  replace(:birth_date) { |date| date && Date.new(date.year, 1, 1) }
+end
+```
+
+Fake values (with the `faker` gem) make a copy for staging that looks real. Seed Faker from the
+original value to get the same fake for the same person in every file:
+
+```ruby
+require "faker"
+require "zlib"
+Herringbone.redact(input, output) do
+  replace(:name) do |name|
+    next nil unless name
+    Faker::Config.random = Random.new(Zlib.crc32(name))
+    Faker::Name.name
+  end
+  replace(:address) do |address|
+    address && { "city" => Faker::Address.city, "zip" => Faker::Address.zip_code }
+  end
+end
+```
+
 ## ActiveRecord
 
 `Herringbone.write` also takes a model or relation, which it reads with `find_each`, using a schema
