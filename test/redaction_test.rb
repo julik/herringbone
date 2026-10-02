@@ -10,16 +10,16 @@ class RedactionTest < Minitest::Test
 
   F = Herringbone::Format
 
-  SCHEMA = Herringbone::Schema.define do
-    int64 :user_id, null: false
-    string :email
-    string :name
-    struct :address do
-      string :city
-      string :zip
+  SCHEMA = Herringbone::Schema.define do |s|
+    s.int64 :user_id, null: false
+    s.string :email
+    s.string :name
+    s.struct :address do |address|
+      address.string :city
+      address.string :zip
     end
-    list :tags, :string
-    int32 :score
+    s.list :tags, :string
+    s.int32 :score
   end
 
   # 300 rows in 3 row groups of 100; user_id 7 only lives in row group 0
