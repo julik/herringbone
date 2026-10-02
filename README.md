@@ -306,6 +306,11 @@ Herringbone.redact(input, output) do |r|
   r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
+# Forget me, but keep the row linkable: pseudonymize just that user's email
+Herringbone.redact(input, output) do |r|
+  r.where(user_id: 42).replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
+end
+
 # Pseudonymize a column across the whole file, mask another, drop a third
 Herringbone.redact(input, output) do |r|
   r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
