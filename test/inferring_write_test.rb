@@ -98,6 +98,23 @@ class InferringWriteTest < Minitest::Test
     assert_includes error.message, "Herringbone.write(io, rows) { |s| s.json :amount }"
   end
 
+  def test_inspect_shows_held_back_rows_then_the_writer
+    writer = Herringbone::InferringWriter.new(StringIO.new("".b), fix: "%s") { |sample| Herringbone::Schema.infer(sample) }
+    500.times { |i| writer << {"id" => i, "name" => "name #{i}"} }
+    assert_equal "#<Herringbone::InferringWriter held_back=500>", writer.inspect
+    500.upto(49_999) { |i| writer << {"id" => i, "name" => "name #{i}"} }
+    assert_operator writer.inspect.bytesize, :<, 200
+    assert_match(/\A#<Herringbone::InferringWriter writer=#<Herringbone::Writer open rows_written=50000 /, writer.inspect)
+  end
+
+  def test_simple_writer_inspect_shows_columns_and_rows
+    sw = Herringbone::SimpleWriter.new(StringIO.new("".b))
+    sw.headers!(:id, :name)
+    50_000.times { |i| sw << [i, "name #{i}"] }
+    assert_operator sw.inspect.bytesize, :<, 200
+    assert_match(/\A#<Herringbone::SimpleWriter columns=2 writer=.*open rows_written=50000 /, sw.inspect)
+  end
+
   def test_simple_writer_like_csv
     io = StringIO.new("".b)
     result = Herringbone::SimpleWriter.open(io, compression: :gzip) do |sw|

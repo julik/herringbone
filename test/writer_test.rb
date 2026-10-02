@@ -265,6 +265,20 @@ class WriterTest < Minitest::Test
 
   # -- edge cases --
 
+  def test_inspect_summarises_without_buffered_values
+    writer = Herringbone::Writer.new(StringIO.new("".b), ALL_TYPES_SCHEMA, row_group_rows: 1_000_000)
+    rows = WriterHelpers.all_types_rows(1000)
+    50.times { rows.each { |row| writer << row } }
+    assert_operator writer.inspect.bytesize, :<, 200
+    assert_equal "#<Herringbone::Writer open rows_written=50000 row_groups=0 compression=:snappy>", writer.inspect
+    writer.close
+    assert_equal "#<Herringbone::Writer closed rows_written=50000 row_groups=1 compression=:snappy>", writer.inspect
+    aborted = Herringbone::Writer.new(StringIO.new("".b), ALL_TYPES_SCHEMA, compression: :none)
+    aborted.abort
+    aborted.close
+    assert_equal "#<Herringbone::Writer aborted rows_written=0 row_groups=0 compression=:none>", aborted.inspect
+  end
+
   def test_zero_rows
     [ALL_TYPES_SCHEMA, NESTED_SCHEMA].each do |schema|
       [1, 2].each do |v|

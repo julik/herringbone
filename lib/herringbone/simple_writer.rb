@@ -120,6 +120,13 @@ module Herringbone
     # @return [void]
     def abort = @writer.abort
 
+    # Short summary for the console, without the rows
+    #
+    # @return [String] the number of columns and the underlying writer's summary
+    def inspect
+      "#<#{self.class.name} columns=#{@headers&.size.inspect} writer=#{@writer.inspect}>"
+    end
+
     private
 
     # @param row [Array, Hash] row given to #<<
