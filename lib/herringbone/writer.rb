@@ -222,19 +222,80 @@ module Herringbone
     # @return [void]
     def flush_row_group
       return if @buffered_rows.zero?
+      write_row_group(@buffered_rows)
+    end
+
+    # A column chunk taken as it is from another file, for #write_row_group
+    #
+    # @!attribute chunk
+    #   @return [Format::ColumnChunk] the chunk's footer entry in the source file
+    # @!attribute start
+    #   @return [Integer] source file offset of the chunk's first page
+    # @!attribute bytes
+    #   @return [String] the chunk's pages, headers included
+    # @!attribute column_index
+    #   @return [String, nil] the chunk's encoded ColumnIndex
+    # @!attribute offset_index
+    #   @return [Format::OffsetIndex, nil] the chunk's OffsetIndex, with source file offsets
+    # @!attribute bloom_filter
+    #   @return [String, nil] the chunk's encoded bloom filter, header included
+    CopiedChunk = Struct.new(:chunk, :start, :bytes, :column_index, :offset_index, :bloom_filter)
+
+    # Internal (used by Redaction): writes a row group of +num_rows+ rows from the buffered values,
+    # except for the columns in +copies+, whose chunks are copied byte for byte from another file
+    # with their offsets rebased. Starts a new row group afterwards.
+    #
+    # @param num_rows [Integer] rows in the row group
+    # @param copies [Hash{Integer => CopiedChunk}] column index => chunk to copy instead of encoding
+    # @param codecs [Hash{Integer => Integer}] column index => codec id for an encoded chunk, instead
+    #   of the +compression:+ option
+    # @param bloom_filters [Hash{Integer => Boolean}] column index => true to give an encoded chunk a
+    #   bloom filter (default settings) when the +bloom_filters:+ option does not ask for one
+    # @param sorting_columns [Array<Format::SortingColumn>, nil] stored on the RowGroup as given
+    # @return [void]
+    # @raise [Error] when the writer is closed
+    def write_row_group(num_rows, copies: {}, codecs: {}, bloom_filters: {}, sorting_columns: nil)
+      raise Error, "Writer is closed" if @closed
       start = @pos
-      chunks = @schema.columns.map { |col| write_column_chunk(col, @buffers[col.index]) }
+      chunks = @schema.columns.map do |col|
+        if (copy = copies[col.index])
+          copy_column_chunk(copy)
+        else
+          bloom = @bloom_filters[col.dotted_path]
+          bloom ||= bloom_filter_settings({}) if bloom_filters[col.index] && BloomFilter::TYPES.include?(col.type)
+          write_column_chunk(col, @buffers[col.index], codec: codecs.fetch(col.index, @codec), bloom: bloom)
+        end
+      end
       @row_groups << Format::RowGroup.new(
         columns: chunks,
         total_byte_size: chunks.sum { |c| c.meta_data.total_uncompressed_size },
-        num_rows: @buffered_rows,
+        num_rows: num_rows,
+        sorting_columns: sorting_columns,
         file_offset: start,
         total_compressed_size: @pos - start,
         ordinal: @row_groups.size
       )
       write_bloom_filters
-      @total_rows += @buffered_rows
+      @total_rows += num_rows
       reset_buffers
+    end
+
+    # Internal (used by Redaction): shreds one value per row of a top-level field into the buffers,
+    # for #write_row_group. Other fields are left as they are, so the caller decides which columns
+    # are encoded and which are copied.
+    #
+    # @param name [String] top-level field name
+    # @param values [Array] the field's value for each row
+    # @return [void]
+    # @raise [ArgumentError] when the schema has no such field
+    # @raise [EncodeError] when a value cannot be written to the field
+    def buffer_field(name, values)
+      field = @schema.field(name) or raise ArgumentError, "No such field #{name.inspect}"
+      values.each_with_index do |value, i|
+        shred(field, value, 0, 0)
+      rescue EncodeError => e
+        raise EncodeError.new("Row #{@total_rows + i}: #{e.message}", row: @total_rows + i, column: e.column, value: e.value)
+      end
     end
 
     # Flushes buffered rows, then writes the page indexes and the footer and flushes the IO.
@@ -534,8 +595,11 @@ module Herringbone
     #
     # @param col [Schema::Column] column being written
     # @param buffer [ColumnBuffer] the column's buffered levels and values
+    # @param codec [Integer] codec id to compress the pages with
+    # @param bloom [Hash{Symbol => Numeric, nil}, nil] bloom filter settings (see
+    #   #bloom_filter_settings), nil for no bloom filter
     # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
-    def write_column_chunk(col, buffer)
+    def write_column_chunk(col, buffer, codec: @codec, bloom: @bloom_filters[col.dotted_path])
       type = col.type
       path = col.dotted_path
       dict_values = nil
@@ -568,7 +632,7 @@ module Herringbone
           type: Format::PageType::DICTIONARY_PAGE,
           dictionary_page_header: Format::DictionaryPageHeader.new(num_values: dict_values.size, encoding: E::PLAIN)
         )
-        uncompressed_total += write_page(header, plain)
+        uncompressed_total += write_page(header, plain, codec: codec)
       end
 
       data_offset = @pos
@@ -602,10 +666,10 @@ module Herringbone
         rep_bytes = max_rep.positive? ? Encodings::RLE.encode_hybrid(reps, max_rep.bit_length) : "".b
         def_bytes = max_def.positive? ? Encodings::RLE.encode_hybrid(defs, max_def.bit_length) : "".b
         uncompressed_total += if @data_page_version == 1
-          write_data_page_v1(n, rep_bytes, def_bytes, encoded, value_encoding)
+          write_data_page_v1(n, rep_bytes, def_bytes, encoded, value_encoding, codec)
         else
           num_rows = max_rep.zero? ? n : reps.count(0)
-          write_data_page_v2(n, n - non_null, num_rows, rep_bytes, def_bytes, encoded, value_encoding)
+          write_data_page_v2(n, n - non_null, num_rows, rep_bytes, def_bytes, encoded, value_encoding, codec)
         end
         pages << PageInfo.new(page_offset, @pos - page_offset, first_row, n - non_null, non_null, range)
         first_row += max_rep.zero? ? n : reps.count(0)
@@ -618,7 +682,7 @@ module Herringbone
         type: type,
         encodings: encodings.uniq,
         path_in_schema: col.path,
-        codec: @codec,
+        codec: codec,
         num_values: buf.defs.size,
         total_uncompressed_size: uncompressed_total,
         total_compressed_size: @pos - chunk_start,
@@ -627,7 +691,7 @@ module Herringbone
         statistics: statistics_for(col, buf.defs, values || indices.uniq.map { |i| dict_values[i] }, order)
       )
       chunk = Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
-      if (bloom = @bloom_filters[path])
+      if bloom
         @pending_bloom_filters << [meta, build_bloom_filter(col, bloom, dict_values, values)]
       end
       @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)]
@@ -656,6 +720,37 @@ module Herringbone
       Format::OffsetIndex.new(page_locations: pages.map do |p|
         Format::PageLocation.new(offset: p.offset, compressed_page_size: p.size, first_row_index: p.first_row)
       end)
+    end
+
+    # Writes a chunk copied from another file. The pages, the ColumnIndex and the bloom filter
+    # hold no file offsets and go out as they are; the ColumnMetaData and the OffsetIndex do, so
+    # those are rebased onto where the chunk lands in this file.
+    #
+    # @param copy [CopiedChunk] the chunk to copy
+    # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
+    def copy_column_chunk(copy)
+      start = @pos
+      shift = start - copy.start
+      meta = Format::ColumnMetaData.decode(copy.chunk.meta_data.encode).first
+      meta.data_page_offset += shift
+      dict = meta.dictionary_page_offset
+      # Some writers store 0 when there is no dictionary page
+      meta.dictionary_page_offset = dict&.positive? ? dict + shift : nil
+      meta.index_page_offset += shift if meta.index_page_offset
+      meta.total_compressed_size = copy.bytes.bytesize
+      meta.bloom_filter_offset = meta.bloom_filter_length = nil
+      write_raw(copy.bytes)
+      chunk = Format::ColumnChunk.new(file_offset: start, meta_data: meta)
+      @pending_bloom_filters << [meta, copy.bloom_filter] if copy.bloom_filter
+      offset_index = copy.offset_index && Format::OffsetIndex.new(
+        page_locations: copy.offset_index.page_locations.map do |loc|
+          Format::PageLocation.new(offset: loc.offset + shift, compressed_page_size: loc.compressed_page_size,
+            first_row_index: loc.first_row_index)
+        end,
+        unencoded_byte_array_data_bytes: copy.offset_index.unencoded_byte_array_data_bytes
+      )
+      @page_indexes << [chunk, copy.column_index, offset_index]
+      chunk
     end
 
     # nil when the column has no defined sort order, or a page's values have no min/max (all NaN)
@@ -693,18 +788,20 @@ module Herringbone
       end
     end
 
-    # Page indexes go after the last row group: all column indexes, then all offset indexes
+    # Page indexes go after the last row group: all column indexes, then all offset indexes.
+    # A copied chunk brings its ColumnIndex already encoded, and may come without either index.
     #
     # @return [void]
     def write_page_indexes
       @page_indexes.each do |chunk, column_index, _|
         next unless column_index
-        bytes = column_index.encode
+        bytes = column_index.is_a?(String) ? column_index : column_index.encode
         chunk.column_index_offset = @pos
         chunk.column_index_length = bytes.bytesize
         write_raw(bytes)
       end
       @page_indexes.each do |chunk, _, offset_index|
+        next unless offset_index
         bytes = offset_index.encode
         chunk.offset_index_offset = @pos
         chunk.offset_index_length = bytes.bytesize
@@ -780,12 +877,13 @@ module Herringbone
       filter
     end
 
-    # Bloom filters go right after the row group's column chunks, in column order
+    # Bloom filters go right after the row group's column chunks, in column order. A copied
+    # chunk brings its filter already encoded.
     #
     # @return [void]
     def write_bloom_filters
       @pending_bloom_filters.each do |meta, filter|
-        bytes = filter.encode
+        bytes = filter.is_a?(String) ? filter : filter.encode
         meta.bloom_filter_offset = @pos
         meta.bloom_filter_length = bytes.bytesize
         write_raw(bytes)
@@ -906,9 +1004,10 @@ module Herringbone
     # @param body [String] uncompressed page body
     # @param compressed [String, nil] bytes to write as the page body, when already prepared (v2 data
     #   pages, whose levels stay uncompressed); +body+ is compressed otherwise
+    # @param codec [Integer] codec id to compress +body+ with
     # @return [Integer]
-    def write_page(header, body, compressed = nil)
-      compressed ||= Compression.compress(@codec, body)
+    def write_page(header, body, compressed = nil, codec: @codec)
+      compressed ||= Compression.compress(codec, body)
       header.uncompressed_page_size ||= body.bytesize
       header.compressed_page_size = compressed.bytesize
       header.crc = Zlib.crc32(compressed).then { |c| (c >= 0x8000_0000) ? c - 0x1_0000_0000 : c }
@@ -925,8 +1024,9 @@ module Herringbone
     # @param def_bytes [String] RLE-encoded definition levels, empty when the column has none
     # @param encoded [String] encoded values
     # @param encoding [Integer] encoding id of the values
+    # @param codec [Integer] codec id to compress the page with
     # @return [Integer] uncompressed size including the header
-    def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding)
+    def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding, codec)
       body = String.new(encoding: Encoding::BINARY)
       body << [rep_bytes.bytesize].pack("V") << rep_bytes unless rep_bytes.empty?
       body << [def_bytes.bytesize].pack("V") << def_bytes unless def_bytes.empty?
@@ -938,7 +1038,7 @@ module Herringbone
           definition_level_encoding: E::RLE, repetition_level_encoding: E::RLE
         )
       )
-      write_page(header, body)
+      write_page(header, body, codec: codec)
     end
 
     # A DATA_PAGE_V2: levels without length prefixes and uncompressed, then the compressed values
@@ -950,9 +1050,10 @@ module Herringbone
     # @param def_bytes [String] RLE-encoded definition levels, empty when the column has none
     # @param encoded [String] encoded values
     # @param encoding [Integer] encoding id of the values
+    # @param codec [Integer] codec id to compress the values with
     # @return [Integer] uncompressed size including the header
-    def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding)
-      compressed = Compression.compress(@codec, encoded)
+    def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding, codec)
+      compressed = Compression.compress(codec, encoded)
       header = Format::PageHeader.new(
         type: Format::PageType::DATA_PAGE_V2,
         uncompressed_page_size: rep_bytes.bytesize + def_bytes.bytesize + encoded.bytesize,
@@ -960,10 +1061,10 @@ module Herringbone
           num_values: n, num_nulls: nulls, num_rows: rows, encoding: encoding,
           definition_levels_byte_length: def_bytes.bytesize,
           repetition_levels_byte_length: rep_bytes.bytesize,
-          is_compressed: @codec != Format::Codec::UNCOMPRESSED
+          is_compressed: codec != Format::Codec::UNCOMPRESSED
         )
       )
-      write_page(header, "".b, rep_bytes + def_bytes + compressed)
+      write_page(header, "".b, rep_bytes + def_bytes + compressed, codec: codec)
     end
 
     # Statistics and column index bounds longer than this are truncated, see #truncate_min
