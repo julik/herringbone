@@ -89,6 +89,13 @@ module Herringbone
         @used = true
         @redaction.add_statement(statement)
       end
+
+      # Short summary for the console: the columns the conditions name, not their values
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class.name} where #{@conditions.keys.join(", ")}#{" (no verb yet)" unless @used}>"
+      end
     end
 
     # @return [Array<Statement>] the statements, in declared order
@@ -224,6 +231,19 @@ module Herringbone
     def apply(input_io, output_io, **writer_options)
       check_scopes!
       Rewriter.new(self, input_io).apply(output_io, **writer_options)
+    end
+
+    # Short summary for the console: one clause per statement, naming the columns but not the
+    # condition values, since a where may hold a long list of ids
+    #
+    # @return [String]
+    def inspect
+      clauses = @statements.map do |s|
+        clause = (s.kind == :delete) ? "delete" : "replace #{s.targets.join(", ")}"
+        s.where ? "#{clause} where #{s.where.keys.join(", ")}" : clause
+      end
+      clauses << "drop #{@drops.join(", ")}" unless @drops.empty?
+      "#<#{self.class.name} #{clauses.empty? ? "(no statements)" : clauses.join("; ")}>"
     end
 
     # Builds a replace statement from the arguments of #replace
