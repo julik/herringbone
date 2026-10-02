@@ -324,6 +324,22 @@ class RedactionTest < Minitest::Test
     assert_equal 0, out.size
   end
 
+  def test_inspect_names_columns_but_not_condition_values
+    redaction = Herringbone::Redaction.new do |r|
+      r.where(user_id: (1..100_000).to_a).replace(:email) { |email| email }
+      r.where(user_id: 42, name: nil).replace(email: nil, name: nil)
+      r.where(score: 3).delete
+      r.drop :tags
+    end
+    assert_equal "#<Herringbone::Redaction replace email where user_id; replace email, name where user_id, name; " \
+      "delete where score; drop tags>", redaction.inspect
+    assert_equal "#<Herringbone::Redaction (no statements)>", Herringbone::Redaction.new.inspect
+    scope = Herringbone::Redaction.new.where(user_id: (1..100_000).to_a)
+    assert_equal "#<Herringbone::Redaction::Scope where user_id (no verb yet)>", scope.inspect
+    scope.delete
+    assert_equal "#<Herringbone::Redaction::Scope where user_id>", scope.inspect
+  end
+
   def test_block_without_a_parameter_is_refused
     error = assert_raises(ArgumentError) { Herringbone::Redaction.new { nil } }
     assert_match(/Redaction.new \{ \|r\| r.where/, error.message)
