@@ -16,6 +16,17 @@ class ByteValuesTest < Minitest::Test
     assert_operator bv.memory_bytes, :<, 100_000
   end
 
+  def test_inspect_summarises_without_values
+    bv = BV.new
+    10_000.times { |i| bv << %w[pending paid shipped][i % 3] }
+    assert_match(/\A#<Herringbone::ByteValues size=10000 dictionary=3 memory_bytes=\d+>\z/, bv.inspect)
+    bv = BV.new
+    50_000.times { |i| bv << "value #{i}" }
+    assert_operator bv.inspect.bytesize, :<, 200
+    assert_match(/\A#<Herringbone::ByteValues size=50000 raw memory_bytes=\d+>\z/, bv.inspect)
+    assert_includes BV.new(width: 16).inspect, "width=16"
+  end
+
   def test_switches_to_bytes_for_high_cardinality
     bv = BV.new
     values = Array.new(10_000) { |i| "value #{i}" }

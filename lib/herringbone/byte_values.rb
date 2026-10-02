@@ -45,6 +45,15 @@ module Herringbone
     # @return [Boolean] true while still dictionary-encoding (not yet switched to raw bytes)
     def dictionary? = !@indices.nil?
 
+    # Short summary for the console, without the values
+    #
+    # @return [String] value count, the dictionary size (or "raw" after switching to raw bytes),
+    #   the width for FIXED_LEN_BYTE_ARRAY and the estimated memory
+    def inspect
+      mode = dictionary? ? "dictionary=#{@dictionary.size}" : "raw"
+      "#<#{self.class.name} size=#{size} #{mode}#{" width=#{@width}" if @width} memory_bytes=#{memory_bytes}>"
+    end
+
     # Appends a value, switching to raw bytes when the dictionary limits are exceeded.
     # @param value [String] bytes of the value; for FIXED_LEN_BYTE_ARRAY it must be +width+ bytes
     #   long (not checked here)

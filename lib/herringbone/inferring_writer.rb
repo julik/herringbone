@@ -73,6 +73,13 @@ module Herringbone
       @writer&.abort
     end
 
+    # Short summary for the console, without the held-back rows
+    #
+    # @return [String] the number of rows held back, or the Writer's summary once it is open
+    def inspect
+      "#<#{self.class.name} #{@writer ? "writer=#{@writer.inspect}" : "held_back=#{@sample.size}"}>"
+    end
+
     private
 
     # Builds the schema from the held-back rows, opens the Writer and writes them

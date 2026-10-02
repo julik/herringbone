@@ -7,6 +7,8 @@
   don't touch byte for byte.
 - `Herringbone::Redaction#affects?` says whether a redaction would change a file, reading only
   statistics, bloom filters and the `where` columns.
+- `Herringbone::Writer#inspect` (and `SimpleWriter`, `ByteValues`) prints a one-line summary with
+  the writer's state and row count instead of dumping the buffered rows.
 - **Breaking:** schema DSL blocks receive the builder as a parameter instead of running with
   `instance_eval`: `Herringbone::Schema.define { |s| s.int64 :id }`, likewise for `Schema.infer`,
   `Herringbone.write`, `SimpleWriter.new` and nested `struct`/`list`/`map` blocks. A block without

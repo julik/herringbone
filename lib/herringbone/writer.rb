@@ -164,6 +164,7 @@ module Herringbone
       @total_rows = 0
       @pos = 0
       @closed = false
+      @aborted = false
       @bytes_per_row = nil
       @io = check_io!(io)
       write_raw(MAGIC)
@@ -328,7 +329,21 @@ module Herringbone
     #
     # @return [void]
     def abort
+      @aborted = true unless @closed
       @closed = true
+    end
+
+    # Short summary for the console, without the buffered values
+    #
+    # @return [String] state (open, closed or aborted), rows written including buffered ones,
+    #   row groups flushed and the codec
+    def inspect
+      state = if @aborted then "aborted"
+      elsif @closed then "closed"
+      else "open"
+      end
+      "#<#{self.class.name} #{state} rows_written=#{rows_written} row_groups=#{@row_groups.size} " \
+        "compression=#{Compression::NAMES.fetch(@codec, @codec).inspect}>"
     end
 
     private
