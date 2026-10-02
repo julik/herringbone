@@ -83,6 +83,28 @@ module Herringbone
     # Codec name => codec id, the inverse of NAMES
     CODECS_BY_NAME = NAMES.invert.freeze
 
+    # Codec id => compression levels it accepts, for the writer's compression_level: option
+    LEVELS = Ractor.make_shareable({
+      Format::Codec::ZSTD => (-(1 << 17))..22,
+      Format::Codec::GZIP => 0..9,
+      Format::Codec::BROTLI => 0..11
+    })
+
+    # Checks that +codec+ takes a compression level and that +level+ is in its range
+    #
+    # @param codec [Integer] Format::Codec id
+    # @param level [Integer, nil] compression level, nil for the codec's default
+    # @return [Integer, nil] the level
+    # @raise [ArgumentError] when the codec has no levels or +level+ is out of its range
+    def check_level!(codec, level)
+      return if level.nil?
+      name = NAMES.fetch(codec, codec).inspect
+      range = LEVELS.fetch(codec) { raise ArgumentError, "#{name} compression has no levels" }
+      level = Integer(level)
+      raise ArgumentError, "#{name} compression level must be in #{range}, got #{level}" unless range.cover?(level)
+      level
+    end
+
     # Codec id for a codec name; Integers are taken to be ids already and returned unchecked
     #
     # @param name [Integer, Symbol, String] codec id, or a name from NAMES (case-insensitive)
@@ -129,18 +151,19 @@ module Herringbone
     #
     # @param codec [Integer] Format::Codec id
     # @param data [String] bytes to compress
+    # @param level [Integer, nil] compression level checked with check_level!, nil for the default
     # @return [String] compressed bytes (binary)
     # @raise [UnsupportedError] for a codec herringbone does not implement
     # @raise [MissingCodecError] when the codec's gem is not loaded
-    def compress(codec, data)
+    def compress(codec, data, level = nil)
       case codec
       when Format::Codec::UNCOMPRESSED then data
       when Format::Codec::SNAPPY then Codecs::Snappy.compress(data)
-      when Format::Codec::GZIP then Zlib.gzip(data)
+      when Format::Codec::GZIP then level ? Zlib.gzip(data, level: level) : Zlib.gzip(data)
       when Format::Codec::LZ4_RAW then Codecs::LZ4.compress_block(data)
       when Format::Codec::LZ4 then Codecs::LZ4.compress_hadoop(data)
-      when Format::Codec::ZSTD then library(codec).compress(data)
-      when Format::Codec::BROTLI then library(codec).deflate(data)
+      when Format::Codec::ZSTD then level ? library(codec).compress(data, level: level) : library(codec).compress(data)
+      when Format::Codec::BROTLI then level ? library(codec).deflate(data, quality: level) : library(codec).deflate(data)
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
       end.b

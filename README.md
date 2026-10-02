@@ -226,6 +226,7 @@ Writer options:
 | option | default | |
 |---|---|---|
 | `compression` | `:snappy` | `:none`, `:snappy`, `:gzip`, `:lz4` (LZ4_RAW), `:lz4_hadoop`, `:zstd`, `:brotli` |
+| `compression_level` | codec default | level for `:zstd` (up to 22, default 3), `:gzip` (0-9) or `:brotli` (0-11) |
 | `row_group_bytes` | 16MB | flush a row group once the buffered values take about this much memory, which bounds memory use (a 15-column table peaks around 290 MB RSS) |
 | `row_group_rows` | none | also flush after this many rows |
 | `page_bytes` | 1MB | approximate data page size |

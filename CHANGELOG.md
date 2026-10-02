@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `compression_level:` sets the level for `:zstd`, `:gzip` and `:brotli` in `Herringbone::Writer`,
+  `Herringbone.write`, `SimpleWriter` and `Herringbone.redact`.
+
 ## 0.5.0
 
 - `Herringbone.redact` and `Herringbone::Redaction` rewrite a file with rows deleted, values

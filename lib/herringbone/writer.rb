@@ -24,6 +24,8 @@ module Herringbone
   # Options:
   #   compression:     :snappy (default), :zstd, :gzip, :lz4 (LZ4_RAW), :lz4_hadoop, :brotli, :none
   #                    (:zstd and :brotli need the zstd-ruby / brotli gems)
+  #   compression_level: nil (the codec's default), or a level for :zstd (up to 22), :gzip (0-9)
+  #                    or :brotli (0-11)
   #   row_group_bytes: flush a row group once the buffered values take roughly this much memory
   #                    (default 16MB). This bounds memory use while writing.
   #   row_group_rows:  also flush after this many rows (default: no row limit)
@@ -83,6 +85,7 @@ module Herringbone
     # @param schema [Schema] schema of the rows
     # @param options [Hash{Symbol => Object}] see the class description and #initialize
     # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
+    # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
     # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
     # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
     # @option options [Integer] :page_bytes (1MB) approximate uncompressed data page size
@@ -118,6 +121,8 @@ module Herringbone
     # @param io [IO, #write] destination; switched to binmode when it supports that
     # @param schema [Schema] schema of the rows
     # @param compression [Symbol, Integer] codec name (see Herringbone.codecs) or Format::Codec id
+    # @param compression_level [Integer, nil] level for :zstd, :gzip or :brotli (see
+    #   Compression::LEVELS), nil for the codec's default
     # @param row_group_bytes [Integer] approximate buffered size that triggers a row group
     # @param row_group_rows [Integer, nil] also flush a row group after this many rows
     # @param page_bytes [Integer] approximate uncompressed data page size
@@ -131,10 +136,11 @@ module Herringbone
     # @param metadata [Hash{#to_s => #to_s}] key/value metadata for the footer
     # @param bloom_filters [Boolean, Array<String>, Hash{String => Boolean, Hash}, nil] see the class
     #   description
-    # @raise [ArgumentError] for an invalid IO, schema or option
+    # @raise [ArgumentError] for an invalid IO, schema or option, or a compression level the codec
+    #   does not take
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
     # @raise [UnsupportedError] when the codec is not supported
-    def initialize(io, schema, compression: :snappy, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
+    def initialize(io, schema, compression: :snappy, compression_level: nil, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
       page_bytes: 1024 * 1024, page_rows: 20_000, data_page_version: 1, dictionary: true, encodings: {},
       metadata: {}, bloom_filters: nil)
       raise ArgumentError, "Expected a Herringbone::Schema, got #{schema.class}" unless schema.is_a?(Schema)
@@ -142,6 +148,7 @@ module Herringbone
       @codec = Compression.codec_id(compression)
       # Fail before creating any file if the codec's library is missing
       Compression.ensure_available!(@codec)
+      @compression_level = Compression.check_level!(@codec, compression_level)
       @row_group_bytes = Integer(row_group_bytes)
       @row_group_rows = row_group_rows && Integer(row_group_rows)
       @row_limit = @row_group_rows || ESTIMATE_AFTER_ROWS
@@ -1015,6 +1022,16 @@ module Herringbone
 
     # Writes a page, returning the uncompressed size including the header
     #
+    # Compresses with the configured level when +codec+ is the writer's own; chunks a redaction
+    # keeps in their source codec use that codec's default
+    #
+    # @param codec [Integer] codec id
+    # @param data [String] bytes to compress
+    # @return [String] compressed bytes
+    def compress(codec, data)
+      Compression.compress(codec, data, (codec == @codec) ? @compression_level : nil)
+    end
+
     # @param header [Format::PageHeader] header; sizes and CRC32 are filled in here
     # @param body [String] uncompressed page body
     # @param compressed [String, nil] bytes to write as the page body, when already prepared (v2 data
@@ -1022,7 +1039,7 @@ module Herringbone
     # @param codec [Integer] codec id to compress +body+ with
     # @return [Integer]
     def write_page(header, body, compressed = nil, codec: @codec)
-      compressed ||= Compression.compress(codec, body)
+      compressed ||= compress(codec, body)
       header.uncompressed_page_size ||= body.bytesize
       header.compressed_page_size = compressed.bytesize
       header.crc = Zlib.crc32(compressed).then { |c| (c >= 0x8000_0000) ? c - 0x1_0000_0000 : c }
@@ -1068,7 +1085,7 @@ module Herringbone
     # @param codec [Integer] codec id to compress the values with
     # @return [Integer] uncompressed size including the header
     def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding, codec)
-      compressed = Compression.compress(codec, encoded)
+      compressed = compress(codec, encoded)
       header = Format::PageHeader.new(
         type: Format::PageType::DATA_PAGE_V2,
         uncompressed_page_size: rep_bytes.bytesize + def_bytes.bytesize + encoded.bytesize,

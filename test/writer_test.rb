@@ -505,6 +505,34 @@ class WriterTest < Minitest::Test
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, compression: :lzo_nope) }
   end
 
+  def test_compression_level
+    schema = Herringbone::Schema.define { |s| s.string :s }
+    rng = Random.new(1)
+    words = %w[alpha beta gamma delta epsilon zeta eta theta]
+    rows = Array.new(5_000) { {"s" => Array.new(8) { words.sample(random: rng) }.join(" ")} }
+    {zstd: [1, 19], gzip: [1, 9], brotli: [0, 11]}.each do |codec, (fast, small)|
+      next unless WriterHelpers::CODECS.include?(codec)
+      sizes = [fast, small].map do |level|
+        opts = {compression: codec, compression_level: level, dictionary: false}
+        bytes = write_to_string(schema, rows, **opts)
+        assert_roundtrip(schema, rows, bytes, opts.inspect)
+        bytes.bytesize
+      end
+      assert_operator sizes.last, :<, sizes.first, "#{codec} level #{small} should beat level #{fast}"
+    end
+  end
+
+  def test_invalid_compression_level
+    schema = Herringbone::Schema.define { |s| s.int32 :a }
+    error = assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, compression_level: 3) }
+    assert_equal ":snappy compression has no levels", error.message
+    error = assert_raises(ArgumentError) do
+      Herringbone::Writer.new(StringIO.new, schema, compression: :gzip, compression_level: 10)
+    end
+    assert_equal ":gzip compression level must be in 0..9, got 10", error.message
+    assert_raises(ArgumentError) { Herringbone.write(StringIO.new, [{a: 1}], compression_level: 3) }
+  end
+
   # -- metadata --
 
   def test_key_value_metadata

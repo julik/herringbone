@@ -31,6 +31,7 @@ module Herringbone
     # @param io [IO, #write] destination; written sequentially, never closed
     # @param options [Hash{Symbol => Object}] Writer options (compression:, row_group_bytes:...)
     # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
+    # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
     # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
     # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
     #   (other Writer options are passed on as well)
@@ -57,6 +58,7 @@ module Herringbone
     # @param io [IO, #write] destination; nothing is written to it until the column types are known
     # @param options [Hash{Symbol => Object}] Writer options (compression:, row_group_bytes:...)
     # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
+    # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
     # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
     # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
     #   (other Writer options are passed on as well)

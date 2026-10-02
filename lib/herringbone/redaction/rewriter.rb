@@ -67,6 +67,7 @@ module Herringbone
       # @param output [IO, #write] destination
       # @param options [Hash{Symbol => Object}] Writer options for re-encoded chunks, and +metadata:+
       # @option options [Symbol] :compression (codec of each source chunk) codec for re-encoded chunks
+      # @option options [Integer, nil] :compression_level (nil) level for that codec, see Writer
       # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
       #   columns whose re-encoded chunks get a bloom filter, besides those whose source chunk had one
       # @option options [Hash{String => String}] :metadata (the input's) footer key/value metadata

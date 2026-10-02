@@ -86,6 +86,7 @@ module Herringbone
   # @param schema [Schema, nil] schema to write with; derived from +records+ when nil
   # @param options [Hash{Symbol => Object}] passed to Writer.new
   # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
+  # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
   # @option options [Integer] :row_group_bytes (16MB) approximate buffered size that triggers a row group
   # @option options [Integer, nil] :row_group_rows (nil) also flush a row group after this many rows
   # @option options [Integer] :page_bytes (1MB) approximate uncompressed data page size
@@ -147,6 +148,7 @@ module Herringbone
   # @param writer_options [Hash{Symbol => Object}] Writer options for re-encoded column chunks, and
   #   +metadata:+ to replace the footer key/value metadata, see Redaction#apply
   # @option writer_options [Symbol] :compression (codec of each source chunk) codec for re-encoded chunks
+  # @option writer_options [Integer, nil] :compression_level (nil) level for that codec, see Writer
   # @option writer_options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
   #   columns whose re-encoded chunks get a bloom filter, besides those whose source chunk had one
   # @option writer_options [Hash{String => String}] :metadata (the input's) footer key/value metadata

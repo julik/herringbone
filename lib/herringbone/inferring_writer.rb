@@ -24,9 +24,12 @@ module Herringbone
     # @yieldparam sample [Array] the rows held back, at most Schema::INFER_SAMPLE
     # @yieldreturn [Schema]
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
+    # @raise [ArgumentError] for a compression level the codec does not take
     def initialize(io, fix:, **options, &schema_for)
-      # Fail before reading any rows if the codec's library is missing
-      Compression.ensure_available!(Compression.codec_id(options.fetch(:compression, :snappy)))
+      # Fail before reading any rows if the codec's library is missing or the level is wrong
+      codec = Compression.codec_id(options.fetch(:compression, :snappy))
+      Compression.ensure_available!(codec)
+      Compression.check_level!(codec, options[:compression_level])
       @io = io
       @fix = fix
       @options = options
