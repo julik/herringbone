@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0
+
 - `Herringbone.redact` and `Herringbone::Redaction` rewrite a file with rows deleted, values
   replaced or columns dropped, for GDPR erasure and pseudonymization, copying the row groups they
   don't touch byte for byte.
