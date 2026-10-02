@@ -77,7 +77,7 @@ module Herringbone
   # to Writer.
   #
   #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
-  #   Herringbone.write(io, events.lazy.map(&:to_h)) { json :payload }
+  #   Herringbone.write(io, events.lazy.map(&:to_h)) { |s| s.json :payload }
   #
   # @param io [IO, #write] destination; written sequentially, never closed
   # @param records [Enumerable<Hash, Array, Object>, Class, #find_each] rows (Hashes, Arrays in schema
@@ -97,14 +97,17 @@ module Herringbone
   # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
   # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
   #   columns to write split block bloom filters for, see Writer
-  # @yield optional block for Schema.infer (Builder DSL), declaring fields that replace inferred ones;
-  #   ignored when the schema is not inferred
+  # @yield [s] optional, declares fields that replace inferred ones (see Schema.infer); ignored when
+  #   the schema is not inferred
+  # @yieldparam s [Schema::Builder] the builder to declare fields on
+  # @yieldreturn [void]
   # @return [Integer] number of rows written
   # @raise [ArgumentError] when the schema has to be inferred and +records+ is empty or holds Array
-  #   rows, or an option is invalid
+  #   rows, an option is invalid, or the block takes no parameter
   # @raise [EncodeError] when a row does not fit the schema
   # @raise [SchemaMismatch] when a row does not fit the inferred schema; the file is left unfinished
   def write(io, records, schema: nil, **options, &overrides)
+    Schema::Builder.check_block!(overrides, "Herringbone.write(io, rows) { |s| s.json :payload }")
     model = if records.respond_to?(:klass) then records.klass
     elsif records.respond_to?(:columns) && records.respond_to?(:find_each) then records
     end
@@ -112,7 +115,7 @@ module Herringbone
     writer = if schema
       Writer.new(io, schema, **options)
     else
-      fix = "Herringbone.write(io, rows) { %s }"
+      fix = "Herringbone.write(io, rows) { |s| s.%s }"
       InferringWriter.new(io, fix: fix, **options) { |sample| Schema.infer(sample, &overrides) }
     end
     begin

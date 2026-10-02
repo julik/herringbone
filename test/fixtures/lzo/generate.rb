@@ -60,10 +60,10 @@ module LZOPages
 end
 Herringbone::Compression.singleton_class.prepend(LZOPages)
 
-schema = Herringbone::Schema.define do
-  int64 :id, null: false
-  string :name
-  double :score
+schema = Herringbone::Schema.define do |s|
+  s.int64 :id, null: false
+  s.string :name
+  s.double :score
 end
 io = StringIO.new("".b)
 Herringbone::Writer.open(io, schema, compression: :snappy, page_rows: 700) do |w|

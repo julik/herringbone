@@ -19,22 +19,22 @@ module Dataset
   module_function
 
   def herringbone_schema
-    Herringbone::Schema.define do
-      int64 :id, null: false
-      int64 :user_id, null: false
-      enum :status, values: STATUSES, null: false
-      enum :plan, values: PLANS, null: false
-      string :currency, null: false
-      decimal :amount, precision: 12, scale: 2, null: false
-      double :discount_rate
-      string :email, null: false
-      string :name
-      string :notes
-      int32 :item_count, null: false
-      boolean :gift, null: false
-      timestamp :created_at, unit: :micros, null: false
-      timestamp :updated_at, unit: :micros, null: false
-      date :shipped_on
+    Herringbone::Schema.define do |s|
+      s.int64 :id, null: false
+      s.int64 :user_id, null: false
+      s.enum :status, values: STATUSES, null: false
+      s.enum :plan, values: PLANS, null: false
+      s.string :currency, null: false
+      s.decimal :amount, precision: 12, scale: 2, null: false
+      s.double :discount_rate
+      s.string :email, null: false
+      s.string :name
+      s.string :notes
+      s.int32 :item_count, null: false
+      s.boolean :gift, null: false
+      s.timestamp :created_at, unit: :micros, null: false
+      s.timestamp :updated_at, unit: :micros, null: false
+      s.date :shipped_on
     end
   end
 

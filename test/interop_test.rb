@@ -260,7 +260,7 @@ class InteropTest < Minitest::Test
       specs = Array.new(@rng.rand(1..5)) { spec(1) }
       specs.unshift({kind: :leaf, name: "row_id", type: "i64", null: false})
       decl = method(:declare)
-      schema = Herringbone::Schema.define { specs.each { |s| decl.call(self, s) } }
+      schema = Herringbone::Schema.define { |s| specs.each { |s| decl.call(self, s) } }
       rows = Array.new(@rng.rand(0..25)) { |i| specs.to_h { |s| [s[:name], (s[:name] == "row_id") ? i : value(s)] } }
       codecs = WriterHelpers::CODECS
       opts = {

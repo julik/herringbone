@@ -98,7 +98,7 @@ class ColumnarReadTest < Minitest::Test
 
   def test_empty_file
     io = StringIO.new("".b)
-    Herringbone::Writer.open(io, Herringbone::Schema.define { int32 :a }) { |_| }
+    Herringbone::Writer.open(io, Herringbone::Schema.define { |s| s.int32 :a }) { |_| }
     r = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal [], r.each_batch(10, as: :columns).to_a
     assert_equal({"a" => []}, r.read(as: :columns))

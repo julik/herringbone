@@ -10,7 +10,7 @@ class CodecAvailabilityTest < Minitest::Test
   ZSTD_FILE = File.join(FIXTURES_DIR, "generated", "codec_zstd.parquet")
   BROTLI_FILE = File.join(FIXTURES_DIR, "generated", "codec_brotli.parquet")
 
-  A_SCHEMA = Herringbone::Schema.define { int32 :a }
+  A_SCHEMA = Herringbone::Schema.define { |s| s.int32 :a }
 
   def open_fixture(path)
     File.open(path, "rb") { |f| yield Herringbone::Reader.new(f) }

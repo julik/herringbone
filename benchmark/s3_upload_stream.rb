@@ -48,12 +48,12 @@ CLIENT.singleton_class.prepend(Module.new do
   end
 end)
 
-SCHEMA = Herringbone::Schema.define do
-  int64 :id, null: false
-  string :token          # random, so the file does not compress away
-  string :category
-  double :amount
-  timestamp :created_at
+SCHEMA = Herringbone::Schema.define do |s|
+  s.int64 :id, null: false
+  s.string :token          # random, so the file does not compress away
+  s.string :category
+  s.double :amount
+  s.timestamp :created_at
 end
 
 def each_row(count)

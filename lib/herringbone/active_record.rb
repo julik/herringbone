@@ -92,7 +92,7 @@ module Herringbone
 
         if type == :hstore
           return builder.map(column.name, :string, :string, null: nullable) unless array
-          return builder.list(column.name, null: nullable) { map :element, :string, :string }
+          return builder.list(column.name, null: nullable) { |list| list.map :element, :string, :string }
         end
 
         dsl_type, opts = scalar_type(column, type, sql_type, primary)

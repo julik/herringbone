@@ -6,7 +6,7 @@ require "pathname"
 
 # Writer conveniences: row shapes, schemas, type coercions, error messages, file handling
 class ErgonomicsTest < Minitest::Test
-  A_SCHEMA = Herringbone::Schema.define { int32 :a }
+  A_SCHEMA = Herringbone::Schema.define { |s| s.int32 :a }
 
   def roundtrip(schema, rows, **opts)
     io = StringIO.new("".b)
@@ -15,24 +15,24 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_nested_schema_dsl
-    schema = Herringbone::Schema.define do
-      int64 :id, null: false
-      string :name
-      list :tags, :string
-      struct :address do
-        string :city
-        string :zip, null: false
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :id, null: false
+      s.string :name
+      s.list :tags, :string
+      s.struct :address do |address|
+        address.string :city
+        address.string :zip, null: false
       end
-      decimal :price, precision: 10, scale: 2
-      list :matrix do
-        list :element, :int32
+      s.decimal :price, precision: 10, scale: 2
+      s.list :matrix do |matrix|
+        matrix.list :element, :int32
       end
-      map :scores, :string, :double
-      list :points, :struct, element_null: false do
-        double :x
-        double :y
+      s.map :scores, :string, :double
+      s.list :points, :struct, element_null: false do |points|
+        points.double :x
+        points.double :y
       end
-      timestamp "created_at", unit: :millis
+      s.timestamp "created_at", unit: :millis
     end
     assert_equal %w[id name tags address price matrix scores points created_at], schema.fields.map(&:name)
     assert_equal :required, schema.field("id").node.repetition
@@ -56,10 +56,10 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_array_rows_in_schema_order
-    schema = Herringbone::Schema.define {
-      int64 :id
-      string :name
-      list :tags, :string
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :id
+      s.string :name
+      s.list :tags, :string
     }
     rows = roundtrip(schema, [[1, "a", ["x"]], [2, nil, nil]])
     assert_equal [{"id" => 1, "name" => "a", "tags" => ["x"]}, {"id" => 2, "name" => nil, "tags" => nil}], rows
@@ -71,9 +71,9 @@ class ErgonomicsTest < Minitest::Test
   Record = Struct.new(:attributes)
 
   def test_struct_and_attributes_rows
-    schema = Herringbone::Schema.define {
-      int32 :x
-      int32 :y
+    schema = Herringbone::Schema.define { |s|
+      s.int32 :x
+      s.int32 :y
     }
     assert_equal [{"x" => 1, "y" => 2}], roundtrip(schema, [Point.new(1, 2)])
     assert_equal [{"x" => 3, "y" => 4}], roundtrip(schema, [Record.new({"x" => 3, "y" => 4})])
@@ -84,16 +84,16 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_json_columns_serialize_objects
-    schema = Herringbone::Schema.define { json :payload }
+    schema = Herringbone::Schema.define { |s| s.json :payload }
     rows = roundtrip(schema, [{payload: {"a" => [1, 2], "b" => nil}}, {payload: [1, "x"]}, {payload: '{"raw":true}'}])
     assert_equal ['{"a":[1,2],"b":null}', '[1,"x"]', '{"raw":true}'], rows.map { |r| r["payload"] }
   end
 
   def test_time_of_day_columns_accept_times_and_strings
-    schema = Herringbone::Schema.define {
-      time :at, unit: :millis
-      time :us
-      time :ns, unit: :nanos
+    schema = Herringbone::Schema.define { |s|
+      s.time :at, unit: :millis
+      s.time :us
+      s.time :ns, unit: :nanos
     }
     t = Time.utc(2000, 1, 1, 13, 45, 30, 250_000.5r)
     rows = roundtrip(schema, [{at: t, us: "13:45:30.25", ns: t}, {at: "07:05", us: 5, ns: nil}])
@@ -105,10 +105,10 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_date_and_timestamp_coercions
-    schema = Herringbone::Schema.define {
-      date :d
-      timestamp :t
-      timestamp :local, utc: false
+    schema = Herringbone::Schema.define { |s|
+      s.date :d
+      s.timestamp :t
+      s.timestamp :local, utc: false
     }
     rows = roundtrip(schema, [
       {d: "2024-02-29", t: "2024-02-29T10:00:00.5+02:00", local: Time.new(2024, 2, 29, 10, 0, 0, "+02:00")},
@@ -132,23 +132,23 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_time_with_zone_like_objects
-    schema = Herringbone::Schema.define { timestamp :t }
+    schema = Herringbone::Schema.define { |s| s.timestamp :t }
     t = Time.utc(2024, 5, 1, 12, 0, 0, 5)
     assert_equal [{"t" => t}], roundtrip(schema, [{t: FakeTimeWithZone.new(t)}])
   end
 
   def test_boolean_coercions
-    schema = Herringbone::Schema.define { boolean :b }
+    schema = Herringbone::Schema.define { |s| s.boolean :b }
     input = [true, false, 1, 0, "t", "f", "true", "FALSE", "1", "0", "yes", "No", :true] # standard:disable Lint/BooleanSymbol
     assert_equal [true, false, true, false, true, false, true, false, true, false, true, false, true],
       roundtrip(schema, input.map { |v| {b: v} }).map { |r| r["b"] }
   end
 
   def test_numeric_coercions
-    schema = Herringbone::Schema.define {
-      int32 :i
-      double :f
-      decimal :d, precision: 8, scale: 3
+    schema = Herringbone::Schema.define { |s|
+      s.int32 :i
+      s.double :f
+      s.decimal :d, precision: 8, scale: 3
     }
     rows = roundtrip(schema, [
       {i: "12", f: "1.5", d: "3.14159"},
@@ -163,33 +163,33 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_strings_accept_symbols_and_other_objects
-    schema = Herringbone::Schema.define { string :s }
+    schema = Herringbone::Schema.define { |s| s.string :s }
     assert_equal ["sym", "42"], roundtrip(schema, [{s: :sym}, {s: 42}]).map { |r| r["s"] }
   end
 
   def test_enum_is_a_string_column_by_default
-    schema = Herringbone::Schema.define { enum :status }
+    schema = Herringbone::Schema.define { |s| s.enum :status }
     node = schema.columns.first.node
     assert_equal :string, node.logical_type.kind.first
-    annotated = Herringbone::Schema.define { enum :status, parquet_enum: true }
+    annotated = Herringbone::Schema.define { |s| s.enum :status, parquet_enum: true }
     assert_equal :enum, annotated.columns.first.node.logical_type.kind.first
   end
 
   def test_enum_values_like_rails
     statuses = {"pending" => 0, "paid" => 1, "shipped" => 2}
-    schema = Herringbone::Schema.define { enum :status, values: statuses, null: false }
+    schema = Herringbone::Schema.define { |s| s.enum :status, values: statuses, null: false }
     rows = roundtrip(schema, [{status: "paid"}, {status: :shipped}, {status: 0}])
     assert_equal %w[paid shipped pending], rows.map { |r| r["status"] }
     error = assert_raises(Herringbone::EncodeError) { roundtrip(schema, [{status: "lost"}]) }
     assert_match(/not one of pending, paid, shipped/, error.message)
-    list = Herringbone::Schema.define { enum :kind, values: %w[a b] }
+    list = Herringbone::Schema.define { |s| s.enum :kind, values: %w[a b] }
     assert_raises(Herringbone::EncodeError) { roundtrip(list, [{kind: "c"}]) }
   end
 
   def test_error_messages_name_row_and_column_path
-    schema = Herringbone::Schema.define do
-      int64 :id
-      struct(:address) { string :city, null: false }
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :id
+      s.struct(:address) { |address| address.string :city, null: false }
     end
     error = assert_raises(Herringbone::EncodeError) do
       roundtrip(schema, [{id: 1, address: {city: "x"}}, {id: 2, address: {city: nil}}])
@@ -201,12 +201,35 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_struct_declarations_need_fields
-    error = assert_raises(ArgumentError) { Herringbone::Schema.define { struct :address } }
+    error = assert_raises(ArgumentError) { Herringbone::Schema.define { |s| s.struct :address } }
     assert_match(/address/, error.message)
-    assert_raises(ArgumentError) { Herringbone::Schema.define { struct(:address) {} } }
-    error = assert_raises(ArgumentError) { Herringbone::Schema.define { list(:points, :struct) {} } }
+    assert_raises(ArgumentError) { Herringbone::Schema.define { |s| s.struct(:address) { |address| } } }
+    error = assert_raises(ArgumentError) { Herringbone::Schema.define { |s| s.list(:points, :struct) { |points| } } }
     assert_match(/no fields/, error.message)
-    assert_raises(ArgumentError) { Herringbone::Schema.define { map(:things, :string, :struct) {} } }
+    assert_raises(ArgumentError) { Herringbone::Schema.define { |s| s.map(:things, :string, :struct) { |things| } } }
+  end
+
+  def test_blocks_without_a_parameter_are_refused
+    messages = [
+      -> { Herringbone::Schema.define { int64 :id } },
+      -> { Herringbone::Schema.infer([{"a" => 1}]) { json :a } },
+      -> { Herringbone.write(StringIO.new, [{"a" => 1}]) { json :a } },
+      -> { Herringbone::SimpleWriter.new(StringIO.new) { string :a } },
+      -> { Herringbone::Schema.define { |s| s.struct(:address) { string :city } } },
+      -> { Herringbone::Schema.define { |s| s.list(:matrix) { list :element, :double } } },
+      -> { Herringbone::Schema.define { |s| s.list(:points, :struct) { double :x } } },
+      -> { Herringbone::Schema.define { |s| s.map(:things, :string, :struct) { int32 :a } } }
+    ].map { |call| assert_raises(ArgumentError, &call).message }
+    assert_equal [
+      "Herringbone::Schema.define { |s| s.int64 :id }",
+      "Herringbone::Schema.infer(rows) { |s| s.json :payload }",
+      "Herringbone.write(io, rows) { |s| s.json :payload }",
+      "Herringbone::SimpleWriter.new(io) { |s| s.string :code }",
+      "s.struct :address do |address| address.string :city end",
+      "s.list :matrix do |matrix| matrix.list :element, :double end",
+      "s.list :points, :struct do |points| points.double :x end",
+      "s.map :things, :string, :struct do |things| things.int32 :a end"
+    ], messages.map { |m| m.delete_prefix("The block receives the schema builder as a parameter: ") }
   end
 
   def test_infer_improvements
@@ -214,9 +237,9 @@ class ErgonomicsTest < Minitest::Test
       {"a" => 1, "b" => nil, "c" => 1.5, "d" => DateTime.new(2024, 1, 1), "e" => {"x" => 1}, "f" => [1]},
       {"a" => 2, "b" => nil, "c" => 2, "d" => Time.now, "e" => nil, "f" => []}
     ]
-    schema = Herringbone::Schema.infer(rows) {
-      json :e
-      string :extra
+    schema = Herringbone::Schema.infer(rows) { |s|
+      s.json :e
+      s.string :extra
     }
     kinds = schema.columns.to_h { |c| [c.dotted_path, Herringbone::Types.logical_of(c.node).first] }
     assert_equal :string, kinds["b"]
@@ -226,7 +249,7 @@ class ErgonomicsTest < Minitest::Test
     assert_equal :list, schema.field("f").kind
     assert_equal %w[a b c d e f extra], schema.fields.map(&:name), "declared fields replace inferred ones in place"
     error = assert_raises(ArgumentError) { Herringbone::Schema.infer([{x: Object.new}]) }
-    assert_match(/Schema.infer\(rows\) \{ string :x \}/, error.message)
+    assert_match(/Schema.infer\(rows\) \{ \|s\| s\.string :x \}/, error.message)
     assert_equal [1, 2], roundtrip(schema, rows).map { |r| r["a"] }
   end
 
@@ -283,9 +306,9 @@ class ErgonomicsTest < Minitest::Test
   end
 
   def test_row_group_bytes_bounds_row_groups
-    schema = Herringbone::Schema.define {
-      int64 :id
-      string :s
+    schema = Herringbone::Schema.define { |s|
+      s.int64 :id
+      s.string :s
     }
     rows = Array.new(20_000) { |i| {id: i, s: format("%090d", i)} } # ~110 bytes per row, all distinct
     io = StringIO.new("".b)

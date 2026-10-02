@@ -45,15 +45,15 @@ class StreamingOutputTest < Minitest::Test
     def respond_to_missing?(*) = false
   end
 
-  SCHEMA = Herringbone::Schema.define do
-    int64 :id, null: false
-    string :name
-    string :blob
-    double :score
-    timestamp :at
-    list :tags, :string
-    struct :address do
-      string :city
+  SCHEMA = Herringbone::Schema.define do |s|
+    s.int64 :id, null: false
+    s.string :name
+    s.string :blob
+    s.double :score
+    s.timestamp :at
+    s.list :tags, :string
+    s.struct :address do |address|
+      address.string :city
     end
   end
 

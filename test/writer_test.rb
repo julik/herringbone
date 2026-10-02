@@ -91,15 +91,15 @@ class WriterTest < Minitest::Test
   end
 
   def test_invalid_explicit_encoding
-    schema = Herringbone::Schema.define { string :s }
+    schema = Herringbone::Schema.define { |s| s.string :s }
     assert_raises(ArgumentError) { write_to_string(schema, [{"s" => "x"}], encodings: {"s" => :byte_stream_split}) }
     assert_raises(ArgumentError) { write_to_string(schema, [{"s" => "x"}], encodings: {"s" => :bogus}) }
-    schema = Herringbone::Schema.define { double :d }
+    schema = Herringbone::Schema.define { |s| s.double :d }
     assert_raises(ArgumentError) { write_to_string(schema, [{"d" => 1.0}], encodings: {"d" => :delta_binary_packed}) }
   end
 
   def test_invalid_explicit_encoding_raises_in_constructor
-    schema = Herringbone::Schema.define { string :s }
+    schema = Herringbone::Schema.define { |s| s.string :s }
     # Encoding ids that are not data page encodings we can write, given as Integers
     [E::PLAIN_DICTIONARY, E::RLE_DICTIONARY, 99].each do |id|
       error = assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, encodings: {"s" => id}) }
@@ -111,7 +111,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_float_dictionary_respects_size_limit
-    writer = Herringbone::Writer.new(StringIO.new, Herringbone::Schema.define { double :d })
+    writer = Herringbone::Writer.new(StringIO.new, Herringbone::Schema.define { |s| s.double :d })
     # Half the values distinct (passes the cardinality rule), but 140_000 * 8 bytes > 1MB
     values = Array.new(280_000) { |i| (i / 2).to_f }
     assert writer.send(:build_dictionary, values, T::DOUBLE, nil).nil?, "DOUBLE dictionary over the size limit"
@@ -123,7 +123,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_rle_dictionary_with_single_distinct_value
-    schema = Herringbone::Schema.define { string :s }
+    schema = Herringbone::Schema.define { |s| s.string :s }
     rows = Array.new(100) { {"s" => "same"} }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
@@ -131,10 +131,10 @@ class WriterTest < Minitest::Test
   end
 
   def test_dictionary_column_list
-    schema = Herringbone::Schema.define do
-      string :a
-      string :b
-      list :c, :string
+    schema = Herringbone::Schema.define do |s|
+      s.string :a
+      s.string :b
+      s.list :c, :string
     end
     rows = Array.new(50) { |i| {"a" => "x#{i % 2}", "b" => "y#{i % 2}", "c" => ["z#{i % 3}"]} }
     bytes = write_to_string(schema, rows, dictionary: ["b", "c.list.element"])
@@ -144,9 +144,9 @@ class WriterTest < Minitest::Test
   end
 
   def test_dictionary_encoded_floats_keep_negative_zero
-    schema = Herringbone::Schema.define do
-      double :d
-      float :f
+    schema = Herringbone::Schema.define do |s|
+      s.double :d
+      s.float :f
     end
     rows = [{"d" => 0.0, "f" => 0.0}, {"d" => -0.0, "f" => -0.0}, {"d" => Float::NAN, "f" => 1.0}]
     bytes = write_to_string(schema, rows, dictionary: %w[d f])
@@ -155,7 +155,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_boolean_columns_are_never_dictionary_encoded
-    schema = Herringbone::Schema.define { boolean :b }
+    schema = Herringbone::Schema.define { |s| s.boolean :b }
     rows = Array.new(20) { |i| {"b" => i.odd? ? nil : i % 4 == 0} }
     bytes = write_to_string(schema, rows, dictionary: ["b"])
     assert_roundtrip(schema, rows, bytes)
@@ -164,7 +164,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_decimal_nan_and_infinity_raise_encode_error
-    schema = Herringbone::Schema.define { decimal :a, precision: 10, scale: 2 }
+    schema = Herringbone::Schema.define { |s| s.decimal :a, precision: 10, scale: 2 }
     [Float::NAN, Float::INFINITY].each do |v|
       assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{"a" => v}]) }
     end
@@ -174,7 +174,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_dictionary_fallback_for_high_cardinality
-    schema = Herringbone::Schema.define { int64 :a }
+    schema = Herringbone::Schema.define { |s| s.int64 :a }
     rows = Array.new(1000) { |i| {"a" => i} }
     bytes = write_to_string(schema, rows)
     assert_roundtrip(schema, rows, bytes)
@@ -203,7 +203,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_row_group_flush_boundary_exact
-    schema = Herringbone::Schema.define { int32 :a }
+    schema = Herringbone::Schema.define { |s| s.int32 :a }
     rows = Array.new(10) { |i| {"a" => i} }
     bytes = write_to_string(schema, rows, row_group_rows: 5)
     assert_equal [5, 5], reader_for(bytes).row_groups.map(&:num_rows)
@@ -249,7 +249,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_repeated_rows_larger_than_page_are_not_split
-    schema = Herringbone::Schema.define { list :l, :int64 }
+    schema = Herringbone::Schema.define { |s| s.list :l, :int64 }
     rows = [{"l" => (1..500).to_a}, {"l" => []}, {"l" => (1..300).to_a}, {"l" => nil}]
     [1, 2].each do |v|
       bytes = write_to_string(schema, rows, page_bytes: 16, data_page_version: v)
@@ -307,10 +307,10 @@ class WriterTest < Minitest::Test
   end
 
   def test_symbol_keys_and_missing_keys
-    schema = Herringbone::Schema.define do
-      int32 :a
-      struct :s do
-        string :b
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :a
+      s.struct :s do |nested|
+        nested.string :b
       end
     end
     bytes = write_to_string(schema, [{a: 1, s: {b: "x"}}, {}, {"s" => {}}])
@@ -318,17 +318,17 @@ class WriterTest < Minitest::Test
   end
 
   def test_map_accepts_array_of_pairs
-    schema = Herringbone::Schema.define { map :m, :string, :int32 }
+    schema = Herringbone::Schema.define { |s| s.map :m, :string, :int32 }
     bytes = write_to_string(schema, [{"m" => [["a", 1], ["b", nil]]}])
     assert_equal [{"m" => {"a" => 1, "b" => nil}}], reader_for(bytes).read
   end
 
   def test_string_encoding_of_read_values
-    schema = Herringbone::Schema.define do
-      string :s
-      binary :b
-      json :j
-      enum :e
+    schema = Herringbone::Schema.define do |s|
+      s.string :s
+      s.binary :b
+      s.json :j
+      s.enum :e
     end
     bytes = write_to_string(schema, [{"s" => "é", "b" => "é", "j" => "{}", "e" => "A"}])
     row = reader_for(bytes).read.first
@@ -367,13 +367,13 @@ class WriterTest < Minitest::Test
   end
 
   def test_date_before_gregorian_reform_with_default_calendar
-    schema = Herringbone::Schema.define { date :d }
+    schema = Herringbone::Schema.define { |s| s.date :d }
     bytes = write_to_string(schema, [{"d" => Date.new(1, 1, 1)}, {"d" => Date.new(1500, 3, 1)}])
     assert_equal %w[0001-01-01 1500-03-01], reader_for(bytes).read.map { |r| r["d"].iso8601 }
   end
 
   def test_float16_rounding
-    schema = Herringbone::Schema.define { float16 :h }
+    schema = Herringbone::Schema.define { |s| s.float16 :h }
     # exactly representable
     vals = [0.5, 1.0, 2.0**-24, 65_504.0, -1000.5, 0.333251953125]
     bytes = write_to_string(schema, vals.map { |v| {"h" => v} })
@@ -395,14 +395,14 @@ class WriterTest < Minitest::Test
   # -- errors --
 
   def test_required_nil_raises
-    schema = Herringbone::Schema.define do
-      int32 :a, null: false
-      struct :s do
-        int32 :x, null: false
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :a, null: false
+      s.struct :s do |nested|
+        nested.int32 :x, null: false
       end
-      list :l, :int32, element_null: false
-      list :lr, :int32, null: false
-      map :m, :string, :int32, value_null: false
+      s.list :l, :int32, element_null: false
+      s.list :lr, :int32, null: false
+      s.map :m, :string, :int32, value_null: false
     end
     good = {"a" => 1, "s" => {"x" => 1}, "l" => [1], "lr" => [], "m" => {"k" => 1}}
     write_to_string(schema, [good])
@@ -416,20 +416,20 @@ class WriterTest < Minitest::Test
 
   def test_wrong_types_raise_encode_error
     cases = {
-      proc { int32 :a } => ["x", Object.new, [1], "12abc"],
-      proc { int64 :a } => ["nope", {}],
-      proc { double :a } => ["x", [1.0]],
-      proc { date :a } => ["2020-13-45", "yesterday", 5.5],
-      proc { timestamp :a } => ["not a time", 5.5],
-      proc { time :a } => ["25:00", "noon", 5.5],
-      proc { boolean :a } => ["maybe", 2],
-      proc { enum :a, values: %w[x y] } => ["z", :w],
-      proc { decimal :a, precision: 10, scale: 2 } => ["abc", Object.new],
-      proc { list :a, :int32 } => [5, "str"],
-      proc { map :a, :string, :int32 } => [5, "str"],
-      proc { list :a, :int32 } => [["x"]],
-      proc { fixed :a, length: 4 } => ["abc", "abcde"],
-      proc { uuid :a } => ["not-a-uuid"]
+      proc { |s| s.int32 :a } => ["x", Object.new, [1], "12abc"],
+      proc { |s| s.int64 :a } => ["nope", {}],
+      proc { |s| s.double :a } => ["x", [1.0]],
+      proc { |s| s.date :a } => ["2020-13-45", "yesterday", 5.5],
+      proc { |s| s.timestamp :a } => ["not a time", 5.5],
+      proc { |s| s.time :a } => ["25:00", "noon", 5.5],
+      proc { |s| s.boolean :a } => ["maybe", 2],
+      proc { |s| s.enum :a, values: %w[x y] } => ["z", :w],
+      proc { |s| s.decimal :a, precision: 10, scale: 2 } => ["abc", Object.new],
+      proc { |s| s.list :a, :int32 } => [5, "str"],
+      proc { |s| s.map :a, :string, :int32 } => [5, "str"],
+      proc { |s| s.list :a, :int32 } => [["x"]],
+      proc { |s| s.fixed :a, length: 4 } => ["abc", "abcde"],
+      proc { |s| s.uuid :a } => ["not-a-uuid"]
     }
     cases.each do |defn, values|
       schema = Herringbone::Schema.define(&defn)
@@ -442,17 +442,17 @@ class WriterTest < Minitest::Test
   end
 
   def test_struct_given_non_hash_raises_encode_error
-    schema = Herringbone::Schema.define do
-      struct :s do
-        int32 :x
+    schema = Herringbone::Schema.define do |s|
+      s.struct :s do |nested|
+        nested.int32 :x
       end
     end
     assert_raises(Herringbone::EncodeError) { write_to_string(schema, [{"s" => 5}]) }
   end
 
   def test_out_of_range_integers_raise
-    {proc { int32 :a } => [2**40, 2**31], proc { int64 :a } => [2**70, 2**63], proc { int8 :a } => [300, -129],
-     proc { uint8 :a } => [256, -1], proc { decimal :a, precision: 5, scale: 2 } => [10**8], proc { int32 :a } => [1.5]}.each do |defn, values|
+    {proc { |s| s.int32 :a } => [2**40, 2**31], proc { |s| s.int64 :a } => [2**70, 2**63], proc { |s| s.int8 :a } => [300, -129],
+     proc { |s| s.uint8 :a } => [256, -1], proc { |s| s.decimal :a, precision: 5, scale: 2 } => [10**8], proc { |s| s.int32 :a } => [1.5]}.each do |defn, values|
       schema = Herringbone::Schema.define(&defn)
       values.each do |v|
         assert_raises(Herringbone::EncodeError, v.inspect) { write_to_string(schema, [{"a" => v}]) }
@@ -461,9 +461,9 @@ class WriterTest < Minitest::Test
   end
 
   def test_writer_state_is_consistent_after_encode_error
-    schema = Herringbone::Schema.define do
-      int64 :a
-      int64 :b, null: false
+    schema = Herringbone::Schema.define do |s|
+      s.int64 :a
+      s.int64 :b, null: false
     end
     io = StringIO.new("".b)
     w = Herringbone::Writer.new(io, schema)
@@ -477,7 +477,7 @@ class WriterTest < Minitest::Test
 
   def test_closed_writer_rejects_rows
     io = StringIO.new("".b)
-    w = Herringbone::Writer.new(io, Herringbone::Schema.define { int32 :a })
+    w = Herringbone::Writer.new(io, Herringbone::Schema.define { |s| s.int32 :a })
     w.close
     assert_raises(Herringbone::Error) { w << {"a" => 1} }
     size = io.string.bytesize
@@ -486,7 +486,7 @@ class WriterTest < Minitest::Test
   end
 
   def test_invalid_options
-    schema = Herringbone::Schema.define { int32 :a }
+    schema = Herringbone::Schema.define { |s| s.int32 :a }
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, data_page_version: 3) }
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, schema, compression: :lzo_nope) }
   end
@@ -494,7 +494,7 @@ class WriterTest < Minitest::Test
   # -- metadata --
 
   def test_key_value_metadata
-    schema = Herringbone::Schema.define { int32 :a }
+    schema = Herringbone::Schema.define { |s| s.int32 :a }
     meta = {"k" => "v", "unicode" => "漢字", "empty" => "", :sym => "s", "big" => "x" * 10_000}
     bytes = write_to_string(schema, [{"a" => 1}], metadata: meta)
     reader = reader_for(bytes)
@@ -669,9 +669,9 @@ class WriterTest < Minitest::Test
   end
 
   def test_large_values_and_many_rows
-    schema = Herringbone::Schema.define do
-      string :big
-      int64 :n, null: false
+    schema = Herringbone::Schema.define do |s|
+      s.string :big
+      s.int64 :n, null: false
     end
     rows = Array.new(5000) { |i| {"big" => (i % 1000 == 0) ? "x" * 100_000 : "v#{i % 50}", "n" => i} }
     bytes = write_to_string(schema, rows, page_bytes: 8192, row_group_rows: 2000)
