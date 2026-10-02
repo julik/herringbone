@@ -21,8 +21,9 @@ module Herringbone
   end
 
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby and GZIP
-  # uses zlib, so those always work. ZSTD and Brotli come from optional gems (zstd-ruby, brotli),
-  # which the application requires; if they are not loaded, MissingCodecError says what to add.
+  # uses zlib, so those always work. LZO is pure Ruby too, but can only be read. ZSTD and Brotli
+  # come from optional gems (zstd-ruby, brotli), which the application requires; if they are
+  # not loaded, MissingCodecError says what to add.
   # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
   module Compression
     module_function
@@ -57,12 +58,13 @@ module Herringbone
     # @param codec [Integer, Symbol, String] codec id or name (see NAMES)
     # @return [Module, nil] the gem's module for a gem-backed codec, nil for a built-in one
     # @raise [MissingCodecError] when the codec's gem is not loaded
-    # @raise [UnsupportedError] for a codec herringbone does not implement (LZO)
+    # @raise [UnsupportedError] for a codec herringbone cannot write (LZO)
     # @raise [ArgumentError] for an unknown codec name
     def ensure_available!(codec)
       codec = codec_id(codec)
       return library(codec) if LIBRARIES.key?(codec)
       return if SUPPORTED.include?(codec)
+      raise UnsupportedError, "LZO compression is only supported for reading" if codec == Format::Codec::LZO
       raise UnsupportedError, "#{Format::Codec::NAMES[codec] || codec} compression is not supported"
     end
 
@@ -110,6 +112,7 @@ module Herringbone
       when Format::Codec::GZIP then gunzip(data)
       when Format::Codec::LZ4_RAW then Codecs::LZ4.decompress_block(data, uncompressed_size)
       when Format::Codec::LZ4 then Codecs::LZ4.decompress_hadoop(data, uncompressed_size)
+      when Format::Codec::LZO then Codecs::LZO.decompress_hadoop(data, uncompressed_size)
       when Format::Codec::ZSTD then library(codec).decompress(data)
       when Format::Codec::BROTLI then library(codec).inflate(data)
       else

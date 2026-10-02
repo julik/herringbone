@@ -97,7 +97,7 @@ class CodecAvailabilityTest < Minitest::Test
     error = assert_raises(Herringbone::UnsupportedError) do
       Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :lzo)
     end
-    assert_equal "LZO compression is not supported", error.message
+    assert_equal "LZO compression is only supported for reading", error.message
     refute_includes Herringbone.codecs, :lzo
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :lz4_raw) }
   end

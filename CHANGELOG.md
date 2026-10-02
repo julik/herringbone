@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Files with LZO-compressed pages (written by parquet-mr with hadoop-lzo) can be read. Writing
+  LZO is not supported.
 - `Herringbone::SimpleWriter`: CSV-style writing with `headers!` and Array rows, types inferred.
 - `Herringbone.write` without `schema:` reads the rows once, holding back only the first 1000 for
   inference, so cursors and one-shot Enumerators no longer lose rows.
