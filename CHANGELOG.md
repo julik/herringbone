@@ -11,6 +11,8 @@
   encrypts a whole file with it the way most readers (pyarrow 25+, Arrow, arrow-rs, Spark, Trino)
   can decrypt, and `decryption: [key, older_key]` picks the key by the id stored in the file.
 - `decryption:` takes a callable that returns the key for a key id.
+- `Herringbone::SimpleWriter#encrypt!(key)` encrypts the file with one key (hex, a `Key` or its
+  bytes), or with a new random key, which it returns.
 - `Herringbone::EncryptionConfiguration` and `Herringbone::DecryptionConfiguration` check the
   `encryption:` and `decryption:` settings when they are built; Hashes are turned into them.
 - `herringbone inspect` and `herringbone cat` take `--footer-key`, `--column-key`, `--key` and

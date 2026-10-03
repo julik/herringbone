@@ -44,14 +44,17 @@ module Herringbone
       new([hex].pack("H*"), id: id)
     end
 
-    # A Key, or a key given as bytes (with the fingerprint id)
+    # A Key, or a key given as a String (with the fingerprint id): 32, 48 or 64 hex digits are read
+    # as hex (what +Key#hex+ gives, and how keys usually sit in environment variables), anything
+    # else as the bytes of the key
     #
-    # @param value [Key, String] a key, or 16, 24 or 32 bytes
+    # @param value [Key, String] a key, its hex, or its 16, 24 or 32 bytes
     # @return [Key]
     # @raise [ArgumentError] for anything else
     def self.from(value)
       return value if value.is_a?(Key)
-      raise ArgumentError, "Expected a Herringbone::Key or the bytes of a key, got #{value.class}" unless value.is_a?(String)
+      raise ArgumentError, "Expected a Herringbone::Key or a key as a String, got #{value.class}" unless value.is_a?(String)
+      return from_hex(value) if value.match?(/\A(?:\h{32}|\h{48}|\h{64})\z/)
       new(value)
     end
 

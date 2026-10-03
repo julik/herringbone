@@ -82,7 +82,8 @@ end
 ```
 
 To control the types, declare a schema and use `Herringbone::Writer`, see
-[Writing](MANUAL.md#writing).
+[Writing](MANUAL.md#writing). `sw.encrypt!(ENV["PARQUET_KEY"])` before the first row encrypts the
+file, see [Encryption](MANUAL.md#encryption).
 
 ## Redacting
 
