@@ -34,11 +34,13 @@ module Herringbone
 
       # @param redaction [Redaction] the statements and drops to apply
       # @param io [IO, StringIO] the input file, read with #seek and #read
+      # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
       # @raise [ArgumentError] when a statement or drop does not fit the file's schema
       # @raise [FormatError] when the footer cannot be read
-      def initialize(redaction, io)
+      # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
+      def initialize(redaction, io, decryption: nil)
         @io = io
-        @reader = Reader.new(io)
+        @reader = Reader.new(io, decryption: decryption)
         @schema = @reader.schema
         @statements = redaction.statements
         @filters = @statements.map { |s| s.where && Reader::Filter.new(@schema, s.where) }
@@ -76,14 +78,17 @@ module Herringbone
       # @option options [Integer] :data_page_version (1) 1 or 2
       # @option options [Boolean, Array<String>] :dictionary (true) see Writer
       # @option options [Hash{String => Symbol}] :encodings ({}) see Writer
+      # @option options [Hash{Symbol => Object}, false] :encryption (as the input) see Writer
       # @return [Report]
       # @raise [ArgumentError] for +row_group_bytes:+ / +row_group_rows:+ or an invalid writer option
       # @raise [EncodeError] when a replacement value cannot be written
+      # @raise [DecryptionError] when the output is to be encrypted like the input but a key is missing
       def apply(output, **options)
         bad = options.keys & ROW_GROUP_OPTIONS
         raise ArgumentError, "#{bad.join(", ")}: a redaction keeps the row groups of the input" unless bad.empty?
         @keep_codecs = !options.key?(:compression)
         options = {metadata: copied_metadata}.merge(options)
+        options[:encryption] = input_encryption unless options.key?(:encryption)
         writer = Writer.new(output, @output_schema, row_group_bytes: 1 << 62, **options)
         @report = Report.new(rows_read: 0, rows_deleted: 0, rows_changed: 0, row_groups: {copied: 0, rewritten: 0})
         begin
@@ -233,18 +238,25 @@ module Herringbone
         @schema.fields.to_h { |f| [f.name, @data[f.name][r]] }
       end
 
-      # Tier 1: every kept column chunk is copied as it is
+      # Tier 1: every kept column chunk is copied as it is, except those encrypted in the input or
+      # the output, which are encoded again
       #
       # @param i [Integer] row group index
       # @param writer [Writer] the output
       # @return [void]
       def copy_row_group(i, writer)
+        unless encrypted_columns(i, writer).empty?
+          rewrite_columns(i, writer, [])
+          @report.row_groups[:copied] += 1
+          return
+        end
         copies = @output_columns.each_with_index.to_h { |col, j| [j, copied_chunk(i, col)] }
         writer.write_row_group(rows(i), copies: copies, sorting_columns: sorting_columns(i, []))
         @report.row_groups[:copied] += 1
       end
 
-      # Tier 2: the chunks of the changed leaf columns are encoded again, the rest are copied
+      # Tier 2: the chunks of the changed leaf columns (and of encrypted ones) are encoded again,
+      # the rest are copied
       #
       # @param i [Integer] row group index
       # @param writer [Writer] the output
@@ -252,12 +264,15 @@ module Herringbone
       # @return [void]
       def rewrite_columns(i, writer, changed)
         rewritten = changed.map { |t| t.column.index }
-        changed.map { |t| t.path.first }.uniq.each { |name| writer.buffer_field(name, @data[name]) }
+        encoded = rewritten | encrypted_columns(i, writer)
+        names = encoded.map { |index| @schema.columns[index].path.first }.uniq
+        load(i, names)
+        names.each { |name| writer.buffer_field(name, @data[name]) }
         copies = {}
         codecs = {}
         blooms = {}
         @output_columns.each_with_index do |col, j|
-          if rewritten.include?(col.index)
+          if encoded.include?(col.index)
             chunk_settings(i, col, j, codecs, blooms)
           else
             copies[j] = copied_chunk(i, col)
@@ -265,7 +280,43 @@ module Herringbone
         end
         writer.write_row_group(rows(i), copies: copies, codecs: codecs, bloom_filters: blooms,
           sorting_columns: sorting_columns(i, rewritten))
-        @report.row_groups[:rewritten] += 1
+        @report.row_groups[:rewritten] += 1 unless changed.empty?
+      end
+
+      # Kept columns whose chunk in row group +i+ cannot be copied, because it is encrypted in the
+      # input (its AAD names the file and the chunk's place in it) or is to be encrypted
+      #
+      # @param i [Integer] row group index
+      # @param writer [Writer] the output
+      # @return [Array<Integer>] input column indexes
+      def encrypted_columns(i, writer)
+        chunks = @reader.row_groups[i].columns
+        @output_columns.each_with_index.filter_map do |col, j|
+          col.index if chunks.fetch(col.index).crypto_metadata || writer.encrypted_column?(j)
+        end
+      end
+
+      # The Writer +encryption:+ option that encrypts the output like the input: the same
+      # algorithm, footer mode, AAD prefix and keys, for the columns that are kept
+      #
+      # @return [Hash{Symbol => Object}, nil] nil for a plaintext input
+      # @raise [DecryptionError] when a key of the input was not given
+      def input_encryption
+        decryptor = @reader.decryptor or return nil
+        chunks = @reader.row_groups.first&.columns || []
+        columns = @output_columns.each_with_index.filter_map do |col, j|
+          chunk = chunks[col.index]
+          crypto = chunk&.crypto_metadata or next
+          path = @output_schema.columns[j].dotted_path
+          with_column_key = crypto.encryption_with_column_key
+          next [path, :footer] unless with_column_key
+          key = decryptor.chunk_key(chunk, col.dotted_path)
+          key or raise DecryptionError, "The output is encrypted like the input, which needs the key of #{col.dotted_path}: " \
+            "pass it in decryption:, or pass encryption: for the output"
+          [path, {key: key, key_metadata: with_column_key.key_metadata}]
+        end
+        uniform = !columns.empty? && columns.size == @output_columns.size && columns.all? { |_, v| v == :footer }
+        decryptor.writer_settings(uniform ? nil : columns.to_h)
       end
 
       # Tier 3: the remaining rows are encoded again, every column of them

@@ -198,11 +198,13 @@ module Herringbone
     # the columns the conditions name are read for the rest.
     #
     # @param input_io [IO, StringIO] the Parquet file, read with #seek and #read
+    # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted file, see Reader.new
     # @return [Boolean]
     # @raise [ArgumentError] when the redaction does not fit the file's schema
-    def affects?(input_io)
+    # @raise [DecryptionError] when the file is encrypted and a key it needs was not given
+    def affects?(input_io, decryption: nil)
       check_scopes!
-      Rewriter.new(self, input_io).affects?
+      Rewriter.new(self, input_io, decryption: decryption).affects?
     end
 
     # Writes the redacted copy of +input_io+ to +output_io+. The redaction is checked against the
@@ -210,8 +212,14 @@ module Herringbone
     # verb raise before anything is written. The output is left unfinished (no footer) when an
     # error happens later, for instance a block returning a value its column cannot store.
     #
+    # An encrypted input (opened with +decryption:+) is written encrypted the same way: same
+    # algorithm, footer mode, AAD prefix, keys and key metadata. +encryption:+ (see Writer) writes
+    # it with other settings, and +encryption: false+ writes a plaintext file. Column chunks that
+    # are encrypted in either file are re-encoded rather than copied.
+    #
     # @param input_io [IO, StringIO] the Parquet file, read with #seek and #read; not closed
     # @param output_io [IO, #write] destination, written sequentially; not closed
+    # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
     # @param writer_options [Hash{Symbol => Object}] Writer options for the re-encoded column chunks
     #   (+compression:+, +bloom_filters:+, +page_rows:+, +dictionary:+...), and +metadata:+ to
     #   replace the footer key/value metadata instead of copying it
@@ -224,13 +232,16 @@ module Herringbone
     # @option writer_options [Integer] :data_page_version (1) 1 or 2
     # @option writer_options [Boolean, Array<String>] :dictionary (true) see Writer
     # @option writer_options [Hash{String => Symbol}] :encodings ({}) see Writer
+    # @option writer_options [Hash{Symbol => Object}, false] :encryption (as the input) see Writer;
+    #   false for a plaintext output
     # @return [Report] what was done
     # @raise [ArgumentError] when the redaction does not fit the file's schema, or for a writer
     #   option that does not apply (+row_group_bytes:+, +row_group_rows:+)
     # @raise [EncodeError] when a replacement value cannot be written to its column
-    def apply(input_io, output_io, **writer_options)
+    # @raise [DecryptionError] when the input is encrypted and a key it needs was not given
+    def apply(input_io, output_io, decryption: nil, **writer_options)
       check_scopes!
-      Rewriter.new(self, input_io).apply(output_io, **writer_options)
+      Rewriter.new(self, input_io, decryption: decryption).apply(output_io, **writer_options)
     end
 
     # Short summary for the console: one clause per statement, naming the columns but not the

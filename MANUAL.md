@@ -19,6 +19,10 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [SimpleWriter: coming from CSV](#simplewriter-coming-from-csv)
   - [Statistics, page indexes and bloom filters](#statistics-page-indexes-and-bloom-filters)
   - [Writing to S3](#writing-to-s3)
+- [Encryption](#encryption)
+  - [Writing encrypted files](#writing-encrypted-files)
+  - [Reading encrypted files](#reading-encrypted-files)
+  - [Key management](#key-management)
 - [ActiveRecord](#activerecord)
 - [Redaction](#redaction)
   - [Statements](#statements)
@@ -26,6 +30,7 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [Input and output](#input-and-output)
   - [How row groups are rewritten](#how-row-groups-are-rewritten)
   - [What gets erased, and what doesn't](#what-gets-erased-and-what-doesnt)
+  - [Encrypted files](#encrypted-files)
   - [Recipes](#recipes)
 - [Type mapping](#type-mapping)
 - [Inspecting files](#inspecting-files)
@@ -317,6 +322,86 @@ If the block raises, the SDK aborts the multipart upload and raises `Aws::S3::Mu
 so no partial object is left. S3 allows at most 10,000 parts, which with the default 5MB parts caps
 the file at about 48GB; raise `part_size:` for bigger files.
 
+## Encryption
+
+Herringbone reads and writes files encrypted with
+[Parquet modular encryption](https://parquet.apache.org/docs/file-format/data-pages/encryption/),
+the scheme parquet-mr (Spark), Arrow (pyarrow) and parquet-rs implement. Each column can be
+encrypted with its own key or left in the clear, and the footer (schema, row counts, statistics)
+is either encrypted too or left readable and signed. AES-GCM comes from OpenSSL, which Ruby ships
+with; no other gem is needed.
+
+### Writing encrypted files
+
+```ruby
+Herringbone::Writer.open(file, schema, encryption: {
+  footer_key: FOOTER_KEY,                               # 16, 24 or 32 bytes (AES-128/192/256)
+  footer_key_metadata: "orders-footer-v3",             # stored in the file, to find the key by
+  columns: {
+    "ssn" => {key: SSN_KEY, key_metadata: "pii-v7"},    # its own key
+    "address" => ADDRESS_KEY,                           # a struct: all of its columns
+    "email" => :footer                                  # the footer key
+  }
+}) { |w| rows.each { |row| w << row } }
+
+Herringbone.write(io, rows, encryption: {footer_key: FOOTER_KEY}) # every column, with the footer key
+```
+
+Columns not listed in `columns:` are written in the clear; without `columns:` every column is
+encrypted with the footer key. Keys are binary Strings (`["00112233..."].pack("H*")` for hex).
+Encrypted columns have their pages, page headers, statistics, page index and bloom filter
+encrypted; statistics and the page index still drive `where:` for readers that have the key.
+
+The other settings:
+
+- `plaintext_footer: true` leaves the footer readable (and signs it), so readers without keys,
+  including those that don't know about encryption, can read the plaintext columns. The footer
+  then keeps no statistics of the encrypted columns.
+- `algorithm: :aes_gcm_ctr` encrypts pages with AES-CTR instead of AES-GCM: a little faster, but
+  page contents are no longer authenticated (headers and metadata still are).
+- `aad_prefix: "orders/2026-10-03/part-0"` binds the file to an identity, so it can't be passed
+  off as another file encrypted with the same keys. It is stored in the file, unless
+  `store_aad_prefix: false`, in which case readers have to supply it.
+
+### Reading encrypted files
+
+```ruby
+reader = Herringbone::Reader.new(file, decryption: {
+  footer_key: FOOTER_KEY,
+  columns: {"ssn" => SSN_KEY, "address" => ADDRESS_KEY}
+})
+reader.read(where: {ssn: "123-45-6789"})
+```
+
+Instead of (or besides) giving keys, `keys:` looks them up by the key metadata stored in the file:
+a Hash, or anything responding to `#call`, returning nil for keys the caller has no access to.
+Each key metadata is looked up once per Reader.
+
+```ruby
+Herringbone::Reader.new(file, decryption: {keys: ->(key_metadata) { kms.data_key(key_metadata) }})
+```
+
+A file with a plaintext footer opens without keys; its plaintext columns read as usual, and the
+footer signature is checked whenever the footer key is available. Reading or filtering on an
+encrypted column whose key is missing raises `Herringbone::DecryptionError`, naming the column and
+its key metadata, so `columns:` can leave it out. A wrong key, an AAD prefix that doesn't match,
+or changed bytes also raise `DecryptionError`. `reader.encryption` describes how a file is
+encrypted (algorithm, footer mode, key metadata, which columns are readable), nil when it isn't.
+
+Files from parquet-mr 1.12+ and Arrow (both algorithms, both footer modes, AAD prefixes stored or
+supplied) are read, and pyarrow reads the files Herringbone writes.
+
+### Key management
+
+The file only stores the key metadata you give it; turning that back into a key is up to you.
+Common schemes: the metadata names a key in a KMS or secret store; or it holds a data key
+encrypted ("wrapped") with a master key, which the KMS unwraps. Herringbone doesn't implement
+parquet-mr's and pyarrow's key tools format (JSON key material with wrapped data keys), but a
+`keys:` resolver can read it: `JSON.parse(key_metadata)` gives the master key id and the wrapped
+data key for your KMS to unwrap. Keys are per file and per column, not per row, so encryption
+does not replace deleting a person's rows (see [Redaction](#redaction)). AES-GCM allows about 4
+billion encryptions per key, two per page; the writer raises before going over.
+
 ## ActiveRecord
 
 `Herringbone.write` also takes a model or relation, which it reads with `find_each`, using a schema
@@ -453,6 +538,23 @@ you: the original file, its S3 versions and backups still hold the data until yo
 only the columns you name are touched (an email that also sits in a free-text `notes` column stays
 there), and other files with the same person in them need their own pass.
 
+### Encrypted files
+
+Pass the input's keys in `decryption:`. The output is then encrypted the same way: same algorithm,
+footer mode, AAD prefix, keys and key metadata, for the columns that are kept. `encryption:` (as
+for `Writer`) writes it with other settings, and `encryption: false` writes a plaintext file.
+`Redaction#affects?` takes `decryption:` too.
+
+```ruby
+Herringbone.redact(input, output, decryption: {keys: kms_lookup}) do |r|
+  r.where(user_id: 42).delete
+end
+```
+
+Encrypted column chunks can't be copied byte for byte, since their encryption is tied to the file
+and to their position in it, so they are encoded again even in row groups no statement touches.
+Every key of the columns being kept must be available.
+
 ### Recipes
 
 Keyed hashing keeps a column joinable without keeping the value; keep the key out of the data, and
@@ -531,6 +633,11 @@ File.open("data.parquet", "rb") do |file|
 end
 ```
 
+An encrypted file takes `decryption:` as for `Reader`. With a plaintext footer it opens without
+keys, showing the encrypted chunks without their pages and page indexes; `summary` and `report`
+say how the file is encrypted. Encrypted pages are checked against their CRCs as stored, without
+decrypting them.
+
 `inspector.verify_checksums` reads every page body (still without decompressing) to check the page
 CRCs; the results then appear in `summary`, `report`, `to_h` and `to_html`.
 
@@ -559,7 +666,9 @@ prints the page instead.
 - Page indexes and split block bloom filters (read and written)
 - Legacy list and map layouts per the Parquet backward-compatibility rules
 - LZO-compressed files (read only)
-- Not supported: encryption, column chunks in external files
+- Modular encryption (read and write): AES_GCM_V1 and AES_GCM_CTR_V1, encrypted and plaintext
+  footers, footer and column keys, AAD prefixes
+- Not supported: column chunks in external files
 
 ## Development
 

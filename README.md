@@ -8,11 +8,12 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
 - Optimized reads with batches and pages
+- Parquet modular encryption (per column and of the footer), interoperable with parquet-mr and Arrow
 - Ruby 3.0+
 
 This README covers the common cases. The [MANUAL](MANUAL.md) has everything else: reader and
-writer options, schemas and column types, bloom filters, Numo arrays, the redaction rules,
-type mapping and the inspector.
+writer options, schemas and column types, bloom filters, Numo arrays, encryption, the redaction
+rules, type mapping and the inspector.
 
 ## Installation
 
