@@ -14,6 +14,10 @@ module Herringbone
   #   Herringbone.write(io, rows, encryption: key)
   #   Herringbone::Reader.new(io, decryption: key)            # or [new_key, old_key, ...]
   #
+  # Where a key may be given as a String instead (+encryption:+, +decryption:+,
+  # SimpleWriter#encrypt!), the String must be its hex: raw bytes are easy to mangle and to confuse
+  # with text, so they go through Key.new.
+  #
   # Instances are frozen; #inspect and #to_s show the id but not the key.
   class Key
     # Message the fingerprint id is an HMAC of
@@ -44,18 +48,26 @@ module Herringbone
       new([hex].pack("H*"), id: id)
     end
 
-    # A Key, or a key given as a String (with the fingerprint id): 32, 48 or 64 hex digits are read
-    # as hex (what +Key#hex+ gives, and how keys usually sit in environment variables), anything
-    # else as the bytes of the key
+    # A Key, or a key given as its hex (with the fingerprint id): 32, 48 or 64 hex digits, as
+    # +Key#hex+ gives them and as keys usually sit in environment variables. Any other String is
+    # refused, raw key bytes included: those go through Key.new, so a key is never guessed at.
     #
-    # @param value [Key, String] a key, its hex, or its 16, 24 or 32 bytes
+    # @param value [Key, String] a key, or its hex
     # @return [Key]
     # @raise [ArgumentError] for anything else
     def self.from(value)
       return value if value.is_a?(Key)
-      raise ArgumentError, "Expected a Herringbone::Key or a key as a String, got #{value.class}" unless value.is_a?(String)
-      return from_hex(value) if value.match?(/\A(?:\h{32}|\h{48}|\h{64})\z/)
-      new(value)
+      unless value.is_a?(String)
+        raise ArgumentError, "Expected a Herringbone::Key or the hex of a key, got #{value.class}"
+      end
+      hex = value.strip
+      return from_hex(hex) if hex.match?(/\A(?:\h{32}|\h{48}|\h{64})\z/)
+      got = if hex.match?(/\A\h*\z/) then "#{hex.size} hex digits"
+      elsif Encryption::KEY_SIZES.include?(value.bytesize) then "#{value.bytesize} bytes that are not hex (raw key bytes?)"
+      else "a #{value.bytesize}-byte String that is not hex"
+      end
+      raise ArgumentError, "Give a key as 32 or 64 hex digits (Herringbone::Key#hex) or as a Herringbone::Key " \
+        "(Herringbone::Key.new(bytes) for raw bytes), got #{got}"
     end
 
     # @param bytes [String] 16, 24 or 32 bytes (AES-128, 192 or 256)
