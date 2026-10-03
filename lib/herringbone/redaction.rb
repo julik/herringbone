@@ -295,4 +295,8 @@ module Herringbone
   end
 end
 
-require_relative "redaction/rewriter"
+module Herringbone
+  class Redaction
+    autoload :Rewriter, File.expand_path("redaction/rewriter", __dir__)
+  end
+end

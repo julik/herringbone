@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `require "herringbone"` loads the rest of the gem on first use: under 1 ms instead of about
+  40 ms, and reading or writing plain files no longer loads OpenSSL, the inspector or the
+  redaction code. `Herringbone.eager_load!` loads everything, which Ractors need before Ruby 3.4.
 - `compression_level:` sets the level for `:zstd`, `:gzip` and `:brotli` in `Herringbone::Writer`,
   `Herringbone.write`, `SimpleWriter` and `Herringbone.redact`.
 - `Herringbone::Writer` (and `Herringbone.write`, `SimpleWriter`) take `encryption:` to write files

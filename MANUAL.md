@@ -86,6 +86,11 @@ rows.each { |row| writer.send(Ractor.make_shareable(row)) }
 writer.send(:done)
 ```
 
+Herringbone loads its parts on first use (`require "herringbone"` itself takes under a
+millisecond). Before Ruby 3.4, Ractors other than the main one cannot load code, so call
+`Herringbone.eager_load!` before starting them. It also moves all the loading to boot, for
+example before a server forks.
+
 ## Reading
 
 Herringbone can read from any IO-ish object with random access (the IO should be seekable).
