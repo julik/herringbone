@@ -399,6 +399,51 @@ class EncryptionTest < Minitest::Test
     assert_equal ["orders-2026"], looked_up, "a bare callable is the keys: lookup"
   end
 
+  def test_key_from_reads_hex
+    key = Herringbone::Key.generate
+    assert_equal key, Herringbone::Key.from(key.hex)
+    assert_equal key.bytes, Herringbone::Key.from(key.hex.upcase).bytes
+    assert_equal 16, Herringbone::Key.from("00" * 16).bytes.bytesize
+    assert_equal 24, Herringbone::Key.from("ab" * 24).bytes.bytesize
+    assert_equal SSN_KEY, Herringbone::Key.from(SSN_KEY).bytes, "a String that is not 32/48/64 hex digits is the key itself"
+    assert_equal FOOTER_KEY, Herringbone::Key.from(FOOTER_KEY).bytes
+    bytes = write(rows(10), encryption: key.hex)
+    assert_equal expected_rows(rows(10)), encrypted_reader(bytes, key.hex).read
+  end
+
+  def test_simple_writer_encrypt
+    io = StringIO.new
+    key = nil
+    Herringbone::SimpleWriter.open(io) do |sw|
+      key = sw.encrypt!
+      sw.headers!(:id, :name)
+      sw << [1, "John"]
+      sw << {id: 2, name: "Jane"}
+    end
+    assert_kind_of Herringbone::Key, key
+    assert_equal "PARE", io.string.byteslice(0, 4)
+    assert_equal [{"id" => 1, "name" => "John"}, {"id" => 2, "name" => "Jane"}], encrypted_reader(io.string, key).read
+
+    hex = Herringbone::Key.generate.hex
+    io = StringIO.new
+    sw = Herringbone::SimpleWriter.new(io)
+    assert_equal Herringbone::Key.from(hex), sw.encrypt!(hex)
+    sw.headers!("a")
+    sw << [1]
+    error = assert_raises(ArgumentError) { sw.encrypt! }
+    assert_match(/before the first row/, error.message)
+    sw.close
+    assert_equal [{"a" => 1}], encrypted_reader(io.string, hex).read
+
+    sw = Herringbone::SimpleWriter.new(StringIO.new)
+    sw.encrypt!
+    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(hex) }.message)
+    sw = Herringbone::SimpleWriter.new(StringIO.new, encryption: hex)
+    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt! }.message)
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!("short") }
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new, encryption: {footer_key: "short"}) }
+  end
+
   def test_keyring_picks_the_key_by_id
     old_key = Herringbone::Key.generate
     new_key = Herringbone::Key.generate(bits: 128)

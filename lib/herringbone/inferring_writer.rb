@@ -24,12 +24,14 @@ module Herringbone
     # @yieldparam sample [Array] the rows held back, at most Schema::INFER_SAMPLE
     # @yieldreturn [Schema]
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
-    # @raise [ArgumentError] for a compression level the codec does not take
+    # @raise [ArgumentError] for a compression level the codec does not take, or invalid
+    #   encryption settings
     def initialize(io, fix:, **options, &schema_for)
       # Fail before reading any rows if the codec's library is missing or the level is wrong
       codec = Compression.codec_id(options.fetch(:compression, :snappy))
       Compression.ensure_available!(codec)
       Compression.check_level!(codec, options[:compression_level])
+      options = options.merge(encryption: EncryptionConfiguration.from(options[:encryption])) if options[:encryption]
       @io = io
       @fix = fix
       @options = options
@@ -53,6 +55,16 @@ module Herringbone
         start if @sample.size >= Schema::INFER_SAMPLE
       end
       self
+    end
+
+    # Sets the encryption before the first row
+    #
+    # @param config [EncryptionConfiguration] how to encrypt the file
+    # @return [void]
+    # @raise [Error] once rows were given
+    def encryption=(config)
+      raise Error, "Encryption must be set before the first row" if @writer || !@sample.empty?
+      @options = @options.merge(encryption: config)
     end
 
     # @return [Integer] rows accepted so far, including the ones held back

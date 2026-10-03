@@ -24,6 +24,14 @@ module Herringbone
   # holds both numbers and text:
   #
   #   Herringbone::SimpleWriter.new(io) { |s| s.string :code }
+  #
+  # #encrypt! encrypts the file with one key (see Key):
+  #
+  #   Herringbone::SimpleWriter.open(file) do |sw|
+  #     sw.encrypt!(ENV["PARQUET_KEY"]) # hex, a Herringbone::Key or key bytes; no argument: a new key
+  #     sw.headers!(:id, :name)
+  #     sw << [1, "John"]
+  #   end
   class SimpleWriter
     # Opens a writer, yields it and closes it, finishing the file. If the block raises, the file is
     # left unfinished (no footer), as with Writer.open. To declare columns, use #initialize and #close.
@@ -70,6 +78,7 @@ module Herringbone
     def initialize(io, **options, &overrides)
       Schema::Builder.check_block!(overrides, "Herringbone::SimpleWriter.new(io) { |s| s.string :code }")
       @headers = nil
+      @encrypted = !!options[:encryption]
       @overrides = overrides
       fix = "Herringbone::SimpleWriter.new(io) { |s| s.%s }"
       @writer = InferringWriter.new(io, fix: fix, **options) { |sample| schema_for(sample) }
@@ -89,6 +98,23 @@ module Herringbone
       raise ArgumentError, "Duplicate column names: #{duplicates.join(", ")}" unless duplicates.empty?
       @headers = names.freeze
       self
+    end
+
+    # Encrypts the file with one key, the way most Parquet readers can decrypt with that key (see
+    # EncryptionConfiguration.simple). Without a key, a new random AES-256 key is made: keep the
+    # one returned, the file can't be read without it. Must be called before the first row.
+    #
+    # @param key [Key, String, nil] a key, its hex (32 or 64 digits) or its bytes; nil for a new key
+    # @return [Key] the key the file is encrypted with
+    # @raise [ArgumentError] after the first row, when called twice or after +encryption:+ was
+    #   given, or for a key of the wrong size
+    def encrypt!(key = nil)
+      raise ArgumentError, "encrypt! must be called before the first row" if rows_written.positive?
+      raise ArgumentError, "The file is already encrypted (encrypt! or encryption:)" if @encrypted
+      key = key.nil? ? Key.generate : Key.from(key)
+      @writer.encryption = EncryptionConfiguration.simple(key)
+      @encrypted = true
+      key
     end
 
     # Appends a row: an Array with one value per header, in header order, or a Hash keyed by

@@ -288,6 +288,17 @@ end
 Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
 `Herringbone::SimpleWriter.new(io) { |s| s.string :code }` (then call `close` when done).
 
+`encrypt!` encrypts the file with one key (see [Encryption](#encryption)): give it the key (hex,
+a `Herringbone::Key` or its bytes), or nothing to get a new random key back.
+
+```ruby
+Herringbone::SimpleWriter.open(file) do |sw|
+  sw.encrypt!(ENV["PARQUET_KEY"])
+  sw.headers!(:id, :name)
+  sw << [1, "John"]
+end
+```
+
 ### Statistics, page indexes and bloom filters
 
 Every column chunk gets min/max/null-count statistics and the Parquet page index (per-page min/max
@@ -345,8 +356,8 @@ Herringbone::Reader.new(io, decryption: key)
 ```
 
 That encrypts every column and the footer with the key (AES-GCM, no AAD prefix), the setup the
-most other readers support, see below; they take the key itself (`key.bytes`). The raw bytes of a
-key work in place of a `Key` too.
+most other readers support, see below; they take the key itself (`key.bytes`). A key's hex (32,
+48 or 64 digits) or its raw bytes work in place of a `Key` too: `encryption: ENV["PARQUET_KEY"]`.
 
 Each key has an id, stored in the clear in the files it encrypts: a fingerprint of the key (an
 HMAC, which gives nothing away about the key), or one you choose with
