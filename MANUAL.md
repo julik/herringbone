@@ -347,6 +347,11 @@ Herringbone::Writer.open(file, schema, encryption: {
 Herringbone.write(io, rows, encryption: {footer_key: FOOTER_KEY}) # every column, with the footer key
 ```
 
+The Hash is turned into a `Herringbone::EncryptionConfiguration`, which checks every setting
+(keys, algorithm, column settings) when it is built; build one yourself to check settings up front
+or to reuse them. It is frozen and its `#inspect` leaves the keys out. `decryption:` likewise takes
+a Hash or a `Herringbone::DecryptionConfiguration`.
+
 Columns not listed in `columns:` are written in the clear; without `columns:` every column is
 encrypted with the footer key. Keys are binary Strings (`["00112233..."].pack("H*")` for hex).
 Encrypted columns have their pages, page headers, statistics, page index and bloom filter
@@ -375,7 +380,9 @@ reader.read(where: {ssn: "123-45-6789"})
 
 Instead of (or besides) giving keys, `keys:` looks them up by the key metadata stored in the file:
 a Hash, or anything responding to `#call`, returning nil for keys the caller has no access to.
-Each key metadata is looked up once per Reader.
+Each key metadata is looked up once per Reader. A callable that takes two parameters also gets
+what the key is for (`:footer` or the column's dotted path), and is called for keys the file
+stores no metadata for, with nil.
 
 ```ruby
 Herringbone::Reader.new(file, decryption: {keys: ->(key_metadata) { kms.data_key(key_metadata) }})
@@ -652,6 +659,19 @@ bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
 ```
 
 Add `--verify-checksums` to any `inspect` form to check page CRCs.
+
+Encrypted files take keys on the command line, by footer, column path or the key metadata the
+file stores (which `inspect` shows):
+
+```
+bin/herringbone inspect FILE --footer-key=00112233445566778899aabbccddeeff
+bin/herringbone cat FILE 10 --key=kc1=base64:MTIzNDU2Nzg5MDEyMzQ1MA== --column-key=ssn=raw:1234567890123450
+bin/herringbone inspect FILE --aad-prefix=orders/part-0 --no-prompt
+```
+
+Keys are hex, `base64:...` or `raw:...` (a 16, 24 or 32-character key that isn't valid hex is
+taken as typed too). A key the file needs but wasn't given is asked for on stdin, without echo in
+a terminal; an empty answer leaves that column unreadable. `--no-prompt` asks for nothing.
 
 `--format` is `text` (the default), `json` or `html`; `--pages` only goes with `text`.
 In a terminal, `--format=html` writes the page to a temp file, prints its path and opens it with

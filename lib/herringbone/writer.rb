@@ -101,8 +101,8 @@ module Herringbone
     # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
     # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
     #   columns to write split block bloom filters for
-    # @option options [Hash{Symbol => Object}, nil] :encryption (nil) modular encryption settings,
-    #   see #initialize
+    # @option options [EncryptionConfiguration, Hash{Symbol => Object}, nil] :encryption (nil) modular
+    #   encryption settings, see #initialize
     # @yield [writer] the open writer
     # @yieldparam writer [Writer] writer to append rows to
     # @yieldreturn [Object] returned by open
@@ -141,7 +141,8 @@ module Herringbone
     # @param metadata [Hash{#to_s => #to_s}] key/value metadata for the footer
     # @param bloom_filters [Boolean, Array<String>, Hash{String => Boolean, Hash}, nil] see the class
     #   description
-    # @param encryption [Hash{Symbol => Object}, false, nil] encrypts the file (Parquet modular encryption).
+    # @param encryption [EncryptionConfiguration, Hash{Symbol => Object}, false, nil] encrypts the file
+    #   (Parquet modular encryption); a Hash holds the keywords of EncryptionConfiguration.new.
     #   Keys are 16, 24 or 32-byte Strings; key metadata is stored as given, for readers to find
     #   the keys by.
     # @option encryption [String] :footer_key key of the footer, and of columns without their own
@@ -187,7 +188,7 @@ module Herringbone
       @metadata = metadata
       @bloom_filters = bloom_filter_config(bloom_filters)
       @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter, ModuleCrypto] for the row group being written
-      @encryption = encryption ? Encryption::FileEncryptor.new(encryption, schema) : nil
+      @encryption = encryption ? Encryption::FileEncryptor.new(EncryptionConfiguration.from(encryption), schema) : nil
       @row_groups = []
       @total_rows = 0
       @pos = 0

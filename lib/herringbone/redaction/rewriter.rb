@@ -34,7 +34,7 @@ module Herringbone
 
       # @param redaction [Redaction] the statements and drops to apply
       # @param io [IO, StringIO] the input file, read with #seek and #read
-      # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
+      # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
       # @raise [ArgumentError] when a statement or drop does not fit the file's schema
       # @raise [FormatError] when the footer cannot be read
       # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
@@ -78,7 +78,7 @@ module Herringbone
       # @option options [Integer] :data_page_version (1) 1 or 2
       # @option options [Boolean, Array<String>] :dictionary (true) see Writer
       # @option options [Hash{String => Symbol}] :encodings ({}) see Writer
-      # @option options [Hash{Symbol => Object}, false] :encryption (as the input) see Writer
+      # @option options [EncryptionConfiguration, Hash{Symbol => Object}, false] :encryption (as the input) see Writer
       # @return [Report]
       # @raise [ArgumentError] for +row_group_bytes:+ / +row_group_rows:+ or an invalid writer option
       # @raise [EncodeError] when a replacement value cannot be written
@@ -299,7 +299,7 @@ module Herringbone
       # The Writer +encryption:+ option that encrypts the output like the input: the same
       # algorithm, footer mode, AAD prefix and keys, for the columns that are kept
       #
-      # @return [Hash{Symbol => Object}, nil] nil for a plaintext input
+      # @return [EncryptionConfiguration, nil] nil for a plaintext input
       # @raise [DecryptionError] when a key of the input was not given
       def input_encryption
         decryptor = @reader.decryptor or return nil
