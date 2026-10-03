@@ -187,7 +187,7 @@ encryption (1.4 s / 0.3 s on an M-series Mac): pages are encrypted whole, with A
   `--aad-prefix`, keys in hex, `base64:` or `raw:`; missing keys are asked for on stdin (no echo
   on a terminal), `--no-prompt` turns that off.
 
-### `EncryptionConfiguration.simple(key, key_metadata: nil)`
+### `EncryptionConfiguration.simple(key)` (see `encryption-keys.md` for `Herringbone::Key`)
 
 Uniform encryption with the footer key, AES_GCM_V1, encrypted footer, no AAD prefix, 128 or
 256-bit keys. Chosen from a survey of readers (late 2026):

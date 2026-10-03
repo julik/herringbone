@@ -310,6 +310,7 @@ class EncryptionTest < Minitest::Test
       assert_match message, error.message
     end
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, SCHEMA, encryption: "key") }
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, SCHEMA, encryption: 42) }
   end
 
   def test_encryption_configuration
@@ -344,25 +345,83 @@ class EncryptionTest < Minitest::Test
     assert_match(/no such column "zip"/, error.message)
   end
 
-  def test_simple_configuration
-    config = Herringbone::EncryptionConfiguration.simple(SSN_KEY, key_metadata: "orders-2026")
+  def test_key
+    key = Herringbone::Key.new(SSN_KEY)
+    assert key.frozen?
+    assert_equal SSN_KEY, key.bytes
+    assert_equal 256, key.bits
+    assert_match(/\A\h{16}\z/, key.id)
+    assert_equal key.id, Herringbone::Key.new(SSN_KEY).id, "the fingerprint id is stable"
+    refute_equal key.id, Herringbone::Key.new(FOOTER_KEY * 2).id
+    assert_equal key, Herringbone::Key.from_hex(SSN_KEY.unpack1("H*"))
+    assert_equal "2026-10", Herringbone::Key.new(SSN_KEY, id: "2026-10").id
+    assert_equal SSN_KEY.unpack1("H*"), key.hex
+    refute_includes key.inspect, SSN_KEY
+    refute_includes key.inspect, key.hex
+    assert_equal 32, Herringbone::Key.generate.bytes.bytesize
+    assert_equal 16, Herringbone::Key.generate(bits: 128, id: "x").bytes.bytesize
+    refute_equal Herringbone::Key.generate, Herringbone::Key.generate
+    assert_same key, Herringbone::Key.from(key)
+    assert_raises(ArgumentError) { Herringbone::Key.new("short") }
+    assert_raises(ArgumentError) { Herringbone::Key.new(SSN_KEY, id: "") }
+    assert_raises(ArgumentError) { Herringbone::Key.from_hex("xyz") }
+    assert_raises(ArgumentError) { Herringbone::Key.generate(bits: 64) }
+    assert_raises(ArgumentError) { Herringbone::Key.from(42) }
+  end
+
+  def test_simple_encryption_with_a_key
+    key = Herringbone::Key.new(SSN_KEY, id: "orders-2026")
+    config = Herringbone::EncryptionConfiguration.simple(key)
     assert config.uniform?
     refute config.plaintext_footer?
     assert_equal :aes_gcm, config.algorithm
     assert_nil config.aad_prefix
     assert_equal "orders-2026", config.footer_key_metadata
-    assert_equal 16, Herringbone::EncryptionConfiguration.simple(FOOTER_KEY).footer_key.bytesize
+    assert_equal config, Herringbone::EncryptionConfiguration.from(key)
+    assert_equal Herringbone::Key.new(FOOTER_KEY).id, Herringbone::EncryptionConfiguration.simple(FOOTER_KEY).footer_key_metadata
     error = assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple(ADDRESS_KEY) }
-    assert_match(/16 or 32-byte key: arrow-rs and DataFusion cannot read 192-bit keys/, error.message)
-    assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple("short") }
+    assert_match(/128 or 256-bit key: arrow-rs and DataFusion cannot read 192-bit keys/, error.message)
 
-    bytes = write(encryption: config)
+    bytes = write(encryption: key)
     assert_equal "PARE", bytes.byteslice(0, 4)
-    reader = encrypted_reader(bytes, {footer_key: SSN_KEY})
+    reader = encrypted_reader(bytes, key)
     assert_equal expected_rows, reader.read
     assert_equal "orders-2026", reader.encryption[:footer_key_metadata]
     assert(reader.encryption[:columns].values.all? { |c| c[:key] == :footer })
+    assert_equal expected_rows, encrypted_reader(bytes, SSN_KEY).read, "a single key is used whatever its id"
     assert_equal expected_rows, encrypted_reader(bytes, {keys: {"orders-2026" => SSN_KEY}}).read
+    looked_up = []
+    reader = Herringbone::Reader.new(StringIO.new(bytes), decryption: ->(id) {
+      looked_up << id
+      key
+    })
+    assert_equal expected_rows, reader.read
+    assert_equal ["orders-2026"], looked_up, "a bare callable is the keys: lookup"
+  end
+
+  def test_keyring_picks_the_key_by_id
+    old_key = Herringbone::Key.generate
+    new_key = Herringbone::Key.generate(bits: 128)
+    old_file = write(rows(20), encryption: old_key)
+    new_file = write(rows(30), encryption: new_key.bytes)
+    keyring = [new_key, old_key]
+    assert_equal expected_rows(rows(20)), encrypted_reader(old_file, keyring).read
+    assert_equal expected_rows(rows(30)), encrypted_reader(new_file, keyring).read
+    assert_equal new_key.id, encrypted_reader(new_file, keyring).encryption[:footer_key_metadata], "raw bytes get the fingerprint id"
+    error = assert_raises(Herringbone::DecryptionError) { encrypted_reader(old_file, [new_key, Herringbone::Key.generate]) }
+    assert_match(/key metadata "#{old_key.id}"/, error.message)
+    assert_raises(ArgumentError) { encrypted_reader(old_file, []) }
+  end
+
+  def test_keys_in_full_configurations
+    ssn = Herringbone::Key.new(SSN_KEY, id: "pii")
+    bytes = write(encryption: {footer_key: Herringbone::Key.new(FOOTER_KEY, id: "footer"), columns: {"ssn" => ssn, "address" => {key: Herringbone::Key.new(ADDRESS_KEY, id: "addr")}}})
+    reader = encrypted_reader(bytes, [Herringbone::Key.new(FOOTER_KEY, id: "footer"), ssn, Herringbone::Key.new(ADDRESS_KEY, id: "addr")])
+    assert_equal expected_rows, reader.read
+    assert_equal "footer", reader.encryption[:footer_key_metadata]
+    assert_equal "pii", reader.encryption[:columns]["ssn"][:key_metadata]
+    assert_equal "addr", reader.encryption[:columns]["address.city"][:key_metadata]
+    assert_equal expected_rows, encrypted_reader(bytes, {footer_key: Herringbone::Key.new(FOOTER_KEY), columns: {"ssn" => ssn, "address" => ADDRESS_KEY}}).read
   end
 
   def test_decryption_configuration
@@ -375,8 +434,8 @@ class EncryptionTest < Minitest::Test
     assert_same config, Herringbone::DecryptionConfiguration.from(config)
     bytes = write(encryption: encrypted(**MODES[:column_keys]))
     assert_equal expected_rows, encrypted_reader(bytes, config).read
-    error = assert_raises(ArgumentError) { Herringbone::DecryptionConfiguration.from([FOOTER_KEY]) }
-    assert_match(/expected a Herringbone::DecryptionConfiguration or a Hash, got Array/, error.message)
+    error = assert_raises(ArgumentError) { Herringbone::DecryptionConfiguration.from(42) }
+    assert_match(/expected a Herringbone::Key, a DecryptionConfiguration, a Hash or a callable, got Integer/, error.message)
   end
 
   def test_resolver_learns_what_a_key_is_for
