@@ -48,7 +48,7 @@ module Herringbone
     # @param keys [Symbol, String] +:string+ or +:symbol+, the key type of row and struct Hashes
     # @param time_zone [String, Integer, Object, nil] zone timestamps are returned in (see the
     #   class docs); nil keeps them in UTC
-    # @param decryption [Hash{Symbol => Object}, nil] keys for an encrypted file (see the class docs)
+    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys for an encrypted file (see the class docs)
     # @option decryption [String] :footer_key key of the footer (and of the columns encrypted with it)
     # @option decryption [Hash{String => String}] :columns column path or field name => key
     # @option decryption [#call, Hash{String => String}] :keys key metadata => key, for the keys not
@@ -70,7 +70,7 @@ module Herringbone
       raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}" unless KEY_MODES.include?(keys)
       @symbolize = keys == :symbol
       @zone_converter = zone_converter(time_zone)
-      @decryption = Encryption::FileDecryptor.check_options(decryption)
+      @decryption = DecryptionConfiguration.from(decryption)
       @io = io
       @file_metadata = read_footer
       @schema = Schema.from_elements(@file_metadata.schema)

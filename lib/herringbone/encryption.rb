@@ -89,7 +89,7 @@ module Herringbone
     #
     # @param region [String] the footer region, binary
     # @param magic [String] the file's closing magic, "PAR1" or "PARE"
-    # @param decryption [Hash, nil] the +decryption:+ option, see FileDecryptor
+    # @param decryption [DecryptionConfiguration, nil] the keys
     # @return [Array(Format::FileMetaData, FileDecryptor)] the footer, and its decryptor (nil for
     #   a file that is not encrypted)
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted, or its
@@ -108,7 +108,7 @@ module Herringbone
       else
         meta, pos = Format::FileMetaData.decode(region)
         return [meta, nil] unless meta.encryption_algorithm
-        decryptor = FileDecryptor.new(decryption || {}, meta.encryption_algorithm,
+        decryptor = FileDecryptor.new(decryption, meta.encryption_algorithm,
           footer_key_metadata: meta.footer_signing_key_metadata, plaintext_footer: true)
         signature = region.byteslice(pos, SIGNATURE)
         raise FormatError, "Footer signature is missing" unless signature&.bytesize == SIGNATURE
@@ -299,16 +299,9 @@ module Herringbone
       end
     end
 
-    # The +encryption:+ option of Writer, checked, with what the writer needs to encrypt each
+    # An EncryptionConfiguration applied to a schema: what the writer needs to encrypt each
     # module and the footer
     class FileEncryptor
-      # Keys accepted in the +encryption:+ Hash
-      OPTIONS = %i[footer_key footer_key_metadata columns plaintext_footer algorithm aad_prefix store_aad_prefix].freeze
-      # Keys accepted in a column's settings Hash
-      COLUMN_OPTIONS = %i[key key_metadata].freeze
-      # Values of +algorithm:+
-      ALGORITHMS = %i[aes_gcm aes_gcm_ctr].freeze
-
       # How one column is encrypted
       #
       # @!attribute cipher
@@ -322,40 +315,21 @@ module Herringbone
       # @return [Boolean] whether the footer is stored in the clear (and signed)
       attr_reader :plaintext_footer
 
-      # @param options [Hash{Symbol, String => Object}] the +encryption:+ option, see Writer
+      # @param config [EncryptionConfiguration] the settings
       # @param schema [Schema] the schema being written
-      # @option options [String] :footer_key key of the footer and of columns without their own
-      # @option options [String, nil] :footer_key_metadata stored for the footer key
-      # @option options [Hash{String => String, Hash, Symbol}, nil] :columns column path or field
-      #   name => key, +{key:, key_metadata:}+ or +:footer+; nil encrypts every column
-      # @option options [Boolean] :plaintext_footer (false) sign the footer instead of encrypting it
-      # @option options [Symbol] :algorithm (:aes_gcm) or :aes_gcm_ctr
-      # @option options [String, nil] :aad_prefix identity of the file, part of every AAD
-      # @option options [Boolean] :store_aad_prefix (true) whether the file stores the AAD prefix
-      # @raise [ArgumentError] for a missing footer key, a key of the wrong size, an unknown option,
-      #   algorithm or column, or a column given twice
+      # @raise [ArgumentError] for an unknown column, or columns named so that one is listed twice
       # @raise [UnsupportedError] when the schema has more columns than AADs can number
-      def initialize(options, schema)
-        raise ArgumentError, "encryption: expected a Hash, got #{options.class}" unless options.is_a?(Hash)
-        options = options.transform_keys(&:to_sym)
-        unknown = options.keys - OPTIONS
-        raise ArgumentError, "encryption: unknown option #{unknown.join(", ")}" unless unknown.empty?
+      def initialize(config, schema)
         if schema.columns.size > MAX_ORDINAL + 1
           raise UnsupportedError, "Encrypted files hold at most #{MAX_ORDINAL + 1} columns"
         end
         @ciphers = {}
-        footer = Encryption.check_key!(options[:footer_key], "encryption: footer_key")
-        @footer = ColumnKey.new(cipher_for(footer), nil, true)
-        @footer_key_metadata = options[:footer_key_metadata]&.to_s&.b
-        @plaintext_footer = options.fetch(:plaintext_footer, false) ? true : false
-        algorithm = options.fetch(:algorithm, :aes_gcm)
-        unless ALGORITHMS.include?(algorithm)
-          raise ArgumentError, "encryption: algorithm must be :aes_gcm or :aes_gcm_ctr, got #{algorithm.inspect}"
-        end
-        @ctr = algorithm == :aes_gcm_ctr
-        prefix = options[:aad_prefix]&.to_s&.b
-        store = options.fetch(:store_aad_prefix, true)
-        raise ArgumentError, "encryption: store_aad_prefix: false needs an aad_prefix" if !store && prefix.nil?
+        @footer = ColumnKey.new(cipher_for(config.footer_key), nil, true)
+        @footer_key_metadata = config.footer_key_metadata
+        @plaintext_footer = config.plaintext_footer?
+        @ctr = config.algorithm == :aes_gcm_ctr
+        prefix = config.aad_prefix
+        store = config.store_aad_prefix?
         unique = OpenSSL::Random.random_bytes(FILE_UNIQUE_BYTES)
         @file_aad = (prefix || "".b) + unique
         settings = {aad_prefix: store ? prefix : nil, aad_file_unique: unique, supply_aad_prefix: store ? nil : true}
@@ -365,7 +339,7 @@ module Herringbone
           Format::EncryptionAlgorithm.new(aes_gcm_v1: Format::AesGcmV1.new(**settings))
         end
         @schema = schema
-        @columns = column_keys(options[:columns])
+        @columns = column_keys(config.columns)
       end
 
       # @return [String] the magic bytes the file starts and ends with
@@ -445,42 +419,23 @@ module Herringbone
         @ciphers[key] ||= Cipher.new(key)
       end
 
-      # @param requested [Hash, nil] the +columns:+ option
+      # @param requested [Hash{String => EncryptionConfiguration::ColumnKey, Symbol}, nil] the
+      #   configuration's columns
       # @return [Array<ColumnKey, nil>] per leaf column
-      # @raise [ArgumentError] for an unknown column, a column named twice or a bad setting
+      # @raise [ArgumentError] for an unknown column, or a column named twice
       def column_keys(requested)
         return Array.new(@schema.columns.size, @footer) if requested.nil?
-        raise ArgumentError, "encryption: columns: expected a Hash, got #{requested.class}" unless requested.is_a?(Hash)
         out = Array.new(@schema.columns.size)
         requested.each do |name, setting|
           columns = Encryption.columns_named(@schema, name)
           raise ArgumentError, "encryption: no such column #{name.inspect}" if columns.empty?
-          key = column_key(name, setting)
+          key = (setting == :footer) ? @footer : ColumnKey.new(cipher_for(setting.key), setting.key_metadata, false)
           columns.each do |col|
             raise ArgumentError, "encryption: column #{col.dotted_path} is listed twice" if out[col.index]
             out[col.index] = key
           end
         end
         out
-      end
-
-      # @param name [String, Symbol] the column as named in +columns:+
-      # @param setting [String, Hash, Symbol, true] a key, +{key:, key_metadata:}+ or +:footer+
-      # @return [ColumnKey]
-      # @raise [ArgumentError] for a bad setting
-      def column_key(name, setting)
-        case setting
-        when :footer, true then @footer
-        when String then ColumnKey.new(cipher_for(Encryption.check_key!(setting, "encryption: key of #{name}")), nil, false)
-        when Hash
-          setting = setting.transform_keys(&:to_sym)
-          unknown = setting.keys - COLUMN_OPTIONS
-          raise ArgumentError, "encryption: unknown option #{unknown.join(", ")} for #{name}" unless unknown.empty?
-          key = Encryption.check_key!(setting[:key], "encryption: key of #{name}")
-          ColumnKey.new(cipher_for(key), setting[:key_metadata]&.to_s&.b, false)
-        else
-          raise ArgumentError, "encryption: expected a key, {key:, key_metadata:} or :footer for #{name}, got #{setting.inspect}"
-        end
       end
 
       # @param meta [Format::ColumnMetaData] the column's metadata
@@ -492,13 +447,10 @@ module Herringbone
       end
     end
 
-    # The +decryption:+ option of Reader, applied to one file: finds the keys (given, or looked
-    # up by their key metadata), checks the AAD prefix, decrypts the footer and the column
-    # metadata, and hands out a ModuleCrypto per column chunk
+    # A DecryptionConfiguration applied to one file: finds the keys (given, or looked up by their
+    # key metadata), checks the AAD prefix, decrypts the footer and the column metadata, and
+    # hands out a ModuleCrypto per column chunk
     class FileDecryptor
-      # Keys accepted in the +decryption:+ Hash
-      OPTIONS = %i[footer_key columns keys aad_prefix].freeze
-
       # @return [Format::EncryptionAlgorithm] the file's algorithm
       attr_reader :algorithm
 
@@ -508,55 +460,24 @@ module Herringbone
       # @return [Boolean] whether the footer is stored in the clear (and signed)
       attr_reader :plaintext_footer
 
-      # Checks a +decryption:+ option before the file is read
-      #
-      # @param options [Hash, nil] the option
-      # @option options [String] :footer_key key of the footer
-      # @option options [Hash{String => String}] :columns column path or field name => key
-      # @option options [#call, Hash{String => String}] :keys key metadata => key
-      # @option options [String] :aad_prefix the file's AAD prefix
-      # @return [Hash{Symbol => Object}, nil] with Symbol keys
-      # @raise [ArgumentError] for an unknown option or a key of the wrong size
-      def self.check_options(options)
-        return nil if options.nil?
-        raise ArgumentError, "decryption: expected a Hash, got #{options.class}" unless options.is_a?(Hash)
-        options = options.transform_keys(&:to_sym)
-        unknown = options.keys - OPTIONS
-        raise ArgumentError, "decryption: unknown option #{unknown.join(", ")}" unless unknown.empty?
-        Encryption.check_key!(options[:footer_key], "decryption: footer_key") if options[:footer_key]
-        columns = options[:columns] || {}
-        raise ArgumentError, "decryption: columns: expected a Hash, got #{columns.class}" unless columns.is_a?(Hash)
-        columns.each { |name, key| Encryption.check_key!(key, "decryption: key of #{name}") }
-        keys = options[:keys]
-        if keys && !keys.respond_to?(:call) && !keys.is_a?(Hash)
-          raise ArgumentError, "decryption: keys: expected a Hash or a callable, got #{keys.class}"
-        end
-        options
-      end
-
-      # @param options [Hash{Symbol, String => Object}] the +decryption:+ option, see Reader
+      # @param config [DecryptionConfiguration, nil] the keys; nil for none
       # @param algorithm [Format::EncryptionAlgorithm, nil] from the footer or the FileCryptoMetaData
       # @param footer_key_metadata [String, nil] key metadata of the footer key
       # @param plaintext_footer [Boolean] whether the footer is stored in the clear
-      # @option options [String] :footer_key key of the footer
-      # @option options [Hash{String => String}] :columns column path or field name => key
-      # @option options [#call, Hash{String => String}] :keys key metadata => key
-      # @option options [String] :aad_prefix the file's AAD prefix
-      # @raise [ArgumentError] for a bad option
       # @raise [UnsupportedError] for an unknown algorithm
       # @raise [DecryptionError] when the file needs an AAD prefix that was not given, or stores a
       #   different one
-      def initialize(options, algorithm, footer_key_metadata: nil, plaintext_footer: false)
-        options = FileDecryptor.check_options(options)
+      def initialize(config, algorithm, footer_key_metadata: nil, plaintext_footer: false)
+        config ||= DecryptionConfiguration.new
         settings = algorithm&.settings or raise UnsupportedError, "Unknown encryption algorithm"
         @algorithm = algorithm
         @footer_key_metadata = footer_key_metadata
         @plaintext_footer = plaintext_footer
         @ctr = !algorithm.aes_gcm_ctr_v1.nil?
-        @footer_key = options[:footer_key]&.b
-        @column_keys = (options[:columns] || {}).map { |name, key| [name.is_a?(Array) ? name.join(".") : name.to_s, key.b] }
-        @resolver = options[:keys]
-        supplied = options[:aad_prefix]&.to_s&.b
+        @footer_key = config.footer_key
+        @column_keys = config.columns
+        @resolver = config.keys
+        supplied = config.aad_prefix
         stored = settings.aad_prefix
         if settings.supply_aad_prefix && supplied.nil?
           raise DecryptionError, "The file was encrypted with an AAD prefix it does not store: pass decryption: {aad_prefix: ...}"
@@ -582,7 +503,7 @@ module Herringbone
 
       # @return [String, nil] the footer key, given or looked up; nil when not available
       def footer_key
-        @footer_key ||= resolve(@footer_key_metadata, "the footer")
+        @footer_key ||= resolve(@footer_key_metadata, :footer)
       end
 
       # @param mod [String] the encrypted footer module
@@ -681,11 +602,11 @@ module Herringbone
         end
       end
 
-      # The Writer +encryption:+ option for a file encrypted like this one (see Redaction)
+      # The configuration of a file encrypted like this one (see Redaction)
       #
       # @param columns [Hash{String => Hash, Symbol}, nil] encrypted columns of the new file, as the
       #   +columns:+ setting; nil to encrypt them all with the footer key
-      # @return [Hash{Symbol => Object}]
+      # @return [EncryptionConfiguration]
       # @raise [DecryptionError] when the footer key is not available
       def writer_settings(columns)
         key = footer_key or raise DecryptionError, "The output is encrypted like the input, which needs the footer key: " \
@@ -696,7 +617,7 @@ module Herringbone
           settings[:aad_prefix] = @aad_prefix_used
           settings[:store_aad_prefix] = false if @algorithm.settings.supply_aad_prefix
         end
-        settings
+        EncryptionConfiguration.new(**settings)
       end
 
       # @return [String] algorithm and footer mode, without keys
@@ -726,16 +647,32 @@ module Herringbone
       end
 
       # @param key_metadata [String, nil] stored key metadata
-      # @param what [String] what the key is for, for error messages
-      # @return [String, nil] the key from the +keys:+ resolver, nil when there is none
+      # @param owner [Symbol, String] what the key is for: +:footer+ or a dotted column path
+      # @return [String, nil] the key from the +keys:+ resolver, nil when there is none. Keys
+      #   without key metadata are looked up per owner.
       # @raise [ArgumentError] when the resolver returns something that is not a key
-      def resolve(key_metadata, what)
-        return nil unless @resolver && key_metadata
-        @resolved.fetch(key_metadata) do
-          key = @resolver.respond_to?(:call) ? @resolver.call(key_metadata) : @resolver[key_metadata]
+      def resolve(key_metadata, owner)
+        return nil unless @resolver
+        return nil if key_metadata.nil? && !@resolver.respond_to?(:call)
+        cache = key_metadata || [:owner, owner]
+        @resolved.fetch(cache) do
+          key = if @resolver.respond_to?(:call)
+            one_argument?(@resolver) ? @resolver.call(key_metadata) : @resolver.call(key_metadata, owner)
+          else
+            @resolver[key_metadata]
+          end
+          what = (owner == :footer) ? "the footer" : owner
           key &&= Encryption.check_key!(key, "decryption: keys: the key for #{what}")
-          @resolved[key_metadata] = key
+          @resolved[cache] = key
         end
+      end
+
+      # @param callable [#call] the +keys:+ resolver
+      # @return [Boolean] whether it only takes the key metadata (procs drop extra arguments)
+      def one_argument?(callable)
+        callable = callable.method(:call) unless callable.is_a?(Proc) || callable.is_a?(Method)
+        return false if callable.is_a?(Proc) && !callable.lambda?
+        callable.arity == 1
       end
 
       # @param key [String] 16, 24 or 32 bytes

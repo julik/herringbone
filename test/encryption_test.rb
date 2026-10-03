@@ -312,6 +312,71 @@ class EncryptionTest < Minitest::Test
     assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, SCHEMA, encryption: "key") }
   end
 
+  def test_encryption_configuration
+    config = Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY, footer_key_metadata: "footer",
+      columns: {:ssn => {key: SSN_KEY, key_metadata: "ssn"}, ["address", "city"] => :footer}, aad_prefix: "t")
+    assert config.frozen?
+    assert_equal "footer", config.footer_key_metadata
+    assert_equal({"ssn" => Herringbone::EncryptionConfiguration::ColumnKey.new(SSN_KEY, "ssn"), "address.city" => :footer}, config.columns)
+    refute config.uniform?
+    refute config.plaintext_footer?
+    assert config.store_aad_prefix?
+    assert_equal :aes_gcm, config.algorithm
+    refute_includes config.inspect, SSN_KEY
+    refute_includes config.inspect, FOOTER_KEY
+    refute_includes config.columns["ssn"].inspect, SSN_KEY
+    assert_match(/aes_gcm footer=encrypted footer_key_metadata="footer" columns=ssn="ssn",address.city=footer aad_prefix="t"/, config.inspect)
+    assert_equal config, Herringbone::EncryptionConfiguration.from(config.to_h)
+    assert_same config, Herringbone::EncryptionConfiguration.from(config)
+    assert_equal config, Herringbone::EncryptionConfiguration.from("footer_key" => FOOTER_KEY, "footer_key_metadata" => "footer",
+      "columns" => {"ssn" => {"key" => SSN_KEY, "key_metadata" => "ssn"}, "address.city" => true}, "aad_prefix" => "t")
+    assert Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY).uniform?
+    assert_equal :aes_gcm_ctr, Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY, algorithm: "aes_gcm_ctr").algorithm
+    error = assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY, columns: {"a" => SSN_KEY, :a => SSN_KEY}) }
+    assert_match(/column a is listed twice/, error.message)
+
+    bytes = write(encryption: Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY, footer_key_metadata: "footer",
+      columns: {"ssn" => {key: SSN_KEY, key_metadata: "ssn"}}))
+    assert_equal expected_rows, encrypted_reader(bytes).read
+    error = assert_raises(ArgumentError) do
+      Herringbone::Writer.new(StringIO.new, SCHEMA, encryption: Herringbone::EncryptionConfiguration.new(footer_key: FOOTER_KEY, columns: {"zip" => :footer}))
+    end
+    assert_match(/no such column "zip"/, error.message)
+  end
+
+  def test_decryption_configuration
+    config = Herringbone::DecryptionConfiguration.new(footer_key: FOOTER_KEY, columns: {ssn: SSN_KEY}, keys: {"address" => ADDRESS_KEY})
+    assert config.frozen?
+    assert_equal({"ssn" => SSN_KEY}, config.columns)
+    refute_includes config.inspect, SSN_KEY
+    assert_equal "#<Herringbone::DecryptionConfiguration footer_key columns=ssn keys=Hash>", config.inspect
+    assert_nil Herringbone::DecryptionConfiguration.from(nil)
+    assert_same config, Herringbone::DecryptionConfiguration.from(config)
+    bytes = write(encryption: encrypted(**MODES[:column_keys]))
+    assert_equal expected_rows, encrypted_reader(bytes, config).read
+    error = assert_raises(ArgumentError) { Herringbone::DecryptionConfiguration.from([FOOTER_KEY]) }
+    assert_match(/expected a Herringbone::DecryptionConfiguration or a Hash, got Array/, error.message)
+  end
+
+  def test_resolver_learns_what_a_key_is_for
+    bytes = write(encryption: {footer_key: FOOTER_KEY, columns: {"ssn" => SSN_KEY, "address" => {key: ADDRESS_KEY, key_metadata: "address"}}})
+    asked = []
+    resolver = lambda do |metadata, owner|
+      asked << [metadata, owner]
+      {[nil, :footer] => FOOTER_KEY, [nil, "ssn"] => SSN_KEY, ["address", "address.city"] => ADDRESS_KEY}[[metadata, owner]]
+    end
+    assert_equal expected_rows, encrypted_reader(bytes, {keys: resolver}).read
+    assert_equal [[nil, :footer], [nil, "ssn"], ["address", "address.city"]], asked,
+      "keys without metadata are asked for per owner, keys with metadata once"
+    one = []
+    assert_equal expected_rows.map { |r| r.slice("id") },
+      encrypted_reader(bytes, {keys: lambda do |metadata|
+        one << metadata
+        (metadata.nil? && one.size == 1) ? FOOTER_KEY : nil
+      end}).read(columns: ["id"])
+    assert_equal [nil, nil, "address"], one, "a one-argument callable gets the key metadata only"
+  end
+
   def test_reader_option_errors
     bytes = write(rows(5), encryption: encrypted)
     assert_raises(ArgumentError) { encrypted_reader(bytes, {footer: FOOTER_KEY}) }

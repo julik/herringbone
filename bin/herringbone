@@ -10,6 +10,12 @@
 #                                               and open it in the browser (printed when stdout is redirected)
 #   add --verify-checksums to any inspect form to read page bodies and check their CRCs
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
+#
+# Encrypted files: both commands take --footer-key=KEY, --column-key=PATH=KEY and
+# --key=KEY_METADATA=KEY (all repeatable but the first), and --aad-prefix=PREFIX. KEY is hex, or
+# base64:..., or raw:... for the bytes as typed (a 16, 24 or 32-character String that is not
+# valid hex is taken as is too). Keys that are needed but not given are asked for on stdin
+# (without echo in a terminal; an empty answer skips the key), unless --no-prompt is given.
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
 require "json"
@@ -18,6 +24,7 @@ require "json"
 rescue LoadError
 end
 require "tmpdir"
+require "io/console"
 
 def jsonable(v)
   case v
@@ -43,12 +50,71 @@ def open_with_default_app(path)
   !!system(*command, out: File::NULL, err: File::NULL, exception: false)
 end
 
-USAGE = "usage: herringbone cat FILE [N]\n" \
-  "       herringbone inspect FILE [--format=text|json|html] [--pages] [--verify-checksums]\n" \
-  "       (--pages only with --format=text)"
+# A key as given on the command line or at the prompt: hex, base64:..., raw:..., or the bytes as
+# typed when they are not valid hex but have the size of a key
+# @return [String] the key
+# @raise [ArgumentError] when it is none of those, or not 16, 24 or 32 bytes long
+def parse_key(text, what)
+  text = text.strip
+  bytes = if text.start_with?("base64:")
+    text.delete_prefix("base64:").unpack1("m0")
+  elsif text.start_with?("raw:")
+    text.delete_prefix("raw:")
+  elsif text.match?(/\A(\h\h)+\z/) && Herringbone::Encryption::KEY_SIZES.include?(text.size / 2)
+    [text].pack("H*")
+  else
+    text
+  end
+  Herringbone::Encryption.check_key!(bytes, what)
+end
+
+# Asks for a key on stderr and reads it from stdin, without echo when stdin is a terminal
+# @return [String, nil] the key, nil when the answer is empty or stdin is exhausted
+def ask_key(metadata, owner)
+  what = (owner == :footer) ? "the footer" : "column #{owner}"
+  $stderr.print "Key for #{what}#{" (key metadata #{metadata.inspect})" if metadata}, hex: "
+  line = $stdin.tty? ? $stdin.noecho(&:gets) : $stdin.gets
+  $stderr.puts
+  return nil if line.nil? || line.strip.empty?
+  parse_key(line, "the key for #{what}")
+rescue ArgumentError => e
+  raise unless $stdin.tty?
+  warn "herringbone: #{e.message}"
+  retry
+end
+
+# The decryption: option from the key flags
+# @return [Hash{Symbol => Object}]
+def decryption_from(key_flags, prompt)
+  by_metadata = {}
+  decryption = {columns: {}}
+  key_flags.each do |flag|
+    name, value = flag.split("=", 2)
+    case name
+    when "--footer-key" then decryption[:footer_key] = parse_key(value.to_s, "--footer-key")
+    when "--aad-prefix" then decryption[:aad_prefix] = value.to_s
+    when "--column-key", "--key"
+      target, key = value.to_s.split("=", 2)
+      raise ArgumentError, "#{name} expects #{name}=#{(name == "--key") ? "KEY_METADATA" : "PATH"}=KEY" unless key
+      (name == "--key") ? by_metadata[target] = parse_key(key, "#{name}=#{target}") : decryption[:columns][target] = parse_key(key, "#{name}=#{target}")
+    end
+  end
+  decryption[:keys] = ->(metadata, owner) { by_metadata.fetch(metadata) { prompt ? ask_key(metadata, owner) : nil } }
+  decryption
+end
+
+USAGE = "usage: herringbone cat FILE [N] [KEY OPTIONS]\n" \
+  "       herringbone inspect FILE [--format=text|json|html] [--pages] [--verify-checksums] [KEY OPTIONS]\n" \
+  "       (--pages only with --format=text)\n" \
+  "key options, for encrypted files: --footer-key=KEY --column-key=PATH=KEY --key=KEY_METADATA=KEY\n" \
+  "       --aad-prefix=PREFIX --no-prompt (KEY is hex, base64:... or raw:...)"
+
+KEY_FLAGS = %w[--footer-key --column-key --key --aad-prefix].freeze
 
 command, *rest = ARGV
 flags, args = rest.partition { |a| a.start_with?("--") }
+key_flags, flags = flags.partition { |f| KEY_FLAGS.include?(f.split("=", 2).first) }
+prompt = !flags.delete("--no-prompt")
 path, limit = args
 valid = case command
 when "cat" then flags.empty? && path && (limit.nil? || limit.match?(/\A\d+\z/))
@@ -64,14 +130,15 @@ unless valid
   exit 1
 end
 
-# Parquet and file errors are reported in one line, without a backtrace
+# Parquet, file and key errors are reported in one line, without a backtrace
 begin
+  decryption = decryption_from(key_flags, prompt)
   File.open(path, "rb") do |io|
     if command == "cat"
       n = limit&.to_i
-      Herringbone::Reader.new(io).each_row(limit: n) { |row| puts JSON.generate(jsonable(row)) }
+      Herringbone::Reader.new(io, decryption: decryption).each_row(limit: n) { |row| puts JSON.generate(jsonable(row)) }
     else
-      inspector = Herringbone::Inspector.new(io)
+      inspector = Herringbone::Inspector.new(io, decryption: decryption)
       inspector.verify_checksums if flags.include?("--verify-checksums")
       case format
       when "json"
@@ -90,7 +157,8 @@ begin
       end
     end
   end
-rescue Herringbone::Error, SystemCallError => e
+rescue Herringbone::Error, SystemCallError, ArgumentError => e
   warn "herringbone: #{e.message}"
+  warn "herringbone: give keys with --footer-key=KEY, --column-key=PATH=KEY or --key=KEY_METADATA=KEY" if e.is_a?(Herringbone::DecryptionError)
   exit 1
 end

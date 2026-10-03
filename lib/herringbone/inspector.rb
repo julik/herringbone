@@ -479,13 +479,13 @@ module Herringbone
     # without their pages, page indexes and statistics.
     #
     # @param io [IO] random-access IO positioned anywhere; only the footer is read here
-    # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted file, see Reader.new
+    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted file, see Reader.new
     # @raise [ArgumentError] when +io+ does not support #seek and #read
     # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def initialize(io, decryption: nil)
       @io = io
-      @decryption = Encryption::FileDecryptor.check_options(decryption)
+      @decryption = DecryptionConfiguration.from(decryption)
       unless @io.respond_to?(:read) && @io.respond_to?(:seek)
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class}"
@@ -570,7 +570,7 @@ module Herringbone
     # Walks no page headers.
     # @return [Hash{Symbol => Object}]
     def summary
-      codecs = column_chunks.map(&:codec).uniq
+      codecs = column_chunks.filter_map(&:codec).uniq
       {
         name: @name,
         file_size: @file_size,
@@ -696,7 +696,7 @@ module Herringbone
           column: col.index,
           path: col.dotted_path,
           type: Inspector.type_name(col),
-          codecs: chunks.map(&:codec).uniq,
+          codecs: chunks.filter_map(&:codec).uniq,
           encodings: chunks.flat_map(&:encodings).uniq,
           num_values: chunks.sum { |c| c.num_values.to_i },
           null_count: nulls.all? ? nulls.sum : nil,
@@ -708,7 +708,8 @@ module Herringbone
           dictionary_pages: chunks.count(&:dictionary_page),
           dictionary_bytes: chunks.sum { |c| c.dictionary_page&.total_size.to_i },
           min: mins.include?(nil) ? nil : safe_extreme(mins, :min),
-          max: maxes.include?(nil) ? nil : safe_extreme(maxes, :max)
+          max: maxes.include?(nil) ? nil : safe_extreme(maxes, :max),
+          metadata_unavailable: (!chunks.empty? && chunks.none?(&:start_offset)) || nil
         }.compact
       end
     end
@@ -852,6 +853,10 @@ module Herringbone
       schema_tree.each { |n| walk.call(n, 1) }
       out << "columns:"
       column_totals.each do |t|
+        if t[:metadata_unavailable]
+          out << "  #{t[:path]}: #{t[:type]} encrypted, metadata unavailable without its key"
+          next
+        end
         range = t.key?(:min) ? "  [#{Inspector.display(t[:min])} .. #{Inspector.display(t[:max])}]" : ""
         out << "  #{t[:path]}: #{t[:type]} #{t[:codecs].join(",")} #{t[:encodings].join(",")} " \
           "#{Inspector.human_bytes(t[:compressed_size])}/#{Inspector.human_bytes(t[:uncompressed_size])}" \
