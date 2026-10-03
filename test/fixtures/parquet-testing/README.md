@@ -14,8 +14,14 @@ Foundation. See the upstream repository's `LICENSE.txt`/`NOTICE.txt`.
 Descriptions of many of the files are in the upstream `data/README.md` and
 the per-file `*.md` notes there.
 
-Not included: the encrypted files (`*.parquet.encrypted`, need keys),
-`large_string_map.brotli.parquet` (4KB on disk but decompresses to two ~1GB
+The encrypted files (`*.parquet.encrypted`, and `aes256/` with 256-bit keys
+from parquet-mr) come from `data/` and `data/aes256/` at the same commit.
+Their keys are listed in the upstream
+`data/README.md` and in `test/encryption_test.rb`;
+`encrypt_columns_and_footer_aad` and `..._disable_aad_storage` use the AAD
+prefix `"tester"`.
+
+Not included: `large_string_map.brotli.parquet` (4KB on disk but decompresses to two ~1GB
 strings), the bloom filter `.bin` blobs and the `*_expect.csv` files (the
 JSON expectations cover the same ground). Files whose names mention
 `corrupt`/`malformed` are included on purpose, for error-path tests.

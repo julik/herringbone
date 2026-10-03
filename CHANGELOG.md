@@ -4,6 +4,16 @@
 
 - `compression_level:` sets the level for `:zstd`, `:gzip` and `:brotli` in `Herringbone::Writer`,
   `Herringbone.write`, `SimpleWriter` and `Herringbone.redact`.
+- `Herringbone::Writer` (and `Herringbone.write`, `SimpleWriter`) take `encryption:` to write files
+  with Parquet modular encryption: footer and per-column keys, encrypted or signed plaintext
+  footer, AES-GCM or AES-GCM-CTR, AAD prefixes.
+- `Herringbone::Reader` and `Herringbone::Inspector` take `decryption:` with keys, or a `keys:`
+  lookup by the key metadata stored in the file, and read encrypted files from parquet-mr, Arrow
+  and Herringbone; `Reader#encryption` describes how a file is encrypted.
+- `Herringbone.redact` takes `decryption:` and writes an encrypted input encrypted the same way,
+  unless `encryption:` says otherwise.
+- **Breaking:** encrypted files raise `Herringbone::DecryptionError` (when their keys are missing
+  or wrong) instead of `Herringbone::UnsupportedError`.
 
 ## 0.5.0
 

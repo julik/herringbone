@@ -42,8 +42,10 @@ module Herringbone
       # @param column [Schema::Column] the leaf column the chunk stores
       # @param converter [Proc, nil] physical value => Ruby value, applied to values and dictionaries
       # @param lazy [Boolean] leave non-dictionary values physical in #next_page (see #page_converter)
+      # @param crypto [Encryption::ModuleCrypto, nil] decryption of the chunk's pages, for an
+      #   encrypted column
       # @raise [UnsupportedError] for chunks without metadata (encrypted) or stored in another file
-      def initialize(io, chunk, column, converter: column.converter, lazy: false)
+      def initialize(io, chunk, column, converter: column.converter, lazy: false, crypto: nil)
         @io = io
         @chunk = chunk
         @column = column
@@ -59,6 +61,11 @@ module Herringbone
         start = dict if dict&.positive? && dict < start
         @pos = start
         @start = start
+        @crypto = crypto
+        # An encrypted header's AAD depends on whether it is the dictionary page's, which only its
+        # position tells before it is decrypted
+        @dictionary_offset = (start < @meta.data_page_offset) ? start : nil
+        @ordinal = 0 # data pages read so far, part of an encrypted data page's AAD
         @locations = nil # OffsetIndex page locations, when jumping between pages
         @page_number = nil
         @total = @meta.num_values
@@ -154,6 +161,7 @@ module Herringbone
         load_dictionary
         @pos = @locations.fetch(index).offset
         @page_number = index
+        @ordinal = index
       end
 
       # Whether all of the chunk's values have been returned
@@ -196,7 +204,9 @@ module Herringbone
       #
       # @return [Array(Format::PageHeader, String)] the header and the (still compressed) body
       # @raise [FormatError] for a negative page size or a page that overruns the file
+      # @raise [DecryptionError] when an encrypted page does not decrypt
       def read_page
+        return read_encrypted_page if @crypto
         # With an OffsetIndex the page's size (header included) is known, so read exactly that
         loc = @page_number && @locations[@page_number]
         exact = loc && loc.offset == @pos && loc.compressed_page_size.positive?
@@ -220,6 +230,50 @@ module Herringbone
         body = (off.zero? && buf.bytesize == size) ? buf : buf.byteslice(off, size)
         @pos += hlen + size
         [header, body]
+      end
+
+      # Like #read_page, for an encrypted column: the header and the body are each an encrypted
+      # module, the header's starting with its length
+      #
+      # @return [Array(Format::PageHeader, String)] the header and the decrypted (still compressed) body
+      # @raise [FormatError] for a page that overruns the file
+      # @raise [DecryptionError] when the header or the body does not decrypt
+      def read_encrypted_page
+        loc = @page_number && @locations[@page_number]
+        exact = loc && loc.offset == @pos && loc.compressed_page_size.positive?
+        dictionary = @pos == @dictionary_offset
+        ordinal = dictionary ? nil : @ordinal
+        mod = read_module(@pos, exact ? loc.compressed_page_size : HEADER_GUESS)
+        type = dictionary ? Encryption::DICTIONARY_PAGE_HEADER : Encryption::DATA_PAGE_HEADER
+        header = Format::PageHeader.decode(@crypto.decrypt(type, mod, ordinal)).first
+        size = header.compressed_page_size
+        raise FormatError, "Negative page size in #{@column.dotted_path}" if size.nil? || size.negative?
+        buf, off = window(@pos + mod.bytesize, size + (exact ? 0 : READ_AHEAD), size)
+        if buf.bytesize - off < size
+          raise FormatError, "Column #{@column.dotted_path}: page overruns the file (read #{@seen} of #{@total} values)"
+        end
+        type = (header.type == Format::PageType::DICTIONARY_PAGE) ? Encryption::DICTIONARY_PAGE : Encryption::DATA_PAGE
+        body = @crypto.decrypt(type, buf.byteslice(off, size), ordinal)
+        @pos += mod.bytesize + size
+        @ordinal += 1 unless dictionary
+        [header, body]
+      end
+
+      # An encrypted module (length prefix included) at +pos+
+      #
+      # @param pos [Integer] file offset of the module
+      # @param guess [Integer] bytes to read when the buffer does not hold the length prefix
+      # @return [String] the module
+      # @raise [FormatError] when the module overruns the file
+      def read_module(pos, guess)
+        buf, off = window(pos, guess, 4)
+        len = buf.bytesize - off >= 4 && buf.byteslice(off, 4).unpack1("V")
+        raise FormatError, "Column #{@column.dotted_path}: encrypted page header overruns the file" unless len
+        buf, off = window(pos, 4 + len + READ_AHEAD, 4 + len)
+        if buf.bytesize - off < 4 + len
+          raise FormatError, "Column #{@column.dotted_path}: encrypted page header overruns the file"
+        end
+        buf.byteslice(off, 4 + len)
       end
 
       # Returns [buffer, offset] where buffer[offset..] holds at least +need+ bytes from file

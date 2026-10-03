@@ -397,8 +397,56 @@ module Herringbone
       field 16, :size_statistics, SizeStatistics
     end
 
-    # One column of a row group, plus the locations of its page index. Field id 8
-    # (crypto_metadata) is not supported.
+    # Modular encryption (Encryption.md)
+
+    # Algorithm settings shared by both algorithms: the AAD prefix (unless readers must supply
+    # it) and the file's unique id, which together make the file's part of every module's AAD.
+    class AesGcmV1 < S
+      field 1, :aad_prefix, :binary
+      field 2, :aad_file_unique, :binary
+      field 3, :supply_aad_prefix, :bool
+    end
+
+    # AES_GCM_CTR_V1: like AesGcmV1, but pages are encrypted with AES-CTR, without a tag.
+    class AesGcmCtrV1 < S
+      field 1, :aad_prefix, :binary
+      field 2, :aad_file_unique, :binary
+      field 3, :supply_aad_prefix, :bool
+    end
+
+    # Union of encryption algorithms; exactly one member is set.
+    class EncryptionAlgorithm < S
+      field 1, :aes_gcm_v1, AesGcmV1
+      field 2, :aes_gcm_ctr_v1, AesGcmCtrV1
+
+      # @return [AesGcmV1, AesGcmCtrV1, nil] whichever member is set
+      def settings = aes_gcm_v1 || aes_gcm_ctr_v1
+    end
+
+    # ColumnCryptoMetaData member: the column is encrypted with the footer key.
+    class EncryptionWithFooterKey < S; end
+
+    # ColumnCryptoMetaData member: the column is encrypted with a key of its own.
+    class EncryptionWithColumnKey < S
+      field 1, :path_in_schema, [:list, :string]
+      field 2, :key_metadata, :binary
+    end
+
+    # Union saying which key an encrypted column uses; exactly one member is set.
+    class ColumnCryptoMetaData < S
+      field 1, :encryption_with_footer_key, EncryptionWithFooterKey
+      field 2, :encryption_with_column_key, EncryptionWithColumnKey
+    end
+
+    # Stored in the clear before an encrypted footer (files with the PARE magic).
+    class FileCryptoMetaData < S
+      field 1, :encryption_algorithm, EncryptionAlgorithm
+      field 2, :key_metadata, :binary
+    end
+
+    # One column of a row group, plus the locations of its page index. In encrypted columns
+    # +crypto_metadata+ names the key, and +encrypted_column_metadata+ holds the ColumnMetaData
+    # when it is encrypted on its own.
     class ColumnChunk < S
       field 1, :file_path, :string
       field 2, :file_offset, :i64
@@ -407,6 +455,7 @@ module Herringbone
       field 5, :offset_index_length, :i32
       field 6, :column_index_offset, :i64
       field 7, :column_index_length, :i32
+      field 8, :crypto_metadata, ColumnCryptoMetaData
       field 9, :encrypted_column_metadata, :binary
     end
 
@@ -464,7 +513,8 @@ module Herringbone
       field 1, :type_order, TypeDefinedOrder
     end
 
-    # The file footer: schema, row groups and file-level metadata.
+    # The file footer: schema, row groups and file-level metadata. The encryption fields are
+    # only set in encrypted files with a plaintext footer.
     class FileMetaData < S
       field 1, :version, :i32
       field 2, :schema, [:list, SchemaElement]
@@ -473,6 +523,8 @@ module Herringbone
       field 5, :key_value_metadata, [:list, KeyValue]
       field 6, :created_by, :string
       field 7, :column_orders, [:list, ColumnOrder]
+      field 8, :encryption_algorithm, EncryptionAlgorithm
+      field 9, :footer_signing_key_metadata, :binary
     end
 
     # Bloom filters (BloomFilter.md). Each union has a single member, an empty struct.

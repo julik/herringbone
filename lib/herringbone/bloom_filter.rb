@@ -300,8 +300,6 @@ module Herringbone
       "#<#{self.class.name} #{num_bytes} bytes#{" for #{@column.dotted_path}" if @column}>"
     end
 
-    private
-
     # Header for this filter: split block algorithm, XXH64 hash, uncompressed
     #
     # @return [Format::BloomFilterHeader] the header
@@ -326,12 +324,17 @@ module Herringbone
     # @raise [IndexError] when there is no such row group
     # @raise [ArgumentError] when there is no such column
     # @raise [FormatError] when the filter is truncated or its header cannot be decoded
+    # @raise [DecryptionError] when the column is encrypted and its key was not given, or the
+    #   filter does not decrypt
     def bloom_filter(row_group_index, column)
       col = bloom_filter_column(column)
       rg = row_groups.fetch(row_group_index) { raise IndexError, "No row group #{row_group_index}" }
+      # Raises for an encrypted column without its key, whose metadata may be encrypted too
+      crypto = chunk_crypto(row_group_index, col)
       meta = rg.columns.fetch(col.index).meta_data
       offset = meta&.bloom_filter_offset
       return nil unless offset
+      return encrypted_bloom_filter(offset, col, crypto) if crypto
       length = meta.bloom_filter_length
       @io.seek(offset)
       if length
@@ -353,6 +356,36 @@ module Herringbone
     end
 
     private
+
+    # An encrypted bloom filter: the header and the bitset are two modules, one after the other
+    #
+    # @param offset [Integer] file offset of the header module
+    # @param col [Schema::Column] the leaf column
+    # @param crypto [Encryption::ModuleCrypto] decryption of the chunk's modules
+    # @return [BloomFilter, nil] nil when the filter is of an unsupported kind
+    # @raise [FormatError] when a module is truncated
+    # @raise [DecryptionError] when a module does not decrypt
+    def encrypted_bloom_filter(offset, col, crypto)
+      header_module = read_module_at(offset)
+      header = Format::BloomFilterHeader.decode(crypto.decrypt(Encryption::BLOOM_FILTER_HEADER, header_module)).first
+      return nil unless BloomFilter.supported_header?(header)
+      bitset = crypto.decrypt(Encryption::BLOOM_FILTER_BITSET, read_module_at(offset + header_module.bytesize))
+      raise FormatError, "Truncated bloom filter" unless bitset.bytesize == header.num_bytes
+      BloomFilter.new(bitset: bitset, column: col)
+    end
+
+    # @param offset [Integer] file offset of an encrypted module
+    # @return [String] the module, length prefix included
+    # @raise [FormatError] when it is cut off
+    def read_module_at(offset)
+      @io.seek(offset)
+      prefix = @io.read(4)
+      raise FormatError, "Truncated bloom filter" unless prefix&.bytesize == 4
+      len = prefix.unpack1("V")
+      body = @io.read(len)
+      raise FormatError, "Truncated bloom filter" unless body&.bytesize == len
+      prefix.b << body
+    end
 
     # Resolves the +column+ argument of #bloom_filter to a leaf column
     #

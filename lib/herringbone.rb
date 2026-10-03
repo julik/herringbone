@@ -38,8 +38,12 @@ module Herringbone
   class SchemaMismatch < EncodeError; end
 
   # The file (or the writer configuration) uses a Parquet feature Herringbone does not implement,
-  # such as encryption or a codec whose library is unavailable
+  # such as a codec whose library is unavailable
   class UnsupportedError < Error; end
+
+  # An encrypted file or column cannot be read: its key was not given, the key or AAD prefix is
+  # wrong, or the encrypted bytes were changed
+  class DecryptionError < Error; end
 end
 
 require_relative "herringbone/io_buffer_support"
@@ -48,6 +52,7 @@ require_relative "herringbone/codecs/lz4"
 require_relative "herringbone/codecs/lzo"
 require_relative "herringbone/thrift"
 require_relative "herringbone/format"
+require_relative "herringbone/encryption"
 require_relative "herringbone/encodings/rle"
 require_relative "herringbone/encodings/plain"
 require_relative "herringbone/encodings/delta"

@@ -119,7 +119,29 @@ module Herringbone
         @row_group = row_group
         @column = column
         @chunk = chunk
-        @meta = chunk.meta_data
+        # An encrypted footer leaves out the metadata of columns with their own key; without that
+        # key nothing is known about the chunk
+        @meta = chunk.meta_data || Format::ColumnMetaData.new(path_in_schema: column.path)
+      end
+
+      # @return [Boolean] whether the chunk is encrypted
+      def encrypted? = !@chunk.crypto_metadata.nil?
+
+      # Decryption of the chunk's modules (memoized)
+      # @return [Encryption::ModuleCrypto, nil] nil when the chunk is not encrypted or its key was
+      #   not given
+      def crypto
+        return @crypto if defined?(@crypto)
+        @crypto = @inspector.chunk_crypto(self)
+      end
+
+      # How the chunk is encrypted, without its key
+      # @return [Hash{Symbol => Object}, nil] { key: :footer or :column, key_metadata:, readable: },
+      #   nil for a plaintext chunk
+      def encryption
+        c = @chunk.crypto_metadata or return nil
+        with_column_key = c.encryption_with_column_key
+        {key: with_column_key ? :column : :footer, key_metadata: with_column_key&.key_metadata, readable: !crypto.nil?}
       end
 
       # @return [String] dotted path of the column, e.g. +"address.city"+
@@ -163,15 +185,16 @@ module Herringbone
       end
 
       # Where the chunk's first page starts
-      # @return [Integer] file offset
+      # @return [Integer, nil] file offset; nil when the chunk's metadata is encrypted and its key
+      #   was not given
       def start_offset = dictionary_page_offset || data_page_offset
 
       # The end according to the metadata; some writers under-report it (see #end_offset)
-      # @return [Integer] file offset just past the chunk
-      def declared_end_offset = start_offset + compressed_size
+      # @return [Integer, nil] file offset just past the chunk; nil when it is not known
+      def declared_end_offset = start_offset && start_offset + compressed_size
 
       # The end of the last page actually found (the declared end if the pages could not be walked)
-      # @return [Integer] file offset just past the chunk, never before #declared_end_offset
+      # @return [Integer, nil] file offset just past the chunk, never before #declared_end_offset
       def end_offset
         last = pages.last
         last ? [last.end_offset, declared_end_offset].max : declared_end_offset
@@ -215,7 +238,7 @@ module Herringbone
         return nil unless bloom_filter_offset
         return @meta.bloom_filter_length if @meta.bloom_filter_length
         return @bloom_filter_length if defined?(@bloom_filter_length)
-        @bloom_filter_length = @inspector.bloom_filter_size(bloom_filter_offset)
+        @bloom_filter_length = @inspector.bloom_filter_size(bloom_filter_offset, encrypted?)
       end
 
       # @return [Array(Integer, Integer), nil] [offset, length] of the chunk's ColumnIndex, nil when
@@ -268,9 +291,11 @@ module Herringbone
       end
 
       # Null count from the chunk statistics, else the sum over the data page headers
-      # @return [Integer, nil] nil when neither the statistics nor every data page has it
+      # @return [Integer, nil] nil when neither the statistics nor every data page has it, or the
+      #   chunk is encrypted and its key was not given
       def null_count
         return statistics.null_count if statistics&.null_count
+        return nil if encrypted? && !crypto
         counts = data_pages.map(&:num_nulls)
         counts.all? ? counts.sum : nil
       end
@@ -327,6 +352,7 @@ module Herringbone
           offset_index_offset: offset_index_range&.first,
           offset_index_length: offset_index_range&.last,
           external_file: external_file,
+          encryption: encryption,
           num_pages: pages.size,
           num_data_pages: data_pages.size,
           index_mismatches: index_mismatches.empty? ? nil : index_mismatches,
@@ -397,10 +423,10 @@ module Herringbone
       def uncompressed_size = @columns.sum { |c| c.uncompressed_size.to_i }
 
       # @return [Integer, nil] lowest start offset of the row group's chunks; nil without chunks
-      def start_offset = @columns.map(&:start_offset).min
+      def start_offset = @columns.filter_map(&:start_offset).min
 
       # @return [Integer, nil] highest end offset of the row group's chunks; nil without chunks
-      def end_offset = @columns.map(&:end_offset).max
+      def end_offset = @columns.filter_map(&:end_offset).max
 
       # @param path [String, Array<String>] dotted path (+"a.b"+) or path segments (+["a", "b"]+)
       # @return [ColumnChunkInfo, nil] the chunk of that column, nil when there is none
@@ -447,12 +473,19 @@ module Herringbone
 
     # +io+ is a random-access IO (responds to #seek and #read, e.g. File.open(path, "rb")). It is
     # left open.
+    #
+    # An encrypted file needs +decryption:+ (see Reader.new) when its footer is encrypted. With a
+    # plaintext footer it opens without keys, and the chunks whose key is missing are shown
+    # without their pages, page indexes and statistics.
+    #
     # @param io [IO] random-access IO positioned anywhere; only the footer is read here
+    # @param decryption [Hash{Symbol => Object}, nil] keys of an encrypted file, see Reader.new
     # @raise [ArgumentError] when +io+ does not support #seek and #read
     # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
-    # @raise [UnsupportedError] when the file is encrypted (PARE magic)
-    def initialize(io)
+    # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
+    def initialize(io, decryption: nil)
       @io = io
+      @decryption = Encryption::FileDecryptor.check_options(decryption)
       unless @io.respond_to?(:read) && @io.respond_to?(:seek)
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class}"
@@ -510,6 +543,12 @@ module Herringbone
     # @return [Boolean] whether any column chunk has a bloom filter
     def bloom_filters? = column_chunks.any?(&:bloom_filter_offset)
 
+    # How the file is encrypted (see Reader#encryption), nil for a file that is not
+    # @return [Hash{Symbol => Object}, nil] +:algorithm+, +:footer+, +:footer_key_metadata+,
+    #   +:aad_prefix+, +:supply_aad_prefix+, +:footer_verified+ and +:columns+ (path => { key:,
+    #   key_metadata:, readable: } for the encrypted columns of the first row group)
+    def encryption = @decryptor&.describe(@schema, @metadata.row_groups&.first&.columns || [])
+
     # The file-level key/value metadata, each entry described: ARROW:schema is decoded, JSON
     # values are parsed (pandas metadata summarized), binary values are shown as hex
     # @return [Array<Hash{Symbol => Object}>] each with :key, :bytesize, :format ("arrow_schema",
@@ -547,7 +586,8 @@ module Herringbone
         uncompressed_size: column_chunks.sum { |c| c.uncompressed_size.to_i },
         page_index: page_index?,
         bloom_filters: bloom_filters?,
-        column_orders: column_orders
+        column_orders: column_orders,
+        encryption: encryption
       }.tap { |h| h[:checksums] = checksum_summary.except(:mismatches) if checksums_verified? }
     end
 
@@ -685,6 +725,7 @@ module Herringbone
         rg = c.row_group.index
         col = c.column.index
         if c.pages.empty?
+          next unless c.start_offset
           segs << {kind: :chunk, start: c.start_offset, length: c.compressed_size, row_group: rg, column: col}
         else
           c.pages.each_with_index do |p, i|
@@ -711,7 +752,7 @@ module Herringbone
       # right after the chunk, at ColumnChunk.file_offset
       meta_copies = column_chunks.each_with_object({}) do |c, h|
         fo = c.chunk.file_offset
-        h[fo] = c if fo && fo >= c.end_offset
+        h[fo] = c if fo && c.end_offset && fo >= c.end_offset
       end
       out = []
       pos = 0
@@ -766,6 +807,17 @@ module Herringbone
       out << "codecs: #{s[:codecs].join(", ")}; data #{Inspector.human_bytes(s[:compressed_size])} compressed, " \
         "#{Inspector.human_bytes(s[:uncompressed_size])} uncompressed#{ratio_text(s[:uncompressed_size], s[:compressed_size])}"
       out << "page index: #{s[:page_index] ? "yes" : "no"}, bloom filters: #{s[:bloom_filters] ? "yes" : "no"}"
+      if (e = s[:encryption])
+        out << "encryption: #{e[:algorithm]}, #{e[:footer]} footer" \
+          "#{" (signature verified)" if e[:footer_verified]}" \
+          "#{", footer key metadata #{Inspector.display(e[:footer_key_metadata])}" if e[:footer_key_metadata]}" \
+          "#{", AAD prefix #{Inspector.display(e[:aad_prefix])}" if e[:aad_prefix]}" \
+          "#{", AAD prefix not stored" if e[:supply_aad_prefix]}"
+        e[:columns].each do |path, c|
+          out << "  #{path}: #{c[:key]} key#{" #{Inspector.display(c[:key_metadata])}" if c[:key_metadata]}" \
+            "#{" (no key given)" unless c[:readable]}"
+        end
+      end
       if (cs = checksum_summary)
         out << "page CRCs: #{cs[:ok]} ok, #{cs[:mismatch]} mismatched, #{cs[:absent]} without a CRC"
         cs[:mismatches].each do |m|
@@ -818,7 +870,12 @@ module Herringbone
           extras << "column index" if c.column_index_range
           extras << "offset index" if c.offset_index_range
           extras << "bloom filter" if c.bloom_filter_offset
+          extras << "encrypted" if c.encrypted?
           extras << "ERROR: #{c.error}" if c.error
+          unless c.start_offset
+            out << "  #{c.path}: encrypted, metadata and pages unavailable without its key"
+            next
+          end
           out << "  #{c.path}: #{c.codec} #{c.encodings.join(",")} " \
             "#{c.compressed_size}/#{c.uncompressed_size} bytes#{ratio_text(c.uncompressed_size, c.compressed_size)}, " \
             "#{c.num_values} values, #{c.pages.size} pages#{", #{extras.join(", ")}" unless extras.empty?}#{range}"
@@ -842,6 +899,15 @@ module Herringbone
 
     # ---- used by the info objects ----
 
+    # Decryption of an encrypted chunk's modules
+    # @param chunk [ColumnChunkInfo] an encrypted chunk
+    # @return [Encryption::ModuleCrypto, nil] nil when the chunk's key was not given
+    def chunk_crypto(chunk)
+      @decryptor&.chunk(chunk.row_group.index, chunk.row_group.row_group.ordinal, chunk.column, chunk.chunk)
+    rescue DecryptionError
+      nil
+    end
+
     # Walks page headers from the chunk's first page. Returns [pages, error_message_or_nil].
     # Mirrors the reader's tolerance: a chunk may extend past its declared total_compressed_size.
     # @param chunk [ColumnChunkInfo] chunk whose pages to walk
@@ -849,6 +915,10 @@ module Herringbone
     #   the walk stopped early (nil when every value was accounted for)
     def walk_pages(chunk)
       return [[], "column chunk stored in external file #{chunk.external_file}"] if chunk.external_file
+      if chunk.encrypted?
+        return [[], "encrypted, and its key was not given"] unless chunk.crypto
+        return [[], "encrypted, and its metadata with it"] unless chunk.start_offset
+      end
       pages = []
       pos = chunk.start_offset
       limit = footer_offset
@@ -860,9 +930,13 @@ module Herringbone
       while pos < limit && (seen < total || pos < declared_end)
         trailing = seen >= total
         begin
-          header, header_size = read_page_header(pos, limit)
+          header, header_size = if chunk.crypto
+            read_encrypted_page_header(chunk, pos, limit, pages)
+          else
+            read_page_header(pos, limit)
+          end
           page = page_info(pages.size, header, pos, header_size, chunk.column)
-        rescue Thrift::Error, FormatError => e
+        rescue Thrift::Error, FormatError, DecryptionError => e
           break if trailing
           return [pages, "corrupt page header at #{pos}: #{e.message}"]
         end
@@ -883,7 +957,8 @@ module Herringbone
     def read_column_index(chunk)
       offset, length = chunk.column_index_range
       return nil unless offset && length.positive?
-      ci = Format::ColumnIndex.decode(read_at(offset, length)).first
+      bytes = read_module(chunk, offset, length, Encryption::COLUMN_INDEX) or return nil
+      ci = Format::ColumnIndex.decode(bytes).first
       col = chunk.column
       mins = ci.min_values || []
       maxes = ci.max_values || []
@@ -898,7 +973,7 @@ module Herringbone
         repetition_level_histograms: ci.repetition_level_histograms,
         definition_level_histograms: ci.definition_level_histograms
       )
-    rescue Thrift::Error
+    rescue Thrift::Error, FormatError, DecryptionError
       nil
     end
 
@@ -908,7 +983,8 @@ module Herringbone
     def read_offset_index(chunk)
       offset, length = chunk.offset_index_range
       return nil unless offset && length.positive?
-      oi = Format::OffsetIndex.decode(read_at(offset, length)).first
+      bytes = read_module(chunk, offset, length, Encryption::OFFSET_INDEX) or return nil
+      oi = Format::OffsetIndex.decode(bytes).first
       OffsetIndexInfo.new(
         offset: offset, length: length,
         page_locations: (oi.page_locations || []).map do |l|
@@ -916,14 +992,21 @@ module Herringbone
         end,
         unencoded_byte_array_data_bytes: oi.unencoded_byte_array_data_bytes
       )
-    rescue Thrift::Error
+    rescue Thrift::Error, FormatError, DecryptionError
       nil
     end
 
-    # Size in bytes of the bloom filter at +offset+ (its Thrift header plus the bitset)
+    # Size in bytes of the bloom filter at +offset+ (its Thrift header plus the bitset). An
+    # encrypted filter is two modules, whose lengths are stored in the clear.
     # @param offset [Integer] file offset of the BloomFilterHeader
+    # @param encrypted [Boolean] whether the filter is encrypted
     # @return [Integer, nil] nil when the header can't be decoded or has no num_bytes
-    def bloom_filter_size(offset)
+    def bloom_filter_size(offset, encrypted = false)
+      if encrypted
+        header = read_at(offset, 4).unpack1("V") or return nil
+        bitset = read_at(offset + 4 + header, 4).unpack1("V") or return nil
+        return 8 + header + bitset
+      end
       buf = read_at(offset, 64)
       header, size = BloomFilterHeader.decode(buf)
       header.num_bytes ? size + header.num_bytes : nil
@@ -1617,19 +1700,20 @@ module Herringbone
     end
 
     # Reads the file size, the footer length and magic, and decodes the FileMetaData into @metadata
+    # (decrypting it, or checking its signature, in an encrypted file)
     # @return [void]
     # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
-    # @raise [UnsupportedError] when the file is encrypted (PARE magic)
+    # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def read_footer
       @io.seek(0, IO::SEEK_END)
       @file_size = @io.pos
       raise FormatError, "File too small to be Parquet (#{@file_size} bytes)" if @file_size < 12
       tail = read_at(@file_size - 8, 8)
-      raise UnsupportedError, "Encrypted Parquet files are not supported" if tail.byteslice(4, 4) == "PARE"
-      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
+      magic = tail.byteslice(4, 4)
+      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == Encryption::ENCRYPTED_MAGIC
       @footer_size = tail.unpack1("V")
       raise FormatError, "Footer length #{@footer_size} exceeds file size" if @footer_size + 12 > @file_size
-      @metadata = Format::FileMetaData.decode(read_at(footer_offset, @footer_size)).first
+      @metadata, @decryptor = Encryption.read_footer(read_at(footer_offset, @footer_size), magic, @decryption)
     rescue Thrift::Error => e
       raise FormatError, "Corrupt file metadata: #{e.message}"
     end
@@ -1651,6 +1735,42 @@ module Herringbone
         @window = (@io.read(WINDOW) || "".b).b
         @window.byteslice(0, len)
       end
+    end
+
+    # A module of an encrypted chunk, decrypted
+    # @param chunk [ColumnChunkInfo] the chunk the module belongs to
+    # @param offset [Integer] file offset of the module
+    # @param length [Integer] its length, length prefix included
+    # @param type [Integer] module type
+    # @return [String, nil] the plaintext (the bytes as stored for a plaintext chunk), nil when the
+    #   chunk's key was not given
+    # @raise [DecryptionError] when the module does not decrypt
+    def read_module(chunk, offset, length, type)
+      bytes = read_at(offset, length)
+      return bytes unless chunk.encrypted?
+      chunk.crypto&.decrypt(type, bytes)
+    end
+
+    # Decrypts and decodes the encrypted page header at +pos+. Its AAD depends on whether it is the
+    # dictionary page's (the first page, when the chunk has a dictionary) and on the number of
+    # data pages before it.
+    # @param chunk [ColumnChunkInfo] the chunk, whose key is available
+    # @param pos [Integer] file offset of the header module
+    # @param limit [Integer] offset the header must not extend past (the footer's start)
+    # @param pages [Array<PageInfo>] the chunk's pages before this one
+    # @return [Array(Format::PageHeader, Integer)] the header and the module's size in bytes
+    # @raise [FormatError] when the module does not fit before +limit+
+    # @raise [DecryptionError] when it does not decrypt
+    def read_encrypted_page_header(chunk, pos, limit, pages)
+      raise FormatError, "no room for a page header" if pos + 4 > limit
+      size = read_at(pos, 4).unpack1("V") + 4
+      raise FormatError, "encrypted page header overruns the data section" if pos + size > limit
+      plain = if pages.empty? && chunk.dictionary_page_offset == pos
+        chunk.crypto.decrypt(Encryption::DICTIONARY_PAGE_HEADER, read_at(pos, size))
+      else
+        chunk.crypto.decrypt(Encryption::DATA_PAGE_HEADER, read_at(pos, size), pages.count(&:data?))
+      end
+      [Format::PageHeader.decode(plain).first, size]
     end
 
     # Decodes the page header at +pos+, reading more bytes when it is larger than the first guess

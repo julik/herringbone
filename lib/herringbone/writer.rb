@@ -40,6 +40,9 @@ module Herringbone
   #                    an Array of column paths, or { "path" => true | { ndv:, fpp:, max_bytes: } }.
   #                    Without ndv: the distinct values of each row group are counted. fpp defaults
   #                    to 0.01 and max_bytes to 1MB. Filters are written after each row group.
+  #   encryption:      Parquet modular encryption: { footer_key: "...", columns: { "ssn" => "..." } }.
+  #                    Without columns: every column is encrypted with the footer key. See
+  #                    #initialize for the settings.
   #
   # Statistics and page indexes (ColumnIndex/OffsetIndex) are always written.
   class Writer
@@ -98,6 +101,8 @@ module Herringbone
     # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
     # @option options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
     #   columns to write split block bloom filters for
+    # @option options [Hash{Symbol => Object}, nil] :encryption (nil) modular encryption settings,
+    #   see #initialize
     # @yield [writer] the open writer
     # @yieldparam writer [Writer] writer to append rows to
     # @yieldreturn [Object] returned by open
@@ -136,13 +141,28 @@ module Herringbone
     # @param metadata [Hash{#to_s => #to_s}] key/value metadata for the footer
     # @param bloom_filters [Boolean, Array<String>, Hash{String => Boolean, Hash}, nil] see the class
     #   description
+    # @param encryption [Hash{Symbol => Object}, false, nil] encrypts the file (Parquet modular encryption).
+    #   Keys are 16, 24 or 32-byte Strings; key metadata is stored as given, for readers to find
+    #   the keys by.
+    # @option encryption [String] :footer_key key of the footer, and of columns without their own
+    # @option encryption [String, nil] :footer_key_metadata stored for the footer key
+    # @option encryption [Hash{String => String, Hash, Symbol}, nil] :columns column path or field
+    #   name => key, +{key:, key_metadata:}+ or +:footer+. Columns not listed are not encrypted;
+    #   without this option every column is, with the footer key.
+    # @option encryption [Boolean] :plaintext_footer (false) store the footer in the clear (signed),
+    #   so readers without keys can read the plaintext columns
+    # @option encryption [Symbol] :algorithm (:aes_gcm) or :aes_gcm_ctr, which encrypts pages with
+    #   AES-CTR (faster, but page contents are not authenticated)
+    # @option encryption [String, nil] :aad_prefix identity of the file, which readers can check
+    # @option encryption [Boolean] :store_aad_prefix (true) false leaves it out of the file, so
+    #   readers must supply it
     # @raise [ArgumentError] for an invalid IO, schema or option, or a compression level the codec
     #   does not take
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
     # @raise [UnsupportedError] when the codec is not supported
     def initialize(io, schema, compression: :snappy, compression_level: nil, row_group_bytes: 16 * 1024 * 1024, row_group_rows: nil,
       page_bytes: 1024 * 1024, page_rows: 20_000, data_page_version: 1, dictionary: true, encodings: {},
-      metadata: {}, bloom_filters: nil)
+      metadata: {}, bloom_filters: nil, encryption: nil)
       raise ArgumentError, "Expected a Herringbone::Schema, got #{schema.class}" unless schema.is_a?(Schema)
       @schema = schema
       @codec = Compression.codec_id(compression)
@@ -166,7 +186,8 @@ module Herringbone
       @encodings.each { |path, enc| check_encoding!(columns[path], enc) }
       @metadata = metadata
       @bloom_filters = bloom_filter_config(bloom_filters)
-      @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter] for the row group being written
+      @pending_bloom_filters = [] # [ColumnMetaData, BloomFilter, ModuleCrypto] for the row group being written
+      @encryption = encryption ? Encryption::FileEncryptor.new(encryption, schema) : nil
       @row_groups = []
       @total_rows = 0
       @pos = 0
@@ -174,7 +195,7 @@ module Herringbone
       @aborted = false
       @bytes_per_row = nil
       @io = check_io!(io)
-      write_raw(MAGIC)
+      write_raw(@encryption ? @encryption.magic : MAGIC)
       reset_buffers
     end
 
@@ -255,6 +276,7 @@ module Herringbone
     #
     # @param num_rows [Integer] rows in the row group
     # @param copies [Hash{Integer => CopiedChunk}] column index => chunk to copy instead of encoding
+    #   (only plaintext chunks, into columns this writer does not encrypt)
     # @param codecs [Hash{Integer => Integer}] column index => codec id for an encoded chunk, instead
     #   of the +compression:+ option
     # @param bloom_filters [Hash{Integer => Boolean}] column index => true to give an encoded chunk a
@@ -264,6 +286,9 @@ module Herringbone
     # @raise [Error] when the writer is closed
     def write_row_group(num_rows, copies: {}, codecs: {}, bloom_filters: {}, sorting_columns: nil)
       raise Error, "Writer is closed" if @closed
+      if @encryption && (encrypted = copies.keys.find { |i| @encryption.encrypted?(i) })
+        raise ArgumentError, "Cannot copy a chunk into the encrypted column #{@schema.columns[encrypted].dotted_path}"
+      end
       start = @pos
       chunks = @schema.columns.map do |col|
         if (copy = copies[col.index])
@@ -287,6 +312,12 @@ module Herringbone
       @total_rows += num_rows
       reset_buffers
     end
+
+    # Internal (used by Redaction): whether the column is encrypted in this file
+    #
+    # @param index [Integer] leaf column index
+    # @return [Boolean]
+    def encrypted_column?(index) = @encryption&.encrypted?(index) || false
 
     # Internal (used by Redaction): shreds one value per row of a top-level field into the buffers,
     # for #write_row_group. Other fields are left as they are, so the caller decides which columns
@@ -314,6 +345,7 @@ module Herringbone
       return if @closed
       flush_row_group
       write_page_indexes
+      @encryption&.finish(@row_groups)
       meta = Format::FileMetaData.new(
         version: 2,
         schema: @schema.to_elements,
@@ -323,10 +355,10 @@ module Herringbone
         created_by: "herringbone-ruby #{VERSION}",
         column_orders: @schema.columns.map { Format::ColumnOrder.new(type_order: Format::TypeDefinedOrder.new) }
       )
-      footer = meta.encode
+      footer = @encryption ? @encryption.footer(meta) : meta.encode
       write_raw(footer)
       write_raw([footer.bytesize].pack("V"))
-      write_raw(MAGIC)
+      write_raw(@encryption ? @encryption.magic : MAGIC)
       @io.flush if @io.respond_to?(:flush)
       @closed = true
     end
@@ -644,6 +676,7 @@ module Herringbone
         @encodings[path] || E::PLAIN
       end
 
+      crypto = @encryption&.chunk(@row_groups.size, col.index)
       chunk_start = @pos
       uncompressed_total = 0
       dictionary_offset = nil
@@ -654,7 +687,7 @@ module Herringbone
           type: Format::PageType::DICTIONARY_PAGE,
           dictionary_page_header: Format::DictionaryPageHeader.new(num_values: dict_values.size, encoding: E::PLAIN)
         )
-        uncompressed_total += write_page(header, plain, codec: codec)
+        uncompressed_total += write_page(header, plain, codec: codec, crypto: crypto)
       end
 
       data_offset = @pos
@@ -687,11 +720,12 @@ module Herringbone
         encoded = encode_values(page_values, value_encoding, type, col.type_length, dict_values&.size)
         rep_bytes = max_rep.positive? ? Encodings::RLE.encode_hybrid(reps, max_rep.bit_length) : "".b
         def_bytes = max_def.positive? ? Encodings::RLE.encode_hybrid(defs, max_def.bit_length) : "".b
+        page_crypto = crypto && [crypto, pages.size]
         uncompressed_total += if @data_page_version == 1
-          write_data_page_v1(n, rep_bytes, def_bytes, encoded, value_encoding, codec)
+          write_data_page_v1(n, rep_bytes, def_bytes, encoded, value_encoding, codec, page_crypto)
         else
           num_rows = max_rep.zero? ? n : reps.count(0)
-          write_data_page_v2(n, n - non_null, num_rows, rep_bytes, def_bytes, encoded, value_encoding, codec)
+          write_data_page_v2(n, n - non_null, num_rows, rep_bytes, def_bytes, encoded, value_encoding, codec, page_crypto)
         end
         pages << PageInfo.new(page_offset, @pos - page_offset, first_row, n - non_null, non_null, range)
         first_row += max_rep.zero? ? n : reps.count(0)
@@ -714,9 +748,9 @@ module Herringbone
       )
       chunk = Format::ColumnChunk.new(file_offset: chunk_start, meta_data: meta)
       if bloom
-        @pending_bloom_filters << [meta, build_bloom_filter(col, bloom, dict_values, values)]
+        @pending_bloom_filters << [meta, build_bloom_filter(col, bloom, dict_values, values), crypto]
       end
-      @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages)]
+      @page_indexes << [chunk, column_index_for(col, pages, order), offset_index_for(pages), crypto]
       chunk
     end
 
@@ -812,19 +846,22 @@ module Herringbone
 
     # Page indexes go after the last row group: all column indexes, then all offset indexes.
     # A copied chunk brings its ColumnIndex already encoded, and may come without either index.
+    # Those of encrypted columns are encrypted.
     #
     # @return [void]
     def write_page_indexes
-      @page_indexes.each do |chunk, column_index, _|
+      @page_indexes.each do |chunk, column_index, _, crypto|
         next unless column_index
         bytes = column_index.is_a?(String) ? column_index : column_index.encode
+        bytes = crypto.encrypt(Encryption::COLUMN_INDEX, bytes) if crypto
         chunk.column_index_offset = @pos
         chunk.column_index_length = bytes.bytesize
         write_raw(bytes)
       end
-      @page_indexes.each do |chunk, _, offset_index|
+      @page_indexes.each do |chunk, _, offset_index, crypto|
         next unless offset_index
         bytes = offset_index.encode
+        bytes = crypto.encrypt(Encryption::OFFSET_INDEX, bytes) if crypto
         chunk.offset_index_offset = @pos
         chunk.offset_index_length = bytes.bytesize
         write_raw(bytes)
@@ -900,12 +937,18 @@ module Herringbone
     end
 
     # Bloom filters go right after the row group's column chunks, in column order. A copied
-    # chunk brings its filter already encoded.
+    # chunk brings its filter already encoded. In an encrypted column the header and the bitset
+    # are encrypted separately.
     #
     # @return [void]
     def write_bloom_filters
-      @pending_bloom_filters.each do |meta, filter|
-        bytes = filter.is_a?(String) ? filter : filter.encode
+      @pending_bloom_filters.each do |meta, filter, crypto|
+        bytes = if crypto
+          crypto.encrypt(Encryption::BLOOM_FILTER_HEADER, filter.header.encode) <<
+            crypto.encrypt(Encryption::BLOOM_FILTER_BITSET, filter.bitset)
+        else
+          filter.is_a?(String) ? filter : filter.encode
+        end
         meta.bloom_filter_offset = @pos
         meta.bloom_filter_length = bytes.bytesize
         write_raw(bytes)
@@ -1032,18 +1075,30 @@ module Herringbone
       Compression.compress(codec, data, (codec == @codec) ? @compression_level : nil)
     end
 
+    # In an encrypted column the body and the header are encrypted; the CRC covers the body as
+    # stored, encrypted.
+    #
     # @param header [Format::PageHeader] header; sizes and CRC32 are filled in here
     # @param body [String] uncompressed page body
     # @param compressed [String, nil] bytes to write as the page body, when already prepared (v2 data
     #   pages, whose levels stay uncompressed); +body+ is compressed otherwise
     # @param codec [Integer] codec id to compress +body+ with
+    # @param crypto [Encryption::ModuleCrypto, nil] encryption of the column's modules
+    # @param ordinal [Integer, nil] data page ordinal within the chunk; nil for a dictionary page
     # @return [Integer]
-    def write_page(header, body, compressed = nil, codec: @codec)
+    def write_page(header, body, compressed = nil, codec: @codec, crypto: nil, ordinal: nil)
       compressed ||= compress(codec, body)
       header.uncompressed_page_size ||= body.bytesize
+      dictionary = header.type == Format::PageType::DICTIONARY_PAGE
+      if crypto
+        compressed = crypto.encrypt(dictionary ? Encryption::DICTIONARY_PAGE : Encryption::DATA_PAGE, compressed, ordinal)
+      end
       header.compressed_page_size = compressed.bytesize
       header.crc = Zlib.crc32(compressed).then { |c| (c >= 0x8000_0000) ? c - 0x1_0000_0000 : c }
       encoded = header.encode
+      if crypto
+        encoded = crypto.encrypt(dictionary ? Encryption::DICTIONARY_PAGE_HEADER : Encryption::DATA_PAGE_HEADER, encoded, ordinal)
+      end
       write_raw(encoded)
       write_raw(compressed)
       encoded.bytesize + header.uncompressed_page_size
@@ -1057,8 +1112,10 @@ module Herringbone
     # @param encoded [String] encoded values
     # @param encoding [Integer] encoding id of the values
     # @param codec [Integer] codec id to compress the page with
+    # @param page_crypto [Array(Encryption::ModuleCrypto, Integer), nil] encryption of the column's
+    #   modules and the page's ordinal, for an encrypted column
     # @return [Integer] uncompressed size including the header
-    def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding, codec)
+    def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding, codec, page_crypto)
       body = String.new(encoding: Encoding::BINARY)
       body << [rep_bytes.bytesize].pack("V") << rep_bytes unless rep_bytes.empty?
       body << [def_bytes.bytesize].pack("V") << def_bytes unless def_bytes.empty?
@@ -1070,7 +1127,7 @@ module Herringbone
           definition_level_encoding: E::RLE, repetition_level_encoding: E::RLE
         )
       )
-      write_page(header, body, codec: codec)
+      write_page(header, body, codec: codec, crypto: page_crypto&.first, ordinal: page_crypto&.last)
     end
 
     # A DATA_PAGE_V2: levels without length prefixes and uncompressed, then the compressed values
@@ -1083,8 +1140,10 @@ module Herringbone
     # @param encoded [String] encoded values
     # @param encoding [Integer] encoding id of the values
     # @param codec [Integer] codec id to compress the values with
+    # @param page_crypto [Array(Encryption::ModuleCrypto, Integer), nil] encryption of the column's
+    #   modules and the page's ordinal, for an encrypted column
     # @return [Integer] uncompressed size including the header
-    def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding, codec)
+    def write_data_page_v2(n, nulls, rows, rep_bytes, def_bytes, encoded, encoding, codec, page_crypto)
       compressed = compress(codec, encoded)
       header = Format::PageHeader.new(
         type: Format::PageType::DATA_PAGE_V2,
@@ -1096,7 +1155,8 @@ module Herringbone
           is_compressed: codec != Format::Codec::UNCOMPRESSED
         )
       )
-      write_page(header, "".b, rep_bytes + def_bytes + compressed, codec: codec)
+      write_page(header, "".b, rep_bytes + def_bytes + compressed, codec: codec, crypto: page_crypto&.first,
+        ordinal: page_crypto&.last)
     end
 
     # Statistics and column index bounds longer than this are truncated, see #truncate_min

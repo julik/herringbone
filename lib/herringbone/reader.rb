@@ -21,6 +21,11 @@ module Herringbone
   #              seconds as an Integer), a timezone object Time#getlocal accepts (e.g. a
   #              TZInfo::Timezone), or anything responding to #at such as an
   #              ActiveSupport::TimeZone (Time.zone), which yields ActiveSupport::TimeWithZone.
+  #   decryption: keys for a file written with Parquet modular encryption:
+  #              { footer_key: "...", columns: { "ssn" => "..." }, aad_prefix: "..." }, and/or
+  #              keys: ->(key_metadata) { ... } (or a Hash) to look keys up by the key metadata
+  #              stored in the file. Keys are 16, 24 or 32-byte Strings. Plaintext columns of a
+  #              file with a plaintext footer can be read without keys.
   class Reader
     # The 4 bytes a Parquet file starts and ends with
     MAGIC = "PAR1"
@@ -43,9 +48,19 @@ module Herringbone
     # @param keys [Symbol, String] +:string+ or +:symbol+, the key type of row and struct Hashes
     # @param time_zone [String, Integer, Object, nil] zone timestamps are returned in (see the
     #   class docs); nil keeps them in UTC
-    # @raise [ArgumentError] when +io+ cannot seek and read, or +keys+ / +time_zone+ are invalid
+    # @param decryption [Hash{Symbol => Object}, nil] keys for an encrypted file (see the class docs)
+    # @option decryption [String] :footer_key key of the footer (and of the columns encrypted with it)
+    # @option decryption [Hash{String => String}] :columns column path or field name => key
+    # @option decryption [#call, Hash{String => String}] :keys key metadata => key, for the keys not
+    #   given above; returns nil for a key that is not available
+    # @option decryption [String] :aad_prefix the file's AAD prefix, when it does not store it (or
+    #   to check the stored one)
+    # @raise [ArgumentError] when +io+ cannot seek and read, or +keys+ / +time_zone+ /
+    #   +decryption+ are invalid
     # @raise [FormatError] when the footer is missing or cannot be decoded
-    def initialize(io, keys: :string, time_zone: nil)
+    # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted, or its
+    #   signature or a column's metadata does not check out
+    def initialize(io, keys: :string, time_zone: nil, decryption: nil)
       unless io.respond_to?(:seek) && io.respond_to?(:read)
         raise ArgumentError, "Herringbone::Reader expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.is_a?(String) ? "a String" : io.class}" \
@@ -55,6 +70,7 @@ module Herringbone
       raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}" unless KEY_MODES.include?(keys)
       @symbolize = keys == :symbol
       @zone_converter = zone_converter(time_zone)
+      @decryption = Encryption::FileDecryptor.check_options(decryption)
       @io = io
       @file_metadata = read_footer
       @schema = Schema.from_elements(@file_metadata.schema)
@@ -162,7 +178,7 @@ module Herringbone
         partial = ranges != [[0, rg.num_rows]]
         cursors = fields.map do |f|
           f.leaves.map do |col|
-            reader = ColumnChunkReader.new(@io, rg.columns.fetch(col.index), col, converter: converters[col.index], lazy: true)
+            reader = chunk_reader(rg_index, col, converter: converters[col.index], lazy: true)
             reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
             [col.index, ColumnCursor.new(reader)]
           end
@@ -288,9 +304,56 @@ module Herringbone
       @page_indexes ||= {}
       @page_indexes[[row_group_index, column.index]] ||= begin
         chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
-        [read_struct(Format::ColumnIndex, chunk.column_index_offset, chunk.column_index_length),
-          read_struct(Format::OffsetIndex, chunk.offset_index_offset, chunk.offset_index_length)]
+        crypto = (chunk.column_index_offset || chunk.offset_index_offset) && chunk_crypto(row_group_index, column)
+        [read_struct(Format::ColumnIndex, chunk.column_index_offset, chunk.column_index_length, crypto, Encryption::COLUMN_INDEX),
+          read_struct(Format::OffsetIndex, chunk.offset_index_offset, chunk.offset_index_length, crypto, Encryption::OFFSET_INDEX)]
       end
+    end
+
+    # How the file is encrypted, without needing its keys; nil for a file that is not encrypted.
+    # +columns+ lists the encrypted columns (as the first row group has them), with the key
+    # metadata of their own key, if any, and whether their key is available.
+    #
+    #   reader.encryption
+    #   # => { algorithm: :aes_gcm, footer: :encrypted, footer_key_metadata: "kf", aad_prefix: nil,
+    #   #      supply_aad_prefix: false, footer_verified: false,
+    #   #      columns: { "ssn" => { key: :column, key_metadata: "kc1", readable: true } } }
+    #
+    # @return [Hash{Symbol => Object}, nil] +:algorithm+ (+:aes_gcm+ or +:aes_gcm_ctr+), +:footer+
+    #   (+:encrypted+ or +:plaintext+), +:footer_key_metadata+, +:aad_prefix+ (when stored),
+    #   +:supply_aad_prefix+, +:footer_verified+ (whether a plaintext footer's signature was
+    #   checked) and +:columns+
+    def encryption = @decryptor&.describe(@schema, row_groups.first&.columns || [])
+
+    # Internal (used by Redaction): the keys and settings of an encrypted file
+    #
+    # @return [Encryption::FileDecryptor, nil] nil for a file that is not encrypted
+    attr_reader :decryptor
+
+    # Internal: the decryption of one column chunk's modules
+    #
+    # @param row_group_index [Integer] position of the row group in the footer
+    # @param column [Schema::Column] leaf column
+    # @return [Encryption::ModuleCrypto, nil] nil when the chunk is not encrypted
+    # @raise [DecryptionError] when the chunk is encrypted and its key was not given
+    def chunk_crypto(row_group_index, column)
+      return nil unless @decryptor
+      rg = row_groups.fetch(row_group_index)
+      @decryptor.chunk(row_group_index, rg.ordinal, column, rg.columns.fetch(column.index))
+    end
+
+    # Internal: a ColumnChunkReader for a leaf column of a row group, decrypting when needed
+    #
+    # @param row_group_index [Integer] position of the row group in the footer
+    # @param column [Schema::Column] leaf column
+    # @param options [Hash{Symbol => Object}] passed to ColumnChunkReader.new
+    # @option options [Proc, nil] :converter physical value => Ruby value
+    # @option options [Boolean] :lazy leave non-dictionary values physical
+    # @return [ColumnChunkReader]
+    # @raise [DecryptionError] when the chunk is encrypted and its key was not given
+    def chunk_reader(row_group_index, column, **options)
+      chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
+      ColumnChunkReader.new(@io, chunk, column, crypto: chunk_crypto(row_group_index, column), **options)
     end
 
     # Short summary for the console, without the schema
@@ -348,7 +411,7 @@ module Herringbone
         rg = row_groups[rg_index]
         partial = ranges != [[0, rg.num_rows]]
         open = lambda do |col|
-          reader = ColumnChunkReader.new(@io, rg.columns.fetch(col.index), col, converter: converters[col.index], lazy: true)
+          reader = chunk_reader(rg_index, col, converter: converters[col.index], lazy: true)
           reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
           reader
         end
@@ -458,14 +521,18 @@ module Herringbone
     # @param klass [Class] Format struct class to decode with (responds to .decode)
     # @param offset [Integer, nil] file offset of the struct
     # @param length [Integer, nil] byte length of the struct
+    # @param crypto [Encryption::ModuleCrypto, nil] decryption of the chunk's modules
+    # @param type [Integer, nil] the struct's module type, when encrypted
     # @return [Object, nil] the decoded +klass+ instance, or nil when absent, truncated or corrupt
-    def read_struct(klass, offset, length)
+    # @raise [DecryptionError] when an encrypted struct does not decrypt
+    def read_struct(klass, offset, length, crypto = nil, type = nil)
       return nil unless offset && length&.positive?
       @io.seek(offset)
       bytes = @io.read(length)
       return nil unless bytes&.bytesize == length
+      bytes = crypto.decrypt(type, bytes.b) if crypto
       klass.decode(bytes.b).first
-    rescue Thrift::Error
+    rescue Thrift::Error, FormatError
       nil # a damaged index only means pages cannot be skipped
     end
 
@@ -579,22 +646,26 @@ module Herringbone
     # Reads and decodes the footer: the FileMetaData Thrift struct, its 4-byte little-endian
     # length and the closing magic.
     #
+    # In an encrypted file the footer is decrypted (or its signature checked), and so is the
+    # metadata of the columns whose key is available.
+    #
     # @return [Format::FileMetaData] the decoded footer
     # @raise [FormatError] when the file is too short, lacks the magic or the footer is corrupt
-    # @raise [UnsupportedError] for an encrypted file (+PARE+ magic)
+    # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def read_footer
       @io.seek(0, IO::SEEK_END)
       size = @io.pos
       raise FormatError, "File too small to be Parquet (#{size} bytes)" if size < 12
       @io.seek(size - 8)
       tail = @io.read(8)
-      raise UnsupportedError, "Encrypted Parquet files are not supported" if tail.byteslice(4, 4) == "PARE"
-      raise FormatError, "Missing PAR1 footer magic" unless tail.byteslice(4, 4) == MAGIC
+      magic = tail.byteslice(4, 4)
+      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == Encryption::ENCRYPTED_MAGIC
       footer_len = tail.unpack1("V")
       raise FormatError, "Footer length #{footer_len} exceeds file size" if footer_len + 12 > size
       @io.seek(size - 8 - footer_len)
-      footer = @io.read(footer_len)
-      Format::FileMetaData.decode(footer).first
+      footer = @io.read(footer_len).b
+      meta, @decryptor = Encryption.read_footer(footer, magic, @decryption)
+      meta
     rescue Thrift::Error => e
       raise FormatError, "Corrupt file metadata: #{e.message}"
     end
