@@ -485,7 +485,7 @@ module Herringbone
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def initialize(io, decryption: nil)
       @io = io
-      @decryption = DecryptionConfiguration.from(decryption)
+      @decryption = decryption.nil? ? nil : DecryptionConfiguration.from(decryption)
       unless @io.respond_to?(:read) && @io.respond_to?(:seek)
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class}"
@@ -1715,10 +1715,15 @@ module Herringbone
       raise FormatError, "File too small to be Parquet (#{@file_size} bytes)" if @file_size < 12
       tail = read_at(@file_size - 8, 8)
       magic = tail.byteslice(4, 4)
-      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == Encryption::ENCRYPTED_MAGIC
+      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == Reader::ENCRYPTED_MAGIC
       @footer_size = tail.unpack1("V")
       raise FormatError, "Footer length #{@footer_size} exceeds file size" if @footer_size + 12 > @file_size
-      @metadata, @decryptor = Encryption.read_footer(read_at(footer_offset, @footer_size), magic, @decryption)
+      footer = read_at(footer_offset, @footer_size)
+      if magic == MAGIC
+        @metadata = Format::FileMetaData.decode(footer).first
+        return unless @metadata.encryption_algorithm
+      end
+      @metadata, @decryptor = Encryption.read_footer(footer, magic, @decryption)
     rescue Thrift::Error => e
       raise FormatError, "Corrupt file metadata: #{e.message}"
     end

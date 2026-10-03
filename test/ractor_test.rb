@@ -15,6 +15,8 @@ class RactorTest < Minitest::Test
   ].freeze
 
   def setup
+    # Ractors cannot autoload before Ruby 3.4; later Rubies load from any Ractor
+    Herringbone.eager_load! if RUBY_VERSION < "3.4"
     @experimental = Warning[:experimental]
     Warning[:experimental] = false
     @dir = Dir.mktmpdir

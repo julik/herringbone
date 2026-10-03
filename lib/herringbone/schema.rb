@@ -844,3 +844,5 @@ module Herringbone
     end
   end
 end
+
+require_relative "active_record"

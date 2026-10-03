@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "stringio"
-require "pathname"
 require_relative "herringbone/version"
 
 # Pure-Ruby reader and writer for Apache Parquet files
@@ -46,32 +45,68 @@ module Herringbone
   class DecryptionError < Error; end
 end
 
-require_relative "herringbone/io_buffer_support"
-require_relative "herringbone/codecs/snappy"
-require_relative "herringbone/codecs/lz4"
-require_relative "herringbone/codecs/lzo"
-require_relative "herringbone/thrift"
-require_relative "herringbone/format"
-require_relative "herringbone/encryption"
-require_relative "herringbone/key"
-require_relative "herringbone/encryption_configuration"
-require_relative "herringbone/encodings/rle"
-require_relative "herringbone/encodings/plain"
-require_relative "herringbone/encodings/delta"
-require_relative "herringbone/compression"
-require_relative "herringbone/types"
-require_relative "herringbone/schema"
-require_relative "herringbone/active_record"
-require_relative "herringbone/reader"
-require_relative "herringbone/byte_values"
-require_relative "herringbone/writer"
-require_relative "herringbone/inferring_writer"
-require_relative "herringbone/simple_writer"
-require_relative "herringbone/xxhash"
-require_relative "herringbone/bloom_filter"
-require_relative "herringbone/inspector"
-require_relative "herringbone/visualizer"
-require_relative "herringbone/redaction"
+module Herringbone
+  # Everything else loads on first use, so a process that only reads plain files never loads the
+  # writer, the inspector or OpenSSL. Herringbone.eager_load! loads it all (Ractors on Ruby < 3.4
+  # need that: they cannot autoload).
+
+  # Directory holding the files that are autoloaded
+  LIB = File.expand_path("herringbone", __dir__)
+  private_constant :LIB
+
+  autoload :BloomFilter, "#{LIB}/bloom_filter"
+  autoload :ByteValues, "#{LIB}/byte_values"
+  autoload :Compression, "#{LIB}/compression"
+  autoload :DecryptionConfiguration, "#{LIB}/encryption_configuration"
+  autoload :Encryption, "#{LIB}/encryption"
+  autoload :EncryptionConfiguration, "#{LIB}/encryption_configuration"
+  autoload :Format, "#{LIB}/format"
+  autoload :InferringWriter, "#{LIB}/inferring_writer"
+  autoload :Inspector, "#{LIB}/inspector"
+  autoload :IOBufferSupport, "#{LIB}/io_buffer_support"
+  autoload :Key, "#{LIB}/key"
+  autoload :MissingCodecError, "#{LIB}/compression"
+  autoload :Reader, "#{LIB}/reader"
+  autoload :Redaction, "#{LIB}/redaction"
+  autoload :Schema, "#{LIB}/schema"
+  autoload :SimpleWriter, "#{LIB}/simple_writer"
+  autoload :Thrift, "#{LIB}/thrift"
+  autoload :Types, "#{LIB}/types"
+  autoload :Visualizer, "#{LIB}/visualizer"
+  autoload :Writer, "#{LIB}/writer"
+  autoload :XXHash, "#{LIB}/xxhash"
+
+  module Codecs
+    autoload :LZ4, "#{LIB}/codecs/lz4"
+    autoload :LZO, "#{LIB}/codecs/lzo"
+    autoload :Snappy, "#{LIB}/codecs/snappy"
+  end
+
+  module Encodings
+    autoload :ByteStreamSplit, "#{LIB}/encodings/delta"
+    autoload :Delta, "#{LIB}/encodings/delta"
+    autoload :Plain, "#{LIB}/encodings/plain"
+    autoload :RLE, "#{LIB}/encodings/rle"
+  end
+
+  # Loads every part of Herringbone now instead of on first use. Ractors cannot autoload before
+  # Ruby 3.4, so call this before starting Ractors that use Herringbone there; it also moves the
+  # loading out of the first request in a forking server.
+  #
+  # @return [void]
+  def self.eager_load!
+    seen = {}
+    walk = lambda do |mod|
+      next if seen[mod]
+      seen[mod] = true
+      mod.constants(false).each do |name|
+        value = mod.const_get(name, false)
+        walk.call(value) if value.is_a?(Module) && value.name&.start_with?("Herringbone::")
+      end
+    end
+    walk.call(self)
+  end
+end
 
 module Herringbone
   module_function

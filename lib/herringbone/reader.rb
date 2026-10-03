@@ -29,6 +29,8 @@ module Herringbone
   class Reader
     # The 4 bytes a Parquet file starts and ends with
     MAGIC = "PAR1"
+    # The 4 bytes a Parquet file with an encrypted footer starts and ends with
+    ENCRYPTED_MAGIC = "PARE"
     # Rows per batch in #each_batch when no size is given
     DEFAULT_BATCH_SIZE = 1024
     # Accepted values of the +keys:+ option
@@ -71,7 +73,7 @@ module Herringbone
       raise ArgumentError, "keys: must be :string or :symbol, got #{keys.inspect}" unless KEY_MODES.include?(keys)
       @symbolize = keys == :symbol
       @zone_converter = zone_converter(time_zone)
-      @decryption = DecryptionConfiguration.from(decryption)
+      @decryption = decryption.nil? ? nil : DecryptionConfiguration.from(decryption)
       @io = io
       @file_metadata = read_footer
       @schema = Schema.from_elements(@file_metadata.schema)
@@ -306,8 +308,8 @@ module Herringbone
       @page_indexes[[row_group_index, column.index]] ||= begin
         chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
         crypto = (chunk.column_index_offset || chunk.offset_index_offset) && chunk_crypto(row_group_index, column)
-        [read_struct(Format::ColumnIndex, chunk.column_index_offset, chunk.column_index_length, crypto, Encryption::COLUMN_INDEX),
-          read_struct(Format::OffsetIndex, chunk.offset_index_offset, chunk.offset_index_length, crypto, Encryption::OFFSET_INDEX)]
+        [read_struct(Format::ColumnIndex, chunk.column_index_offset, chunk.column_index_length, crypto, crypto && Encryption::COLUMN_INDEX),
+          read_struct(Format::OffsetIndex, chunk.offset_index_offset, chunk.offset_index_length, crypto, crypto && Encryption::OFFSET_INDEX)]
       end
     end
 
@@ -660,11 +662,15 @@ module Herringbone
       @io.seek(size - 8)
       tail = @io.read(8)
       magic = tail.byteslice(4, 4)
-      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == Encryption::ENCRYPTED_MAGIC
+      raise FormatError, "Missing PAR1 footer magic" unless magic == MAGIC || magic == ENCRYPTED_MAGIC
       footer_len = tail.unpack1("V")
       raise FormatError, "Footer length #{footer_len} exceeds file size" if footer_len + 12 > size
       @io.seek(size - 8 - footer_len)
       footer = @io.read(footer_len).b
+      if magic == MAGIC
+        meta = Format::FileMetaData.decode(footer).first
+        return meta unless meta.encryption_algorithm
+      end
       meta, @decryptor = Encryption.read_footer(footer, magic, @decryption)
       meta
     rescue Thrift::Error => e
@@ -850,5 +856,12 @@ end
 require_relative "reader/page_stream"
 require_relative "reader/column_chunk_reader"
 require_relative "reader/column_cursor"
-require_relative "reader/scan"
-require_relative "reader/numo"
+require_relative "reader/bloom_filters"
+
+module Herringbone
+  class Reader
+    autoload :Filter, File.expand_path("reader/scan", __dir__)
+    autoload :NumoColumns, File.expand_path("reader/numo", __dir__)
+    autoload :NumoCursor, File.expand_path("reader/numo", __dir__)
+  end
+end

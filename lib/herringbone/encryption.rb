@@ -56,7 +56,7 @@ module Herringbone
     # Bytes of the random file id that is part of every AAD
     FILE_UNIQUE_BYTES = 8
     # Magic bytes at both ends of a file with an encrypted footer
-    ENCRYPTED_MAGIC = "PARE"
+    ENCRYPTED_MAGIC = Reader::ENCRYPTED_MAGIC
 
     module_function
 

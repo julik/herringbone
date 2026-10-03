@@ -8,6 +8,14 @@ comment unless the code can't say it, and terse when there is one. It doesn't co
 documents every method here, private ones included (`bundle exec rake yard:lint` checks it).
 Claude Code picks the skill up through the symlink in `.claude/skills/`.
 
+## Loading
+
+`lib/herringbone.rb` loads nothing but StringIO and the version: every other file is autoloaded
+(`autoload` in `lib/herringbone.rb`, or in the file of the class it belongs to, like
+`Reader::Filter`). A new file gets an `autoload` entry, not a `require_relative`; reopening a
+class from another file (as `reader/bloom_filters.rb` does) is required by that class's own file.
+`test/autoload_test.rb` checks that `Herringbone.eager_load!` reaches every file under `lib/`.
+
 ## CHANGELOG
 
 `CHANGELOG.md` lists user-visible changes per version, newest first. Add the entry in the same
