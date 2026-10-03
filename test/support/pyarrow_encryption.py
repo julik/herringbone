@@ -10,6 +10,10 @@ Usage:
   pyarrow_encryption.py --check
   pyarrow_encryption.py write PATH OPTIONS_JSON   writes the test table, prints its rows as JSON
   pyarrow_encryption.py read PATH                 prints the rows of PATH as JSON
+  pyarrow_encryption.py write-key PATH HEX_KEY     writes the test table encrypted with one key
+                                                  (pyarrow 25+), prints its rows as JSON
+  pyarrow_encryption.py read-key PATH HEX_KEY      prints the rows of PATH, decrypted with one key
+  (the -key modes exit with status 3 when pyarrow is older than 25)
 
 OPTIONS_JSON: {"columns": {"kc1": ["ssn"]}, "plaintext_footer": false, "algorithm": "AES_GCM_V1"}
 """
@@ -68,7 +72,17 @@ def main():
     if sys.argv[1] == "--check":
         return
     mode, path = sys.argv[1], sys.argv[2]
-    if mode == "write":
+    if mode.endswith("-key") and not hasattr(pe, "create_decryption_properties"):
+        sys.exit(3)
+    if mode == "write-key":
+        t = table()
+        props = pe.create_encryption_properties(bytes.fromhex(sys.argv[3]))
+        pq.write_table(t, path, encryption_properties=props, row_group_size=1000, data_page_size=4096)
+        print(json.dumps(rows(t)))
+    elif mode == "read-key":
+        props = pe.create_decryption_properties(bytes.fromhex(sys.argv[3]))
+        print(json.dumps(rows(pq.read_table(path, decryption_properties=props))))
+    elif mode == "write":
         opts = json.loads(sys.argv[3])
         config = pe.EncryptionConfiguration(
             footer_key="kf",

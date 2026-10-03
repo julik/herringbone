@@ -21,6 +21,7 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [Writing to S3](#writing-to-s3)
 - [Encryption](#encryption)
   - [Writing encrypted files](#writing-encrypted-files)
+  - [Which settings other tools read](#which-settings-other-tools-read)
   - [Reading encrypted files](#reading-encrypted-files)
   - [Key management](#key-management)
 - [ActiveRecord](#activerecord)
@@ -333,6 +334,21 @@ with; no other gem is needed.
 
 ### Writing encrypted files
 
+When all you want is encrypted files that other tools can open with the same key, use
+`EncryptionConfiguration.simple`:
+
+```ruby
+key = SecureRandom.bytes(32) # keep it somewhere safe: without it the data is gone
+Herringbone.write(io, rows, encryption: Herringbone::EncryptionConfiguration.simple(key))
+Herringbone.write(io, rows, encryption: Herringbone::EncryptionConfiguration.simple(key, key_metadata: "orders-2026"))
+```
+
+It encrypts every column and the footer with the one key (AES-GCM, no AAD prefix), the setup the
+most readers support, see below. `key_metadata:` is stored in the file so you can tell which key
+it needs; readers given the key directly ignore it.
+
+For anything finer:
+
 ```ruby
 Herringbone::Writer.open(file, schema, encryption: {
   footer_key: FOOTER_KEY,                               # 16, 24 or 32 bytes (AES-128/192/256)
@@ -367,6 +383,25 @@ The other settings:
 - `aad_prefix: "orders/2026-10-03/part-0"` binds the file to an identity, so it can't be passed
   off as another file encrypted with the same keys. It is stored in the file, unless
   `store_aad_prefix: false`, in which case readers have to supply it.
+
+### Which settings other tools read
+
+What each Parquet implementation can decrypt, as of late 2026. Herringbone's own interop tests
+cover pyarrow; the rest comes from their documentation and source code.
+
+| Reader | Keys | Limits |
+|---|---|---|
+| pyarrow 25+ | one key: `pq.read_table(path, decryption_properties=pyarrow.parquet.encryption.create_decryption_properties(key))` | single-key API: uniform encryption only; anything else needs `CryptoFactory` and a KMS client reading key tools JSON (see Key management) |
+| Arrow C++, arrow-go, ParquetSharp | footer key, column keys, key retriever | none |
+| arrow-rs, DataFusion | footer key (`format.crypto.file_decryption.footer_key_as_hex`), column keys, key retriever | no AES-CTR, no 192-bit keys; the `datafusion` Python wheel is built without encryption |
+| parquet-java, Spark 3.2+, Hive | key tools JSON through a KMS client class; plain keys need a small `DecryptionPropertiesFactory` returning the footer key | none |
+| Trino 478+ (Hive connector) | footer and column keys from environment variables | read only |
+| DuckDB 1.5 | one key (`PRAGMA add_parquet_key`) | encrypted footer, uniform, AES-GCM, no AAD prefix; 1.5.6 fails on column chunks with more than one page or with a bloom filter, also for files pyarrow writes |
+| Polars, ClickHouse, Parquet.Net | none | can't read encrypted files |
+
+`EncryptionConfiguration.simple` stays inside all those limits except DuckDB's page bug. Files
+written by DuckDB don't follow the spec (no AAD, no column crypto metadata), and Herringbone can't
+read them.
 
 ### Reading encrypted files
 

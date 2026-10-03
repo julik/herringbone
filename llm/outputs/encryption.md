@@ -174,3 +174,34 @@ Verified against:
 
 Writing and reading 300k rows (int64, string, double) takes the same time with and without
 encryption (1.4 s / 0.3 s on an M-series Mac): pages are encrypted whole, with AES-NI.
+
+## Follow-up: configuration objects, CLI keys, a simple default
+
+- `EncryptionConfiguration` / `DecryptionConfiguration` hold and check the `encryption:` /
+  `decryption:` settings; Hashes are converted with `.from`, so validation happens in one place,
+  before a schema is known (column names are checked by the Writer). Both are frozen and keep
+  keys out of `#inspect`.
+- A `keys:` callable with two parameters also gets what the key is for (`:footer` or a column
+  path), and is called for keys without key metadata. The CLI uses that to prompt.
+- `herringbone inspect` / `cat`: `--footer-key`, `--column-key=PATH=KEY`, `--key=METADATA=KEY`,
+  `--aad-prefix`, keys in hex, `base64:` or `raw:`; missing keys are asked for on stdin (no echo
+  on a terminal), `--no-prompt` turns that off.
+
+### `EncryptionConfiguration.simple(key, key_metadata: nil)`
+
+Uniform encryption with the footer key, AES_GCM_V1, encrypted footer, no AAD prefix, 128 or
+256-bit keys. Chosen from a survey of readers (late 2026):
+
+- pyarrow 25 added `create_decryption_properties(footer_key)`, uniform only. Verified here: it
+  reads `simple` files, and Herringbone reads what `create_encryption_properties(key)` writes.
+- arrow-rs/DataFusion: no CTR, no 192-bit keys. Not verified (the PyPI DataFusion wheel lacks
+  the encryption feature).
+- DuckDB 1.5: encrypted footer, uniform, GCM, no AAD prefix only. Verified with 1.5.6: it reads
+  spec files only when every column chunk has a single data page and no bloom filter (fails the
+  same way on pyarrow-written files), and writes files without AADs or column crypto metadata.
+- Spark/parquet-java: key tools JSON out of the box, or a custom DecryptionPropertiesFactory for
+  plain keys; Trino 478+ reads with keys from environment variables.
+
+A key tools (PKMT1) mode that wraps the key under itself, so Spark could read with InMemoryKMS,
+was considered and left out: it is a key-dependent-message construction and InMemoryKMS ships in
+a tests jar that says not to use it in production.

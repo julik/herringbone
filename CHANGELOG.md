@@ -7,6 +7,12 @@
 - `Herringbone::Writer` (and `Herringbone.write`, `SimpleWriter`) take `encryption:` to write files
   with Parquet modular encryption: footer and per-column keys, encrypted or signed plaintext
   footer, AES-GCM or AES-GCM-CTR, AAD prefixes.
+- `Herringbone::EncryptionConfiguration.simple(key)` encrypts a whole file with one key in the way
+  most readers (pyarrow 25+, Arrow, arrow-rs, Spark, Trino) can decrypt with just that key.
+- `Herringbone::EncryptionConfiguration` and `Herringbone::DecryptionConfiguration` check the
+  `encryption:` and `decryption:` settings when they are built; Hashes are turned into them.
+- `herringbone inspect` and `herringbone cat` take `--footer-key`, `--column-key`, `--key` and
+  `--aad-prefix` for encrypted files, and ask for missing keys on stdin.
 - `Herringbone::Reader` and `Herringbone::Inspector` take `decryption:` with keys, or a `keys:`
   lookup by the key metadata stored in the file, and read encrypted files from parquet-mr, Arrow
   and Herringbone; `Reader#encryption` describes how a file is encrypted.

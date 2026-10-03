@@ -23,8 +23,10 @@ Priorities: writing over reading, native Ruby types, ergonomics over a few % of 
 
 Done (see llm/outputs/encryption.md). Left:
 
-- `herringbone inspect` flags for keys (`--footer-key=HEX`, `--column-key=path:HEX`,
-  `--aad-prefix=`); the Inspector API already takes `decryption:`
+- Reading files DuckDB writes: it encrypts without AADs and leaves `crypto_metadata` off the
+  columns (its "old duckdb-parquet crypto implementation"); the footer decrypts with an empty AAD
+- Re-check DuckDB > 1.5.6: it fails on multi-page and bloom-filtered encrypted chunks
+  (`GetFinalPageOrdinal` subtracts one from the data page ordinal when `bloom_filter_offset` is set)
 - Copying encrypted chunks in a redaction without re-encoding them: decrypt and re-encrypt each
   module with the new AAD instead of decoding the values
 - Reading the key tools format (PKMT1 key material, wrapped data keys) behind a KMS client
