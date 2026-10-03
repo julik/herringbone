@@ -82,8 +82,44 @@ end
 ```
 
 To control the types, declare a schema and use `Herringbone::Writer`, see
-[Writing](MANUAL.md#writing). `sw.encrypt!(ENV["PARQUET_KEY"])` before the first row encrypts the
-file, see [Encryption](MANUAL.md#encryption).
+[Writing](MANUAL.md#writing).
+
+## Encrypting
+
+Parquet files tend to wander off: to S3 buckets, laptops, other teams. Encrypting them takes one
+key and one line, no KMS, no Hadoop configuration. Make a key once and keep it with your other
+secrets:
+
+```ruby
+Herringbone::Key.generate.hex # => "9f86d081884c7d65..." - put it in your credentials or ENV
+```
+
+Then write with it:
+
+```ruby
+File.open("people.parquet", "wb") do |file|
+  Herringbone::SimpleWriter.open(file) do |sw|
+    sw.encrypt!(ENV["PARQUET_KEY"])
+    sw.headers!(:id, :name, :email)
+    sw << [1, "John", "john@example.com"]
+  end
+end
+```
+
+and read with it:
+
+```ruby
+Herringbone::Reader.new(file, decryption: ENV["PARQUET_KEY"]).read
+```
+
+The schema, the values and the statistics are all encrypted (AES-256-GCM); without the key the
+file is just noise. `encryption: key` does the same for `Herringbone.write` and
+`Herringbone::Writer`. Your colleagues can open the file with the same key in pyarrow 25+
+(`pq.read_table(path, decryption_properties=pyarrow.parquet.encryption.create_decryption_properties(bytes.fromhex(key)))`),
+Arrow, DataFusion, Trino or Spark, and `herringbone inspect people.parquet` asks for the key.
+When the time comes to rotate, read with all your keys, `decryption: [new_key, old_key]`, and
+each file finds its own. See [Encryption](MANUAL.md#encryption) for per-column keys, plaintext
+footers and which tools read what.
 
 ## Redacting
 
