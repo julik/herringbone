@@ -45,6 +45,14 @@ module Herringbone
       double: T_DOUBLE, binary: T_BINARY, string: T_BINARY
     }.freeze
 
+    # Values each declared integer type can hold, whatever width it came in on the wire
+    INT_RANGES = {
+      i16: -2**15...2**15, i32: -2**31...2**31, i64: -2**63...2**63
+    }.freeze
+
+    # Deepest nesting of structs, lists, sets and maps read or skipped, as in Apache Thrift
+    MAX_DEPTH = 64
+
     # Wire type written for a declared field type
     #
     # @param type [Symbol, Array, Class] a scalar type from WIRE_TYPES, a +[:list, elem]+ Array,
@@ -89,6 +97,7 @@ module Herringbone
       def initialize(buf, pos = 0)
         @buf = buf
         @pos = pos
+        @depth = 0
       end
 
       # Reads one raw byte
@@ -104,17 +113,21 @@ module Herringbone
 
       # Reads an unsigned LEB128 varint
       #
-      # @return [Integer] the decoded non-negative value
-      # @raise [Error] when the varint runs past the buffer or is longer than 64 bits allow
+      # @return [Integer] the decoded non-negative value, below 2**64
+      # @raise [Error] when the varint runs past the buffer, is longer than 10 bytes or does not
+      #   fit in 64 bits
       def read_varint
         result = 0
         shift = 0
         while true
           b = read_byte
           result |= (b & 0x7F) << shift
-          return result if b < 0x80
+          if b < 0x80
+            raise Error, "Varint exceeds 64 bits" if result >= 2**64
+            return result
+          end
           shift += 7
-          raise Error, "Varint too long" if shift > 70
+          raise Error, "Varint too long" if shift > 63
         end
       end
 
@@ -141,8 +154,10 @@ module Herringbone
 
       # Reads an 8-byte little-endian double
       #
-      # @return [Float, nil] the value (nil when fewer than 8 bytes are left: this is not checked)
+      # @return [Float] the value
+      # @raise [Error] when fewer than 8 bytes are left
       def read_double
+        raise Error, "Unexpected end of Thrift data at #{@pos}" if @pos + 8 > @buf.bytesize
         v = @buf.byteslice(@pos, 8).unpack1("E")
         @pos += 8
         v
@@ -155,26 +170,28 @@ module Herringbone
       #
       # @param klass [Class] a Thrift::Struct subclass
       # @return [Struct] an instance of +klass+ with the fields that were present set
-      # @raise [Error] on truncated or malformed data
+      # @raise [Error] on truncated or malformed data, or nesting deeper than MAX_DEPTH
       def read_struct(klass)
-        obj = klass.new
-        fields = klass.fields_by_id
-        last_id = 0
-        while true
-          header = read_byte
-          wire = header & 0x0F
-          break if wire == T_STOP
-          delta = header >> 4
-          fid = delta.zero? ? read_zigzag : last_id + delta
-          last_id = fid
-          field = fields[fid]
-          if field && Thrift.compatible?(wire, field.type)
-            obj.instance_variable_set(field.ivar, read_value(wire, field.type))
-          else
-            skip(wire)
+        nested do
+          obj = klass.new
+          fields = klass.fields_by_id
+          last_id = 0
+          while true
+            header = read_byte
+            wire = header & 0x0F
+            break if wire == T_STOP
+            delta = header >> 4
+            fid = delta.zero? ? read_zigzag : last_id + delta
+            last_id = fid
+            field = fields[fid]
+            if field && Thrift.compatible?(wire, field.type)
+              obj.instance_variable_set(field.ivar, read_value(wire, field.type))
+            else
+              skip(wire)
+            end
           end
+          obj
         end
-        obj
       end
 
       # Reads one value of wire type +wire+ as declared +type+
@@ -184,7 +201,8 @@ module Herringbone
       #   an Array or Struct subclass gives the element type or struct to read
       # @return [Object] true/false, an Integer (bytes are signed), a Float, a String, an Array
       #   (or nil, see #read_list) or a Struct
-      # @raise [Error] on an unsupported wire type or truncated data
+      # @raise [Error] on an unsupported wire type, truncated data or an integer out of the range
+      #   of +type+
       def read_value(wire, type)
         case wire
         when T_TRUE then true
@@ -192,7 +210,10 @@ module Herringbone
         when T_BYTE
           b = read_byte
           (b >= 0x80) ? b - 0x100 : b
-        when T_I16, T_I32, T_I64 then read_zigzag
+        when T_I16, T_I32, T_I64
+          n = read_zigzag
+          raise Error, "Integer #{n} out of range for #{type}" unless INT_RANGES.fetch(type).cover?(n)
+          n
         when T_DOUBLE then read_double
         when T_BINARY
           s = read_binary
@@ -210,24 +231,26 @@ module Herringbone
       # @param type [Array] declared list type, +[:list, elem_type]+
       # @return [Array, nil] the elements, or nil (with the list skipped) when the element wire
       #   type does not match +elem_type+
-      # @raise [Error] on truncated or malformed data
+      # @raise [Error] on truncated or malformed data, or nesting deeper than MAX_DEPTH
       def read_list(type)
-        header = read_byte
-        size = header >> 4
-        size = read_varint if size == 15
-        elem_wire = header & 0x0F
-        elem_type = type[1]
-        bool_elems = elem_wire == T_TRUE || elem_wire == T_FALSE
-        if size.positive? && !(bool_elems && elem_type == :bool) && !Thrift.compatible?(elem_wire, elem_type)
-          size.times { bool_elems ? read_byte : skip(elem_wire) }
-          return nil
-        end
-        Array.new(size) do
-          if elem_wire == T_TRUE || elem_wire == T_FALSE
-            # Booleans inside lists are encoded as full bytes
-            read_byte == T_TRUE
-          else
-            read_value(elem_wire, elem_type)
+        nested do
+          header = read_byte
+          size = header >> 4
+          size = read_size if size == 15
+          elem_wire = header & 0x0F
+          elem_type = type[1]
+          bool_elems = elem_wire == T_TRUE || elem_wire == T_FALSE
+          if size.positive? && !(bool_elems && elem_type == :bool) && !Thrift.compatible?(elem_wire, elem_type)
+            size.times { bool_elems ? read_byte : skip(elem_wire) }
+            return nil
+          end
+          Array.new(size) do
+            if elem_wire == T_TRUE || elem_wire == T_FALSE
+              # Booleans inside lists are encoded as full bytes
+              read_byte == T_TRUE
+            else
+              read_value(elem_wire, elem_type)
+            end
           end
         end
       end
@@ -236,39 +259,75 @@ module Herringbone
       #
       # @param wire [Integer] wire type of the value to skip
       # @return [void]
-      # @raise [Error] on an unknown wire type (including T_STOP) or truncated data
+      # @raise [Error] on an unknown wire type (including T_STOP), truncated data or nesting deeper
+      #   than MAX_DEPTH
       def skip(wire)
         case wire
         when T_TRUE, T_FALSE then nil
         when T_BYTE then read_byte
         when T_I16, T_I32, T_I64 then read_varint
-        when T_DOUBLE then @pos += 8
+        when T_DOUBLE then read_double
         when T_BINARY then read_binary
         when T_LIST, T_SET
-          header = read_byte
-          size = header >> 4
-          size = read_varint if size == 15
-          elem = header & 0x0F
-          size.times { (elem == T_TRUE || elem == T_FALSE) ? read_byte : skip(elem) }
+          nested do
+            header = read_byte
+            size = header >> 4
+            size = read_size if size == 15
+            elem = header & 0x0F
+            size.times { (elem == T_TRUE || elem == T_FALSE) ? read_byte : skip(elem) }
+          end
         when T_MAP
-          size = read_varint
-          unless size.zero?
-            kv = read_byte
-            size.times do
-              [kv >> 4, kv & 0x0F].each { |w| (w == T_TRUE || w == T_FALSE) ? read_byte : skip(w) }
+          nested do
+            size = read_size
+            unless size.zero?
+              kv = read_byte
+              size.times do
+                [kv >> 4, kv & 0x0F].each { |w| (w == T_TRUE || w == T_FALSE) ? read_byte : skip(w) }
+              end
             end
           end
         when T_STRUCT
-          while true
-            header = read_byte
-            w = header & 0x0F
-            break if w == T_STOP
-            read_zigzag if (header >> 4).zero?
-            skip(w)
+          nested do
+            while true
+              header = read_byte
+              w = header & 0x0F
+              break if w == T_STOP
+              read_zigzag if (header >> 4).zero?
+              skip(w)
+            end
           end
         else
           raise Error, "Cannot skip wire type #{wire}"
         end
+      end
+
+      private
+
+      # Reads the element count of a list, set or map
+      #
+      # Every element takes at least one byte, so a count above the bytes left is corrupt. Checking
+      # that up front keeps a forged count from preallocating a huge Array or skipping for ever.
+      #
+      # @return [Integer] the count, at most the number of bytes left in the buffer
+      # @raise [Error] when the count exceeds the bytes left
+      def read_size
+        size = read_varint
+        left = @buf.bytesize - @pos
+        raise Error, "Collection of #{size} elements exceeds the #{left} bytes left" if size > left
+        size
+      end
+
+      # Runs the block one nesting level deeper
+      #
+      # @yieldreturn [Object] the value read inside the nested container
+      # @return [Object] the block's value
+      # @raise [Error] when the nesting gets deeper than MAX_DEPTH
+      def nested
+        @depth += 1
+        raise Error, "Thrift data nested deeper than #{MAX_DEPTH} levels" if @depth > MAX_DEPTH
+        yield
+      ensure
+        @depth -= 1
       end
     end
 

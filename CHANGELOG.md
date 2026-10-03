@@ -27,6 +27,9 @@
   and Herringbone; `Reader#encryption` describes how a file is encrypted.
 - `Herringbone.redact` takes `decryption:` and writes an encrypted input encrypted the same way,
   unless `encryption:` says otherwise.
+- `Herringbone::Reader` raises `Herringbone::FormatError` for forged metadata or page headers that
+  made it loop endlessly, overflow the stack or raise `ArgumentError`, `RangeError` or
+  `NoMemoryError`.
 - **Breaking:** encrypted files raise `Herringbone::DecryptionError` (when their keys are missing
   or wrong) instead of `Herringbone::UnsupportedError`.
 
