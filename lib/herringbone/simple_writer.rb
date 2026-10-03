@@ -28,7 +28,7 @@ module Herringbone
   # #encrypt! encrypts the file with one key (see Key):
   #
   #   Herringbone::SimpleWriter.open(file) do |sw|
-  #     sw.encrypt!(ENV["PARQUET_KEY"]) # hex, a Herringbone::Key or key bytes; no argument: a new key
+  #     sw.encrypt!(key: ENV["PARQUET_KEY"]) # the key's hex, or a Herringbone::Key
   #     sw.headers!(:id, :name)
   #     sw << [1, "John"]
   #   end
@@ -101,17 +101,17 @@ module Herringbone
     end
 
     # Encrypts the file with one key, the way most Parquet readers can decrypt with that key (see
-    # EncryptionConfiguration.simple). Without a key, a new random AES-256 key is made: keep the
-    # one returned, the file can't be read without it. Must be called before the first row.
+    # EncryptionConfiguration.simple). Must be called before the first row. For a new key, pass
+    # +key: Herringbone::Key.generate+ and keep it (+key.hex+): the file can't be read without it.
     #
-    # @param key [Key, String, nil] a key, its hex (32 or 64 digits) or its bytes; nil for a new key
+    # @param key [Key, String] a key, or its hex (32 or 64 digits; raw bytes go through Key.new)
     # @return [Key] the key the file is encrypted with
     # @raise [ArgumentError] after the first row, when called twice or after +encryption:+ was
-    #   given, or for a key of the wrong size
-    def encrypt!(key = nil)
+    #   given, for a String that is not the hex of a key, or a 192-bit key
+    def encrypt!(key:)
       raise ArgumentError, "encrypt! must be called before the first row" if rows_written.positive?
       raise ArgumentError, "The file is already encrypted (encrypt! or encryption:)" if @encrypted
-      key = key.nil? ? Key.generate : Key.from(key)
+      key = Key.from(key)
       @writer.encryption = EncryptionConfiguration.simple(key)
       @encrypted = true
       key

@@ -378,8 +378,8 @@ class EncryptionTest < Minitest::Test
     assert_nil config.aad_prefix
     assert_equal "orders-2026", config.footer_key_metadata
     assert_equal config, Herringbone::EncryptionConfiguration.from(key)
-    assert_equal Herringbone::Key.new(FOOTER_KEY).id, Herringbone::EncryptionConfiguration.simple(FOOTER_KEY).footer_key_metadata
-    error = assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple(ADDRESS_KEY) }
+    assert_equal Herringbone::Key.new(FOOTER_KEY).id, Herringbone::EncryptionConfiguration.simple(Herringbone::Key.new(FOOTER_KEY).hex).footer_key_metadata
+    error = assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple(Herringbone::Key.new(ADDRESS_KEY)) }
     assert_match(/128 or 256-bit key: arrow-rs and DataFusion cannot read 192-bit keys/, error.message)
 
     bytes = write(encryption: key)
@@ -388,7 +388,7 @@ class EncryptionTest < Minitest::Test
     assert_equal expected_rows, reader.read
     assert_equal "orders-2026", reader.encryption[:footer_key_metadata]
     assert(reader.encryption[:columns].values.all? { |c| c[:key] == :footer })
-    assert_equal expected_rows, encrypted_reader(bytes, SSN_KEY).read, "a single key is used whatever its id"
+    assert_equal expected_rows, encrypted_reader(bytes, Herringbone::Key.new(SSN_KEY)).read, "a single key is used whatever its id"
     assert_equal expected_rows, encrypted_reader(bytes, {keys: {"orders-2026" => SSN_KEY}}).read
     looked_up = []
     reader = Herringbone::Reader.new(StringIO.new(bytes), decryption: ->(id) {
@@ -405,8 +405,19 @@ class EncryptionTest < Minitest::Test
     assert_equal key.bytes, Herringbone::Key.from(key.hex.upcase).bytes
     assert_equal 16, Herringbone::Key.from("00" * 16).bytes.bytesize
     assert_equal 24, Herringbone::Key.from("ab" * 24).bytes.bytesize
-    assert_equal SSN_KEY, Herringbone::Key.from(SSN_KEY).bytes, "a String that is not 32/48/64 hex digits is the key itself"
-    assert_equal FOOTER_KEY, Herringbone::Key.from(FOOTER_KEY).bytes
+    {
+      SSN_KEY => /got 32 bytes that are not hex \(raw key bytes\?\)/,
+      "00" * 20 => /got 40 hex digits/,
+      "not a key" => /got a 9-byte String that is not hex/,
+      "" => /got 0 hex digits/
+    }.each do |value, message|
+      error = assert_raises(ArgumentError) { Herringbone::Key.from(value) }
+      assert_match(/Give a key as 32 or 64 hex digits \(Herringbone::Key#hex\) or as a Herringbone::Key \(Herringbone::Key.new\(bytes\) for raw bytes\)/, error.message)
+      assert_match message, error.message
+    end
+    assert_equal key, Herringbone::Key.from(" #{key.hex}\n"), "whitespace around hex is fine"
+    assert_raises(ArgumentError) { Herringbone::Writer.new(StringIO.new, SCHEMA, encryption: SSN_KEY) }
+    assert_raises(ArgumentError) { Herringbone::Reader.new(StringIO.new(write(rows(1), encryption: key)), decryption: SSN_KEY) }
     bytes = write(rows(10), encryption: key.hex)
     assert_equal expected_rows(rows(10)), encrypted_reader(bytes, key.hex).read
   end
@@ -415,7 +426,7 @@ class EncryptionTest < Minitest::Test
     io = StringIO.new
     key = nil
     Herringbone::SimpleWriter.open(io) do |sw|
-      key = sw.encrypt!
+      key = sw.encrypt!(key: Herringbone::Key.generate)
       sw.headers!(:id, :name)
       sw << [1, "John"]
       sw << {id: 2, name: "Jane"}
@@ -427,20 +438,23 @@ class EncryptionTest < Minitest::Test
     hex = Herringbone::Key.generate.hex
     io = StringIO.new
     sw = Herringbone::SimpleWriter.new(io)
-    assert_equal Herringbone::Key.from(hex), sw.encrypt!(hex)
+    assert_equal Herringbone::Key.from(hex), sw.encrypt!(key: hex)
     sw.headers!("a")
     sw << [1]
-    error = assert_raises(ArgumentError) { sw.encrypt! }
+    error = assert_raises(ArgumentError) { sw.encrypt!(key: hex) }
     assert_match(/before the first row/, error.message)
     sw.close
     assert_equal [{"a" => 1}], encrypted_reader(io.string, hex).read
 
     sw = Herringbone::SimpleWriter.new(StringIO.new)
-    sw.encrypt!
-    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(hex) }.message)
+    sw.encrypt!(key: hex)
+    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(key: hex) }.message)
     sw = Herringbone::SimpleWriter.new(StringIO.new, encryption: hex)
-    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt! }.message)
-    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!("short") }
+    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(key: hex) }.message)
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt! }
+    error = assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!(key: SSN_KEY) }
+    assert_match(/raw key bytes\?/, error.message)
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!(key: "ab" * 24) }
     assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new, encryption: {footer_key: "short"}) }
   end
 
@@ -448,11 +462,11 @@ class EncryptionTest < Minitest::Test
     old_key = Herringbone::Key.generate
     new_key = Herringbone::Key.generate(bits: 128)
     old_file = write(rows(20), encryption: old_key)
-    new_file = write(rows(30), encryption: new_key.bytes)
+    new_file = write(rows(30), encryption: new_key.hex)
     keyring = [new_key, old_key]
     assert_equal expected_rows(rows(20)), encrypted_reader(old_file, keyring).read
     assert_equal expected_rows(rows(30)), encrypted_reader(new_file, keyring).read
-    assert_equal new_key.id, encrypted_reader(new_file, keyring).encryption[:footer_key_metadata], "raw bytes get the fingerprint id"
+    assert_equal new_key.id, encrypted_reader(new_file, keyring).encryption[:footer_key_metadata], "hex gets the fingerprint id"
     error = assert_raises(Herringbone::DecryptionError) { encrypted_reader(old_file, [new_key, Herringbone::Key.generate]) }
     assert_match(/key metadata "#{old_key.id}"/, error.message)
     assert_raises(ArgumentError) { encrypted_reader(old_file, []) }

@@ -99,7 +99,7 @@ Then write with it:
 ```ruby
 File.open("people.parquet", "wb") do |file|
   Herringbone::SimpleWriter.open(file) do |sw|
-    sw.encrypt!(ENV["PARQUET_KEY"])
+    sw.encrypt!(key: ENV["PARQUET_KEY"])
     sw.headers!(:id, :name, :email)
     sw << [1, "John", "john@example.com"]
   end

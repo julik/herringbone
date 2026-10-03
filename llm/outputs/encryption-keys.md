@@ -77,7 +77,7 @@ The smallest thing that still handles lookup and rotation, without a KMS layer:
   it gives nothing away, and it is stable: the same key always gets the same id, so nobody has
   to invent or store ids. `Key.new(bytes, id: "2026-10")` names it instead; `Key.generate`,
   `Key.from_hex` and `#hex` cover making and storing keys.
-- Writing: `encryption: key` (a Key, or raw key bytes) is `EncryptionConfiguration.simple(key)`:
+- Writing: `encryption: key` (a Key, or its hex) is `EncryptionConfiguration.simple(key)`:
   uniform AES_GCM_V1, encrypted footer, no AAD prefix, 128/256 bits; the id goes in the footer's
   key_metadata as plain UTF-8. That is what Arrow's `StringKeyIdRetriever` and Trino's `id:key`
   lists expect, and what `herringbone inspect` shows.
@@ -85,6 +85,10 @@ The smallest thing that still handles lookup and rotation, without a KMS layer:
   by the id the file stores, and a lone key is also used as the footer key whatever the file says
   (files from pyarrow and others store no id or their own). Rotation is writing with a new key
   and reading with all of them.
+- Where a String stands for a key (`encryption:`, `decryption:`, `SimpleWriter#encrypt!(key:)`)
+  it must be 32/48/64 hex digits. Raw bytes are refused with a message pointing at `Key#hex` and
+  `Key.new(bytes)`: a binary String is easy to mangle (encodings, chomping, copy and paste) and
+  a 32-character text key would be ambiguous with 16 bytes of hex, so there is one String form.
 - The "KMS": `decryption: ->(key_id) { ... }` returning a Key or bytes, for keys that live in
   credentials, Vault and the like. A two-parameter block also learns what the key is for.
 - CLI: `--key=HEX` (a keyring entry, matched by fingerprint), `--key=ID=HEX`, or the prompt,

@@ -48,7 +48,7 @@ module Herringbone
     # Encryption that the most Parquet readers can decrypt given nothing but the key: every
     # column and the footer encrypted with one key, AES_GCM_V1, no AAD prefix. The key's id is
     # stored in the file, so a reader holding several keys picks the right one. Passing a Key or
-    # the bytes of a key as +encryption:+ does the same.
+    # the hex of a key as +encryption:+ does the same.
     #
     #   key = Herringbone::Key.generate
     #   Herringbone.write(io, rows, encryption: key)
@@ -64,9 +64,10 @@ module Herringbone
     # read neither per-column keys nor AES-CTR, DuckDB needs an encrypted footer and no AAD
     # prefix, and arrow-rs has no 192-bit keys.
     #
-    # @param key [Key, String] the key, or its bytes (the id is then the key's fingerprint)
+    # @param key [Key, String] the key, or its hex (the id is then the key's fingerprint)
     # @return [EncryptionConfiguration]
-    # @raise [ArgumentError] when the key is not 16 or 32 bytes long
+    # @raise [ArgumentError] for a String that is not the hex of a key, or a key that is not 16 or
+    #   32 bytes long
     def self.simple(key)
       key = Key.from(key)
       if key.bits == 192
@@ -78,7 +79,7 @@ module Herringbone
     # Turns the +encryption:+ option into a configuration
     #
     # @param value [EncryptionConfiguration, Hash{Symbol, String => Object}, Key, String] a
-    #   configuration, the keywords of #initialize, or a key (see .simple)
+    #   configuration, the keywords of #initialize, or a key or its hex (see .simple)
     # @return [EncryptionConfiguration]
     # @raise [ArgumentError] for anything else, and for invalid settings
     def self.from(value)
@@ -237,7 +238,7 @@ module Herringbone
 
     # Turns the +decryption:+ option into a configuration
     #
-    # A keyring (a Key, the bytes of a key, or an Array of those) looks keys up by the id stored
+    # A keyring (a Key, the hex of a key, or an Array of those) looks keys up by the id stored
     # in the file; a single key is also used when the file names no id or another one, as for
     # files from tools that store none.
     #
