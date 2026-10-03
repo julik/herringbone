@@ -45,6 +45,30 @@ module Herringbone
     # @return [String, nil] identity of the file, part of the AAD of every encrypted module
     attr_reader :aad_prefix
 
+    # Encryption that the most Parquet readers can decrypt given nothing but +key+: every column
+    # and the footer encrypted with that one key, AES_GCM_V1, no AAD prefix. Readers that take
+    # a single key: pyarrow 25+ (+pyarrow.parquet.encryption.create_decryption_properties(key)+),
+    # Arrow C++, arrow-go and ParquetSharp (as the footer key), arrow-rs and DataFusion, Trino
+    # 478+, and parquet-java / Spark with a decryption properties factory that returns the key.
+    #
+    #   Herringbone.write(io, rows, encryption: Herringbone::EncryptionConfiguration.simple(key))
+    #
+    # The finer settings are left out on purpose: DuckDB, arrow-rs and pyarrow's single-key API
+    # read neither per-column keys nor AES-CTR, DuckDB needs an encrypted footer and no AAD
+    # prefix, and arrow-rs has no 192-bit keys.
+    #
+    # @param key [String] 16 or 32 bytes (AES-128 or AES-256); +SecureRandom.bytes(32)+ makes one
+    # @param key_metadata [String, nil] stored in the file for the key: a key name or id that
+    #   tells you which key the file needs. Single-key readers ignore it.
+    # @return [EncryptionConfiguration]
+    # @raise [ArgumentError] when +key+ is not 16 or 32 bytes long
+    def self.simple(key, key_metadata: nil)
+      if key.is_a?(String) && key.bytesize == 24
+        raise ArgumentError, "encryption: simple takes a 16 or 32-byte key: arrow-rs and DataFusion cannot read 192-bit keys"
+      end
+      new(footer_key: key, footer_key_metadata: key_metadata)
+    end
+
     # Turns the +encryption:+ option into a configuration
     #
     # @param value [EncryptionConfiguration, Hash{Symbol, String => Object}] a configuration, or the

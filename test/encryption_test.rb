@@ -344,6 +344,27 @@ class EncryptionTest < Minitest::Test
     assert_match(/no such column "zip"/, error.message)
   end
 
+  def test_simple_configuration
+    config = Herringbone::EncryptionConfiguration.simple(SSN_KEY, key_metadata: "orders-2026")
+    assert config.uniform?
+    refute config.plaintext_footer?
+    assert_equal :aes_gcm, config.algorithm
+    assert_nil config.aad_prefix
+    assert_equal "orders-2026", config.footer_key_metadata
+    assert_equal 16, Herringbone::EncryptionConfiguration.simple(FOOTER_KEY).footer_key.bytesize
+    error = assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple(ADDRESS_KEY) }
+    assert_match(/16 or 32-byte key: arrow-rs and DataFusion cannot read 192-bit keys/, error.message)
+    assert_raises(ArgumentError) { Herringbone::EncryptionConfiguration.simple("short") }
+
+    bytes = write(encryption: config)
+    assert_equal "PARE", bytes.byteslice(0, 4)
+    reader = encrypted_reader(bytes, {footer_key: SSN_KEY})
+    assert_equal expected_rows, reader.read
+    assert_equal "orders-2026", reader.encryption[:footer_key_metadata]
+    assert(reader.encryption[:columns].values.all? { |c| c[:key] == :footer })
+    assert_equal expected_rows, encrypted_reader(bytes, {keys: {"orders-2026" => SSN_KEY}}).read
+  end
+
   def test_decryption_configuration
     config = Herringbone::DecryptionConfiguration.new(footer_key: FOOTER_KEY, columns: {ssn: SSN_KEY}, keys: {"address" => ADDRESS_KEY})
     assert config.frozen?

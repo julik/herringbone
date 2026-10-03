@@ -82,6 +82,34 @@ class EncryptionInteropTest < Minitest::Test
     end
   end
 
+  # pyarrow 25+ reads and writes uniform encryption with a single key, without a KMS
+  def single_key(*args)
+    out, err, status = Open3.capture3(PYTHON, SCRIPT, *args)
+    skip "pyarrow is older than 25 (no create_decryption_properties)" if status.exitstatus == 3
+    assert status.success?, "pyarrow_encryption.py #{args.first} failed: #{err}"
+    JSON.parse(out)
+  end
+
+  def test_pyarrow_reads_simple_configuration_with_the_key_alone
+    key = Random.new(7).bytes(32)
+    rows = Array.new(5000) { |i| {"id" => i, "ssn" => i.odd? ? "ssn-#{i}" : nil, "score" => i * 0.5, "tags" => ["t"] * (i % 3)} }
+    path = File.join(@dir, "simple.parquet")
+    File.open(path, "wb") do |f|
+      Herringbone::Writer.open(f, SCHEMA, page_rows: 700, bloom_filters: %w[id],
+        encryption: Herringbone::EncryptionConfiguration.simple(key, key_metadata: "orders-2026")) { |w| rows.each { |r| w << r } }
+    end
+    assert_equal rows, single_key("read-key", path, key.unpack1("H*"))
+  end
+
+  def test_reads_pyarrow_single_key_files
+    key = Random.new(8).bytes(16)
+    path = File.join(@dir, "pyarrow_key.parquet")
+    expected = single_key("write-key", path, key.unpack1("H*"))
+    File.open(path, "rb") do |f|
+      assert_equal expected, ruby_rows(Herringbone::Reader.new(f, decryption: {footer_key: key}).read)
+    end
+  end
+
   SCHEMA = Herringbone::Schema.define do |s|
     s.int64 :id, null: false
     s.string :ssn
