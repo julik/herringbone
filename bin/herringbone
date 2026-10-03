@@ -11,8 +11,9 @@
 #   add --verify-checksums to any inspect form to read page bodies and check their CRCs
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
 #
-# Encrypted files: both commands take --footer-key=KEY, --column-key=PATH=KEY and
-# --key=KEY_METADATA=KEY (all repeatable but the first), and --aad-prefix=PREFIX. KEY is hex, or
+# Encrypted files: both commands take --key=KEY (a key matched by its fingerprint id, or used for
+# the footer when it is the only one), --key=KEY_ID=KEY, --footer-key=KEY and
+# --column-key=PATH=KEY (all repeatable but --footer-key), and --aad-prefix=PREFIX. KEY is hex, or
 # base64:..., or raw:... for the bytes as typed (a 16, 24 or 32-character String that is not
 # valid hex is taken as is too). Keys that are needed but not given are asked for on stdin
 # (without echo in a terminal; an empty answer skips the key), unless --no-prompt is given.
@@ -87,18 +88,28 @@ end
 # @return [Hash{Symbol => Object}]
 def decryption_from(key_flags, prompt)
   by_metadata = {}
+  plain = []
   decryption = {columns: {}}
   key_flags.each do |flag|
     name, value = flag.split("=", 2)
     case name
     when "--footer-key" then decryption[:footer_key] = parse_key(value.to_s, "--footer-key")
     when "--aad-prefix" then decryption[:aad_prefix] = value.to_s
-    when "--column-key", "--key"
+    when "--key"
       target, key = value.to_s.split("=", 2)
-      raise ArgumentError, "#{name} expects #{name}=#{(name == "--key") ? "KEY_METADATA" : "PATH"}=KEY" unless key
-      (name == "--key") ? by_metadata[target] = parse_key(key, "#{name}=#{target}") : decryption[:columns][target] = parse_key(key, "#{name}=#{target}")
+      if key.nil? || value.start_with?("base64:", "raw:")
+        plain << Herringbone::Key.new(parse_key(value.to_s, "--key"))
+        by_metadata[plain.last.id] = plain.last.bytes
+      else
+        by_metadata[target] = parse_key(key, "--key=#{target}")
+      end
+    when "--column-key"
+      target, key = value.to_s.split("=", 2)
+      raise ArgumentError, "--column-key expects --column-key=PATH=KEY" unless key
+      decryption[:columns][target] = parse_key(key, "--column-key=#{target}")
     end
   end
+  decryption[:footer_key] ||= plain.first.bytes if plain.size == 1
   decryption[:keys] = ->(metadata, owner) { by_metadata.fetch(metadata) { prompt ? ask_key(metadata, owner) : nil } }
   decryption
 end
@@ -106,7 +117,7 @@ end
 USAGE = "usage: herringbone cat FILE [N] [KEY OPTIONS]\n" \
   "       herringbone inspect FILE [--format=text|json|html] [--pages] [--verify-checksums] [KEY OPTIONS]\n" \
   "       (--pages only with --format=text)\n" \
-  "key options, for encrypted files: --footer-key=KEY --column-key=PATH=KEY --key=KEY_METADATA=KEY\n" \
+  "key options, for encrypted files: --key=KEY --key=KEY_ID=KEY --footer-key=KEY --column-key=PATH=KEY\n" \
   "       --aad-prefix=PREFIX --no-prompt (KEY is hex, base64:... or raw:...)"
 
 KEY_FLAGS = %w[--footer-key --column-key --key --aad-prefix].freeze

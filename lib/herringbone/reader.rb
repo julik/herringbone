@@ -48,7 +48,8 @@ module Herringbone
     # @param keys [Symbol, String] +:string+ or +:symbol+, the key type of row and struct Hashes
     # @param time_zone [String, Integer, Object, nil] zone timestamps are returned in (see the
     #   class docs); nil keeps them in UTC
-    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys for an encrypted file (see the class docs)
+    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, #call, nil] keys for an
+    #   encrypted file (see the class docs); a callable is used as +keys:+
     # @option decryption [String] :footer_key key of the footer (and of the columns encrypted with it)
     # @option decryption [Hash{String => String}] :columns column path or field name => key
     # @option decryption [#call, Hash{String => String}] :keys key metadata => key, for the keys not

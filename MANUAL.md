@@ -334,18 +334,34 @@ with; no other gem is needed.
 
 ### Writing encrypted files
 
-When all you want is encrypted files that other tools can open with the same key, use
-`EncryptionConfiguration.simple`:
+Most of the time, one key will do:
 
 ```ruby
-key = SecureRandom.bytes(32) # keep it somewhere safe: without it the data is gone
-Herringbone.write(io, rows, encryption: Herringbone::EncryptionConfiguration.simple(key))
-Herringbone.write(io, rows, encryption: Herringbone::EncryptionConfiguration.simple(key, key_metadata: "orders-2026"))
+key = Herringbone::Key.generate                     # AES-256; keep it safe, without it the data is gone
+key = Herringbone::Key.from_hex(ENV["PARQUET_KEY"]) # 32 or 64 hex digits; key.hex gives them back
+
+Herringbone.write(io, rows, encryption: key)
+Herringbone::Reader.new(io, decryption: key)
 ```
 
-It encrypts every column and the footer with the one key (AES-GCM, no AAD prefix), the setup the
-most readers support, see below. `key_metadata:` is stored in the file so you can tell which key
-it needs; readers given the key directly ignore it.
+That encrypts every column and the footer with the key (AES-GCM, no AAD prefix), the setup the
+most other readers support, see below; they take the key itself (`key.bytes`). The raw bytes of a
+key work in place of a `Key` too.
+
+Each key has an id, stored in the clear in the files it encrypts: a fingerprint of the key (an
+HMAC, which gives nothing away about the key), or one you choose with
+`Herringbone::Key.new(bytes, id: "2026-10")`. A reader given several keys, a keyring, picks the
+one the file names, so rotating keys is writing with a new one and reading with all of them:
+
+```ruby
+Herringbone::Reader.new(io, decryption: [current_key, previous_key])
+Herringbone::Reader.new(io, decryption: ->(key_id) { Rails.application.credentials.parquet_keys[key_id] })
+```
+
+The block is your key management: it gets the id from the file and returns the key (a `Key` or
+bytes), or nil. There is no envelope encryption (per-file data keys wrapped by a KMS), see
+[Key management](#key-management). `Herringbone::EncryptionConfiguration.simple(key)` is what
+`encryption: key` turns into.
 
 For anything finer:
 
@@ -695,10 +711,12 @@ bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
 
 Add `--verify-checksums` to any `inspect` form to check page CRCs.
 
-Encrypted files take keys on the command line, by footer, column path or the key metadata the
-file stores (which `inspect` shows):
+Encrypted files take keys on the command line: as they are (picked by their fingerprint id, like
+a keyring), or for the footer, a column path or the key id the file stores (which `inspect`
+shows):
 
 ```
+bin/herringbone cat FILE --key=$PARQUET_KEY
 bin/herringbone inspect FILE --footer-key=00112233445566778899aabbccddeeff
 bin/herringbone cat FILE 10 --key=kc1=base64:MTIzNDU2Nzg5MDEyMzQ1MA== --column-key=ssn=raw:1234567890123450
 bin/herringbone inspect FILE --aad-prefix=orders/part-0 --no-prompt

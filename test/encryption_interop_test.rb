@@ -96,7 +96,7 @@ class EncryptionInteropTest < Minitest::Test
     path = File.join(@dir, "simple.parquet")
     File.open(path, "wb") do |f|
       Herringbone::Writer.open(f, SCHEMA, page_rows: 700, bloom_filters: %w[id],
-        encryption: Herringbone::EncryptionConfiguration.simple(key, key_metadata: "orders-2026")) { |w| rows.each { |r| w << r } }
+        encryption: Herringbone::Key.new(key, id: "orders-2026")) { |w| rows.each { |r| w << r } }
     end
     assert_equal rows, single_key("read-key", path, key.unpack1("H*"))
   end

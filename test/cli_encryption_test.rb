@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "open3"
+require "tmpdir"
 
 # bin/herringbone on encrypted files: key flags, and keys asked for on stdin
 class CliEncryptionTest < Minitest::Test
@@ -54,6 +55,22 @@ class CliEncryptionTest < Minitest::Test
     refute_match(/no key given/, out)
     assert_match(/  double_field: SNAPPY .*encrypted/, out)
     assert_match(/    0: DATA_PAGE @\d+ header \d+ \+ \d+\/\d+ bytes, 50 values/, out)
+  end
+
+  def test_bare_keys
+    out, err, status = run_cli("cat", UNIFORM, "1", "--key=raw:0123456789012345", "--no-prompt")
+    assert status.success?, err
+    assert_equal 0, JSON.parse(out)["int32_field"]
+
+    Dir.mktmpdir do |dir|
+      old_key = Herringbone::Key.generate
+      new_key = Herringbone::Key.generate
+      path = File.join(dir, "rotated.parquet")
+      File.open(path, "wb") { |f| Herringbone.write(f, [{id: 1}], encryption: old_key) }
+      out, err, status = run_cli("cat", path, "--key=#{new_key.hex}", "--key=#{old_key.hex}", "--no-prompt")
+      assert status.success?, err
+      assert_equal({"id" => 1}, JSON.parse(out))
+    end
   end
 
   def test_json_and_html_with_keys

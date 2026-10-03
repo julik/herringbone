@@ -662,6 +662,7 @@ module Herringbone
             @resolver[key_metadata]
           end
           what = (owner == :footer) ? "the footer" : owner
+          key = key.bytes if key.is_a?(Key)
           key &&= Encryption.check_key!(key, "decryption: keys: the key for #{what}")
           @resolved[cache] = key
         end
