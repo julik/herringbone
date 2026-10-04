@@ -123,6 +123,40 @@ class ErgonomicsTest < Minitest::Test
     assert_equal Time.utc(2024, 2, 29, 10), rows[0]["local"]
   end
 
+  def test_timestamp_strings_without_offset_are_utc
+    schema = Herringbone::Schema.define { |s|
+      s.timestamp :t, unit: :nanos
+      s.timestamp :local, utc: false
+    }
+    input = [
+      {t: "2024-05-01 12:00", local: "2024-05-01 12:00"},
+      {t: "2024-05-01T12:00:00.123456789", local: "2024-03-31 02:30"}, # in the DST gap in Amsterdam
+      {t: "2024-05-01", local: "2024-05-01T12:00:00+02:00"},
+      {t: "2024-05-01 12:00 UTC", local: nil}
+    ]
+    rows = with_tz("Europe/Amsterdam") { roundtrip(schema, input) }
+    assert_equal [Time.utc(2024, 5, 1, 12), Time.utc(2024, 5, 1, 12, 0, 0.123456789r), Time.utc(2024, 5, 1),
+      Time.utc(2024, 5, 1, 12)], rows.map { |r| r["t"] }
+    # Local timestamps keep the wall clock time
+    assert_equal [Time.utc(2024, 5, 1, 12), Time.utc(2024, 3, 31, 2, 30), Time.utc(2024, 5, 1, 12), nil],
+      rows.map { |r| r["local"] }
+  end
+
+  def test_timestamp_strings_that_cannot_be_placed_in_time
+    schema = Herringbone::Schema.define { |s| s.timestamp :t }
+    ["12:00", "2024-05-01 12:00 America/New_York"].each do |value|
+      assert_raises(Herringbone::EncodeError) { roundtrip(schema, [{t: value}]) }
+    end
+  end
+
+  def with_tz(tz)
+    was = ENV["TZ"]
+    ENV["TZ"] = tz
+    yield
+  ensure
+    ENV["TZ"] = was
+  end
+
   # Stands in for ActiveSupport::TimeWithZone, which is not a Time subclass
   class FakeTimeWithZone
     def initialize(time) = @time = time

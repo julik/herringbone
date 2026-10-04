@@ -247,7 +247,7 @@ Columns accept the values Ruby and Rails code usually has at hand:
 | column | accepts |
 |---|---|
 | `date` | `Date`, `Time`/`DateTime` (their date), `"2024-05-01"` |
-| `timestamp` | `Time`, `DateTime`, `ActiveSupport::TimeWithZone`, `Date` (midnight UTC), ISO-8601 strings, Integers in the column's unit |
+| `timestamp` | `Time`, `DateTime`, `ActiveSupport::TimeWithZone`, `Date` (midnight UTC), ISO-8601 strings (UTC unless they give an offset), Integers in the column's unit |
 | `time` | `Time` (its time of day, as Rails returns for `time` columns), `"13:45:30.25"`, Integers |
 | `json` | Strings as-is, anything else through `JSON.generate` |
 | `string`, `enum` | Strings, Symbols, anything with `to_s` |
@@ -255,6 +255,11 @@ Columns accept the values Ruby and Rails code usually has at hand:
 | integers | Integers, whole-number Floats/BigDecimals/Rationals, numeric Strings; out-of-range values raise |
 | `decimal` | `BigDecimal`, Integer, Rational, Float, numeric Strings |
 | `uuid` | Strings with or without dashes, or 16 raw bytes |
+
+Timestamps are stored as UTC instants, whatever zone the value is in; Parquet keeps no zone name.
+`utc: false` stores the wall clock time instead, for local date-times. A string without an offset,
+like `"2024-05-01 12:00"`, is taken as UTC rather than in the zone of the machine doing the write,
+and one with a zone name but no offset (`"... America/New_York"`) is refused.
 
 Values that don't fit raise `Herringbone::EncodeError` naming the row number and column path; the
 failed row is discarded and the writer can carry on.
