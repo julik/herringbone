@@ -129,7 +129,7 @@ module Herringbone
     def decompress(codec, data, uncompressed_size)
       return "".b if uncompressed_size.zero? && data.empty?
       out = case codec
-      when Format::Codec::UNCOMPRESSED then data
+      when Format::Codec::UNCOMPRESSED then (data.encoding == Encoding::BINARY) ? data : data.b
       when Format::Codec::SNAPPY then Codecs::Snappy.decompress(data)
       when Format::Codec::GZIP then gunzip(data)
       when Format::Codec::LZ4_RAW then Codecs::LZ4.decompress_block(data, uncompressed_size)
@@ -140,33 +140,75 @@ module Herringbone
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
       end
-      out = out.b
+      out = binary(out)
       if out.bytesize != uncompressed_size
         raise FormatError, "Decompressed #{out.bytesize} bytes, expected #{uncompressed_size}"
       end
       out
     end
 
-    # Compresses a page body
+    # Compresses a page body. Given several Strings, compresses their concatenation; GZIP, ZSTD
+    # and Snappy take them one by one, the other codecs join them first.
     #
     # @param codec [Integer] Format::Codec id
-    # @param data [String] bytes to compress
+    # @param data [String, Array<String>] bytes to compress, or the parts of them
     # @param level [Integer, nil] compression level checked with check_level!, nil for the default
     # @return [String] compressed bytes (binary)
     # @raise [UnsupportedError] for a codec herringbone does not implement
     # @raise [MissingCodecError] when the codec's gem is not loaded
     def compress(codec, data, level = nil)
+      parts = data.is_a?(Array) ? data : [data]
       case codec
-      when Format::Codec::UNCOMPRESSED then data
-      when Format::Codec::SNAPPY then Codecs::Snappy.compress(data)
-      when Format::Codec::GZIP then level ? Zlib.gzip(data, level: level) : Zlib.gzip(data)
+      when Format::Codec::GZIP then return binary(gzip(parts, level))
+      when Format::Codec::ZSTD then return binary(zstd(parts, level))
+      when Format::Codec::SNAPPY then return binary(Codecs::Snappy.compress(data))
+      end
+      data = parts.join if data.is_a?(Array)
+      out = case codec
+      when Format::Codec::UNCOMPRESSED then (data.encoding == Encoding::BINARY) ? data : data.b
       when Format::Codec::LZ4_RAW then Codecs::LZ4.compress_block(data)
       when Format::Codec::LZ4 then Codecs::LZ4.compress_hadoop(data)
-      when Format::Codec::ZSTD then level ? library(codec).compress(data, level: level) : library(codec).compress(data)
       when Format::Codec::BROTLI then level ? library(codec).deflate(data, quality: level) : library(codec).deflate(data)
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
-      end.b
+      end
+      binary(out)
+    end
+
+    # A gzip member with no file name and a zero mtime, like Zlib.gzip makes
+    #
+    # @param parts [Array<String>] bytes to compress, in order
+    # @param level [Integer, nil] zlib level, nil for the default
+    # @return [String] gzip data
+    def gzip(parts, level)
+      z = Zlib::Deflate.new(level || Zlib::DEFAULT_COMPRESSION, Zlib::MAX_WBITS + 16)
+      parts.each { |part| z << part }
+      z.finish
+    ensure
+      z&.close
+    end
+
+    # @param parts [Array<String>] bytes to compress, in order
+    # @param level [Integer, nil] zstd level, nil for the default
+    # @return [String] a single zstd frame
+    # @raise [MissingCodecError] when zstd-ruby is not loaded
+    def zstd(parts, level)
+      zstd = library(Format::Codec::ZSTD)
+      if parts.size == 1
+        return level ? zstd.compress(parts.first, level: level) : zstd.compress(parts.first)
+      end
+      stream = level ? zstd::StreamingCompress.new(level: level) : zstd::StreamingCompress.new
+      parts.each { |part| stream << part }
+      stream.finish
+    end
+
+    # Codec output relabelled as binary without copying it, unless it is frozen
+    #
+    # @param str [String] bytes
+    # @return [String] +str+ or a binary copy of it
+    def binary(str)
+      return str if str.encoding == Encoding::BINARY
+      str.frozen? ? str.b : str.force_encoding(Encoding::BINARY)
     end
 
     # Handles files whose gzip data consists of several concatenated members

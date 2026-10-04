@@ -227,30 +227,70 @@ module Herringbone
         out
       end
 
-      # @param input [String] bytes to compress
+      # Several Strings are compressed as their concatenation without joining them: fragments are
+      # compressed straight out of the part holding them, and only a fragment straddling two parts
+      # is copied out. The output is the same as for the joined input.
+      #
+      # @param input [String, Array<String>] bytes to compress, or the parts of them
       # @return [String] raw snappy block in ASCII-8BIT
       # @raise [Error] if the input is larger than MAX_UNCOMPRESSED
       def compress(input)
-        src = (input.encoding == Encoding::BINARY) ? input : input.b
-        n = src.bytesize
+        parts = input.is_a?(Array) ? input.map { |part| binary(part) } : [binary(input)]
+        n = parts.sum(&:bytesize)
         # Checked for libsnappy too: it would truncate the 32-bit length preamble without complaint
         raise Error, "input too large for snappy" if n > MAX_UNCOMPRESSED
         if (lib = native)
-          return lib.deflate(src)
+          return lib.deflate((parts.size == 1) ? parts.first : parts.join)
         end
 
         out = String.new(capacity: 32 + n + n / 6, encoding: Encoding::BINARY)
         write_varint(out, n)
         table = Array.new(1 << HASH_BITS, 0)
+        part_index = 0
+        offset = 0
         start = 0
         while start < n
           len = n - start
           len = BLOCK_SIZE if len > BLOCK_SIZE
           table.fill(0)
-          compress_block(src, start, len, out, table)
+          part_index, offset = next_part(parts, part_index, offset)
+          part = parts[part_index]
+          if offset + len <= part.bytesize
+            compress_block(part, offset, len, out, table)
+            offset += len
+          else
+            fragment = String.new(capacity: len, encoding: Encoding::BINARY)
+            while fragment.bytesize < len
+              part_index, offset = next_part(parts, part_index, offset)
+              take = [len - fragment.bytesize, parts[part_index].bytesize - offset].min
+              fragment << parts[part_index].byteslice(offset, take)
+              offset += take
+            end
+            compress_block(fragment, 0, len, out, table)
+          end
           start += len
         end
         out
+      end
+
+      # @param str [String] bytes in any encoding
+      # @return [String] +str+, or a binary copy when it is in another encoding
+      def binary(str)
+        (str.encoding == Encoding::BINARY) ? str : str.b
+      end
+
+      # Skips past parts that are used up
+      #
+      # @param parts [Array<String>] the input parts
+      # @param index [Integer] index of the current part
+      # @param offset [Integer] offset in the current part
+      # @return [Array(Integer, Integer)] index of a part with bytes left at the offset, and that offset
+      def next_part(parts, index, offset)
+        while offset >= parts[index].bytesize
+          index += 1
+          offset = 0
+        end
+        [index, offset]
       end
 
       # Reads the uncompressed-length preamble (a little-endian base-128 varint) at the start of +src+.
@@ -490,7 +530,7 @@ module Herringbone
         end
       end
 
-      private_class_method :native, :native_library, :decompress_io_buffer, :decompress_string, :read_varint, :write_varint, :compress_block, :block_words, :match_length_words,
+      private_class_method :native, :native_library, :binary, :next_part, :decompress_io_buffer, :decompress_string, :read_varint, :write_varint, :compress_block, :block_words, :match_length_words,
         :match_length, :emit_literal, :emit_copy, :emit_copy_upto64
     end
   end

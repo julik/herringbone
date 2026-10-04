@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,
+  ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
+
 ## 0.6.1
 
 - `Herringbone::Reader` raises `Herringbone::FormatError` for forged metadata or page headers that
