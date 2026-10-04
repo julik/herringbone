@@ -12,6 +12,8 @@
   and nesting.
 - `Herringbone.combine(inputs, output)` concatenates Parquet files with the same schema, copying
   their row groups byte for byte; with `schema:` it fills fields an input lacks with nulls.
+- `herringbone combine INPUT... --output=FILE` does the same from the command line, with `--union`
+  for inputs with different fields and `--encrypt-key=KEY` or `--plaintext` for encrypted inputs.
 - `Herringbone.redact` raises `Herringbone::FormatError` for a corrupt page header in a row group it
   copies, instead of retrying forever.
 - Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,

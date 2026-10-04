@@ -814,9 +814,16 @@ bin/herringbone inspect FILE [--pages]                 # text report (--pages li
 bin/herringbone inspect FILE --format=json             # everything as JSON
 bin/herringbone inspect FILE --format=html             # the HTML page, opened in your browser
 bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
+bin/herringbone combine A B C --output=all.parquet     # concatenate files with the same schema
+bin/herringbone combine A B --union > all.parquet      # fill fields an input lacks with nulls
 ```
 
 Add `--verify-checksums` to any `inspect` form to check page CRCs.
+
+`combine` does what [`Herringbone.combine`](#combining-files) does and prints how many row groups
+it copied and encoded again. Without `--output` it writes to stdout when that is redirected.
+`--compression=CODEC` sets the codec of the chunks it encodes again. If it fails, the output file
+is removed rather than left without a footer, and an output that is also an input is refused.
 
 Encrypted files take keys on the command line: as they are (picked by their fingerprint id, like
 a keyring), or for the footer, a column path or the key id the file stores (which `inspect`
@@ -832,6 +839,8 @@ bin/herringbone inspect FILE --aad-prefix=orders/part-0 --no-prompt
 Keys are hex, `base64:...` or `raw:...` (a 16, 24 or 32-character key that isn't valid hex is
 taken as typed too). A key the file needs but wasn't given is asked for on stdin, without echo in
 a terminal; an empty answer leaves that column unreadable. `--no-prompt` asks for nothing.
+`combine` reads encrypted inputs with the same flags, and then needs `--encrypt-key=KEY` to encrypt
+the output with one key, or `--plaintext` to write it decrypted.
 
 `--format` is `text` (the default), `json` or `html`; `--pages` only goes with `text`.
 In a terminal, `--format=html` writes the page to a temp file, prints its path and opens it with

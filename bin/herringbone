@@ -9,6 +9,11 @@
 #   herringbone inspect FILE --format=html      write a self-contained HTML page showing the file's layout
 #                                               and open it in the browser (printed when stdout is redirected)
 #   add --verify-checksums to any inspect form to read page bodies and check their CRCs
+#   herringbone combine INPUT... --output=FILE  concatenate files with the same schema, copying their
+#                                               row groups (to stdout when it is redirected and
+#                                               --output is not given); --union fills fields an input
+#                                               lacks with nulls, --compression=CODEC sets the codec
+#                                               of the chunks that are encoded again
 # `inspect` reads only the footer, page headers and page indexes: no values are decompressed.
 #
 # Encrypted files: both commands take --key=KEY (a key matched by its fingerprint id, or used for
@@ -17,6 +22,8 @@
 # base64:..., or raw:... for the bytes as typed (a 16, 24 or 32-character String that is not
 # valid hex is taken as is too). Keys that are needed but not given are asked for on stdin
 # (without echo in a terminal; an empty answer skips the key), unless --no-prompt is given.
+# `combine` takes the same flags for its inputs; an encrypted input needs --encrypt-key=KEY (the
+# output is encrypted with that key) or --plaintext for the output.
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "herringbone"
 require "json"
@@ -110,13 +117,22 @@ def decryption_from(key_flags, prompt)
     end
   end
   decryption[:footer_key] ||= plain.first.bytes if plain.size == 1
-  decryption[:keys] = ->(metadata, owner) { by_metadata.fetch(metadata) { prompt ? ask_key(metadata, owner) : nil } }
+  # combine reads a footer more than once, and its inputs may share keys
+  asked = {}
+  decryption[:keys] = lambda do |metadata, owner|
+    by_metadata.fetch(metadata) do
+      next unless prompt
+      asked.key?([metadata, owner]) ? asked[[metadata, owner]] : (asked[[metadata, owner]] = ask_key(metadata, owner))
+    end
+  end
   decryption
 end
 
 USAGE = "usage: herringbone cat FILE [N] [KEY OPTIONS]\n" \
   "       herringbone inspect FILE [--format=text|json|html] [--pages] [--verify-checksums] [KEY OPTIONS]\n" \
   "       (--pages only with --format=text)\n" \
+  "       herringbone combine INPUT... [--output=FILE] [--union] [--compression=CODEC]\n" \
+  "       [--encrypt-key=KEY | --plaintext] [KEY OPTIONS]\n" \
   "key options, for encrypted files: --key=KEY --key=KEY_ID=KEY --footer-key=KEY --column-key=PATH=KEY\n" \
   "       --aad-prefix=PREFIX --no-prompt (KEY is hex, base64:... or raw:...)"
 
@@ -135,15 +151,62 @@ when "inspect"
   path && limit.nil? && format_flags.size <= 1 && %w[text json html].include?(format) &&
     (other_flags - %w[--pages --verify-checksums]).empty? &&
     (format == "text" || !other_flags.include?("--pages"))
+when "combine"
+  options, other_flags = flags.partition { |f| f.start_with?("--output=", "--compression=", "--encrypt-key=") }
+  output_path = options.find { |f| f.start_with?("--output=") }&.delete_prefix("--output=")
+  !args.empty? && options.map { |f| f.split("=", 2).first }.uniq.size == options.size &&
+    (other_flags - %w[--union --plaintext]).empty? &&
+    !(other_flags.include?("--plaintext") && options.any? { |f| f.start_with?("--encrypt-key=") }) &&
+    (output_path ? !output_path.empty? : !$stdout.tty?)
 end
 unless valid
   warn USAGE
   exit 1
 end
 
+# Writes the inputs into one file, removing the output again when that fails
+# @return [Herringbone::Combiner::Report]
+def combine(paths, output_path, flags, options, decryption)
+  if output_path && paths.any? { |p| File.expand_path(p) == File.expand_path(output_path) || (File.exist?(output_path) && File.identical?(p, output_path)) }
+    raise ArgumentError, "#{output_path} is one of the inputs"
+  end
+  writer_options = {}
+  options.each do |option|
+    name, value = option.split("=", 2)
+    case name
+    when "--compression" then writer_options[:compression] = value.to_sym
+    when "--encrypt-key" then writer_options[:encryption] = Herringbone::Key.new(parse_key(value, "--encrypt-key"))
+    end
+  end
+  writer_options[:encryption] = false if flags.include?("--plaintext")
+  inputs = paths.map { |p| File.open(p, "rb") }
+  schema = inputs.map { |io| Herringbone::Reader.new(io, decryption: decryption).schema }.reduce(:+) if flags.include?("--union")
+  output = output_path ? File.open(output_path, "wb") : $stdout.binmode
+  begin
+    Herringbone.combine(inputs, output, schema: schema, decryption: decryption, **writer_options)
+  rescue Exception # standard:disable Lint/RescueException
+    # A file without its footer is of no use to anyone
+    if output_path
+      output.close
+      File.delete(output_path)
+    end
+    raise
+  ensure
+    output.close if output_path && !output.closed?
+  end
+ensure
+  inputs&.each(&:close)
+end
+
 # Parquet, file and key errors are reported in one line, without a backtrace
 begin
   decryption = decryption_from(key_flags, prompt)
+  if command == "combine"
+    report = combine(args, output_path, other_flags, options, decryption)
+    copied, rewritten = report.row_groups.values_at(:copied, :rewritten)
+    warn "herringbone: #{report.rows} rows, #{copied} row groups copied, #{rewritten} encoded again"
+    exit
+  end
   File.open(path, "rb") do |io|
     if command == "cat"
       n = limit&.to_i
@@ -171,5 +234,7 @@ begin
 rescue Herringbone::Error, SystemCallError, ArgumentError => e
   warn "herringbone: #{e.message}"
   warn "herringbone: give keys with --footer-key=KEY, --column-key=PATH=KEY or --key=KEY_METADATA=KEY" if e.is_a?(Herringbone::DecryptionError)
+  warn "herringbone: give --encrypt-key=KEY to encrypt the output, or --plaintext" if e.message.include?("pass encryption: for the output")
+  warn "herringbone: give --union to fill the fields an input lacks with nulls" if e.message.include?("or pass schema:")
   exit 1
 end
