@@ -436,25 +436,36 @@ module Herringbone
 
     # Converts the values a timestamp column accepts into a Time (or Time-like) object
     # @param v [Time, DateTime, Date, String, #to_i] a Time, DateTime, Date (taken as midnight UTC),
-    #   ISO-8601 (or +Time.parse+-able) String, or a Time-like object responding to +to_i+ and +nsec+
+    #   ISO-8601 (or +Date._parse+-able) String, taken as UTC when it has no offset, or a Time-like
+    #   object responding to +to_i+ and +nsec+
     # @return [Time, Object] a Time, or +v+ itself when it is Time-like
-    # @raise [ArgumentError] when +v+ is none of the above or the String cannot be parsed
+    # @raise [ArgumentError] when +v+ is none of the above, or the String cannot be parsed, has no
+    #   date or names a zone without its offset
     def to_time(v)
       case v
       when Time then v
       when DateTime then v.to_time
       when Date then Time.utc(v.year, v.month, v.day)
-      when String
-        begin
-          Time.iso8601(v)
-        rescue ArgumentError
-          Time.parse(v)
-        end
+      when String then string_to_time(v)
       else
         # ActiveSupport::TimeWithZone and friends
         raise ArgumentError, "expected a Time, got #{v.class}" unless v.respond_to?(:to_i) && v.respond_to?(:nsec)
         v
       end
+    end
+
+    # Parses a timestamp String, taking one without an offset as UTC
+    # @param v [String] e.g. "2024-05-01T12:00:00+02:00", "2024-05-01 12:00" or "2024-05-01"
+    # @return [Time] at the String's offset, or in UTC
+    # @raise [ArgumentError] when +v+ has no date, or names a zone without its offset
+    def string_to_time(v)
+      # Time.parse would read a String without an offset in the zone of the machine
+      # running the write, so the same input would give different files
+      h = Date._parse(v)
+      raise ArgumentError, "no date in timestamp #{v.inspect}" unless h[:year] && h[:mon] && h[:mday]
+      raise ArgumentError, "unknown time zone in timestamp #{v.inspect}" if h[:zone] && !h[:offset]
+      sec = (h[:sec] || 0) + (h[:sec_fraction] || 0)
+      Time.new(h[:year], h[:mon], h[:mday], h[:hour] || 0, h[:min] || 0, sec, h[:offset] || "UTC")
     end
 
     # Converter from a timestamp-like value to an INT64 count of +unit+ since the epoch.

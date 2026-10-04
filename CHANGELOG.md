@@ -4,6 +4,9 @@
 
 - Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,
   ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
+- **Breaking:** timestamp strings without an offset (`"2024-05-01 12:00"`) are written as UTC
+  instead of in the zone of the machine doing the write; strings with a zone name but no offset,
+  or with no date, raise `Herringbone::EncodeError`.
 
 ## 0.6.1
 
