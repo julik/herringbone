@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.1
+
 - `Herringbone::Reader` raises `Herringbone::FormatError` for forged metadata or page headers that
   made it loop endlessly, overflow the stack or raise `ArgumentError`, `RangeError` or
   `NoMemoryError`.
