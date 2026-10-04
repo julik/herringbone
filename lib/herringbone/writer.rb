@@ -1070,7 +1070,7 @@ module Herringbone
     # keeps in their source codec use that codec's default
     #
     # @param codec [Integer] codec id
-    # @param data [String] bytes to compress
+    # @param data [String, Array<String>] bytes to compress, or the parts of them
     # @return [String] compressed bytes
     def compress(codec, data)
       Compression.compress(codec, data, (codec == @codec) ? @compression_level : nil)
@@ -1080,28 +1080,30 @@ module Herringbone
     # stored, encrypted.
     #
     # @param header [Format::PageHeader] header; sizes and CRC32 are filled in here
-    # @param body [String] uncompressed page body
-    # @param compressed [String, nil] bytes to write as the page body, when already prepared (v2 data
-    #   pages, whose levels stay uncompressed); +body+ is compressed otherwise
+    # @param body [String, Array<String>] uncompressed page body, or its parts
+    # @param compressed [String, Array<String>, nil] bytes to write as the page body, or their
+    #   parts, when already prepared (v2 data pages, whose levels stay uncompressed); +body+ is
+    #   compressed otherwise
     # @param codec [Integer] codec id to compress +body+ with
     # @param crypto [Encryption::ModuleCrypto, nil] encryption of the column's modules
     # @param ordinal [Integer, nil] data page ordinal within the chunk; nil for a dictionary page
     # @return [Integer]
     def write_page(header, body, compressed = nil, codec: @codec, crypto: nil, ordinal: nil)
-      compressed ||= compress(codec, body)
-      header.uncompressed_page_size ||= body.bytesize
+      parts = Array(compressed || compress(codec, body))
+      header.uncompressed_page_size ||= Array(body).sum(&:bytesize)
       dictionary = header.type == Format::PageType::DICTIONARY_PAGE
       if crypto
-        compressed = crypto.encrypt(dictionary ? Encryption::DICTIONARY_PAGE : Encryption::DATA_PAGE, compressed, ordinal)
+        parts = [crypto.encrypt(dictionary ? Encryption::DICTIONARY_PAGE : Encryption::DATA_PAGE, parts.join, ordinal)]
       end
-      header.compressed_page_size = compressed.bytesize
-      header.crc = Zlib.crc32(compressed).then { |c| (c >= 0x8000_0000) ? c - 0x1_0000_0000 : c }
+      header.compressed_page_size = parts.sum(&:bytesize)
+      crc = parts.inject(0) { |c, part| Zlib.crc32(part, c) }
+      header.crc = (crc >= 0x8000_0000) ? crc - 0x1_0000_0000 : crc
       encoded = header.encode
       if crypto
         encoded = crypto.encrypt(dictionary ? Encryption::DICTIONARY_PAGE_HEADER : Encryption::DATA_PAGE_HEADER, encoded, ordinal)
       end
       write_raw(encoded)
-      write_raw(compressed)
+      parts.each { |part| write_raw(part) unless part.empty? }
       encoded.bytesize + header.uncompressed_page_size
     end
 
@@ -1117,7 +1119,7 @@ module Herringbone
     #   modules and the page's ordinal, for an encrypted column
     # @return [Integer] uncompressed size including the header
     def write_data_page_v1(n, rep_bytes, def_bytes, encoded, encoding, codec, page_crypto)
-      body = String.new(encoding: Encoding::BINARY)
+      body = []
       body << [rep_bytes.bytesize].pack("V") << rep_bytes unless rep_bytes.empty?
       body << [def_bytes.bytesize].pack("V") << def_bytes unless def_bytes.empty?
       body << encoded
@@ -1156,7 +1158,7 @@ module Herringbone
           is_compressed: codec != Format::Codec::UNCOMPRESSED
         )
       )
-      write_page(header, "".b, rep_bytes + def_bytes + compressed, codec: codec, crypto: page_crypto&.first,
+      write_page(header, "".b, [rep_bytes, def_bytes, compressed], codec: codec, crypto: page_crypto&.first,
         ordinal: page_crypto&.last)
     end
 

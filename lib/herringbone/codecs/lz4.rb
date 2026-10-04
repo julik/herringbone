@@ -101,11 +101,13 @@ module Herringbone
 
       # Compress into a single raw LZ4 block.
       # @param input [String] bytes to compress
+      # @param skip [Integer] zero bytes to put before the block, for a header filled in later
       # @return [String] raw LZ4 block in ASCII-8BIT
-      def compress_block(input)
+      def compress_block(input, skip: 0)
         src = binary(input)
         n = src.bytesize
-        out = String.new(capacity: n + (n / 255) + 16, encoding: BINARY)
+        out = String.new(capacity: skip + n + (n / 255) + 16, encoding: BINARY)
+        out << ("\0" * skip) if skip > 0
         anchor = 0
 
         if n > MFLIMIT
@@ -171,8 +173,9 @@ module Herringbone
       # @return [String] Hadoop-framed LZ4 data in ASCII-8BIT
       def compress_hadoop(input)
         src = binary(input)
-        block = compress_block(src)
-        [src.bytesize, block.bytesize].pack("NN") << block
+        out = compress_block(src, skip: HADOOP_PREFIX)
+        out[0, HADOOP_PREFIX] = [src.bytesize, out.bytesize - HADOOP_PREFIX].pack("NN")
+        out
       end
 
       # -- internals --

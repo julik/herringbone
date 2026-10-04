@@ -165,6 +165,22 @@ class SnappyBackendTest < Minitest::Test
     end
   end
 
+  def test_compressing_parts_matches_compressing_them_joined
+    rng = Random.new(7)
+    with_backend(:ruby) do
+      samples.each do |data|
+        cuts = Array.new(6) { rng.rand(data.bytesize + 1) }.push(0, data.bytesize, 65_536, 65_537).sort
+        cuts.select! { |c| c <= data.bytesize }
+        parts = cuts.each_cons(2).map { |from, to| data.byteslice(from, to - from) }
+        assert_equal Snappy.compress(data), Snappy.compress(parts), "cut at #{cuts.inspect}"
+      end
+      # Parts straddling a fragment, empty parts and a non-binary part
+      parts = ["".b, "ab" * 40_000, "", "héllo".encode("UTF-8"), "z" * 70_000]
+      assert_equal Snappy.compress(parts.map(&:b).join), Snappy.compress(parts)
+      assert_equal parts.map(&:b).join, Snappy.decompress(Snappy.compress(parts))
+    end
+  end
+
   def test_backends_read_each_others_blocks
     skip "the snappy gem is not installed" unless native?
     samples.each do |data|
