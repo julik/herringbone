@@ -10,6 +10,10 @@
 - `Herringbone::IncompatibleSchema` lists every field two schemas cannot agree on, at once.
 - `Herringbone::Schema#==` compares structure: field names, order, nullability, types, field ids
   and nesting.
+- `Herringbone.combine(inputs, output)` concatenates Parquet files with the same schema, copying
+  their row groups byte for byte; with `schema:` it fills fields an input lacks with nulls.
+- `Herringbone.redact` raises `Herringbone::FormatError` for a corrupt page header in a row group it
+  copies, instead of retrying forever.
 - Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,
   ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
 - Writing metadata whose integers don't fit their Thrift field raises `Herringbone::Thrift::Error`

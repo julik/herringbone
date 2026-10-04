@@ -13,7 +13,7 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 
 This README covers the common cases. The [MANUAL](MANUAL.md) has everything else: reader and
 writer options, schemas and column types, bloom filters, Numo arrays, encryption, the redaction
-rules, type mapping and the inspector.
+rules, combining files, type mapping and the inspector.
 
 ## Installation
 
@@ -148,6 +148,18 @@ end
 ```
 
 See [Redaction](MANUAL.md#redaction) for reusable redactions, reports and recipes.
+
+## Combining files
+
+`Herringbone.combine` concatenates files with the same schema by copying their row groups byte for
+byte, without decoding anything:
+
+```ruby
+Herringbone.combine([january, february, march], output)
+```
+
+Files with different columns combine with `schema: a.schema + b.schema`, which fills the gaps with
+nulls. See [Combining files](MANUAL.md#combining-files).
 
 ## Looking inside a file
 

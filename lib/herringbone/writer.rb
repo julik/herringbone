@@ -271,9 +271,9 @@ module Herringbone
     #   @return [String, nil] the chunk's encoded bloom filter, header included
     CopiedChunk = Struct.new(:chunk, :start, :bytes, :column_index, :offset_index, :bloom_filter)
 
-    # Internal (used by Redaction): writes a row group of +num_rows+ rows from the buffered values,
-    # except for the columns in +copies+, whose chunks are copied byte for byte from another file
-    # with their offsets rebased. Starts a new row group afterwards.
+    # Internal (used by Redaction and Combiner): writes a row group of +num_rows+ rows from the
+    # buffered values, except for the columns in +copies+, whose chunks are copied byte for byte
+    # from another file with their offsets rebased. Starts a new row group afterwards.
     #
     # @param num_rows [Integer] rows in the row group
     # @param copies [Hash{Integer => CopiedChunk}] column index => chunk to copy instead of encoding
@@ -314,15 +314,15 @@ module Herringbone
       reset_buffers
     end
 
-    # Internal (used by Redaction): whether the column is encrypted in this file
+    # Internal (used by Redaction and Combiner): whether the column is encrypted in this file
     #
     # @param index [Integer] leaf column index
     # @return [Boolean]
     def encrypted_column?(index) = @encryption&.encrypted?(index) || false
 
-    # Internal (used by Redaction): shreds one value per row of a top-level field into the buffers,
-    # for #write_row_group. Other fields are left as they are, so the caller decides which columns
-    # are encoded and which are copied.
+    # Internal (used by Redaction and Combiner): shreds one value per row of a top-level field into
+    # the buffers, for #write_row_group. Other fields are left as they are, so the caller decides
+    # which columns are encoded and which are copied.
     #
     # @param name [String] top-level field name
     # @param values [Array] the field's value for each row

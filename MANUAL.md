@@ -33,6 +33,9 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [What gets erased, and what doesn't](#what-gets-erased-and-what-doesnt)
   - [Encrypted files](#encrypted-files)
   - [Recipes](#recipes)
+- [Combining files](#combining-files)
+  - [Comparing and uniting schemas](#comparing-and-uniting-schemas)
+  - [Combining encrypted files](#combining-encrypted-files)
 - [Type mapping](#type-mapping)
 - [Inspecting files](#inspecting-files)
 - [Command line](#command-line)
@@ -680,6 +683,82 @@ Herringbone.redact(io, output_io) do |r|
     address && { "city" => Faker::Address.city, "zip" => Faker::Address.zip_code }
   end
 end
+```
+
+## Combining files
+
+`Herringbone.combine` concatenates Parquet files into one: every row group of every input, in
+order. The inputs are seekable IOs and the output any IO with `#write`, like for `Reader` and
+`Writer`, and none of them is closed.
+
+```ruby
+paths = %w[2026-01.parquet 2026-02.parquet 2026-03.parquet]
+inputs = paths.map { |path| File.open(path, "rb") }
+File.open("2026-q1.parquet", "wb") { |out| Herringbone.combine(inputs, out) }
+inputs.each(&:close)
+```
+
+When the inputs have the same schema, nothing is decoded: the column chunks are copied byte for
+byte, with their statistics, page indexes and bloom filters, and only the offsets pointing at them
+are rebased. Row groups keep their boundaries, so a hundred small files make a file of a hundred
+small row groups; to merge row groups, read the files and write the rows with `Writer` instead.
+`combine` returns a `Combiner::Report` with `rows` and `row_groups` (`{ copied:, rewritten: }`).
+
+The footer's key/value metadata is the first input's (without `ARROW:schema` and `pandas` when the
+output schema is another than the first input's), unless `metadata:` is given. Writer options
+(`compression:`, `page_rows:`...) apply to the column chunks that have to be encoded again;
+`row_group_bytes:` and `row_group_rows:` are refused. Those chunks keep the codec of the original
+chunk, and get a bloom filter if they had one.
+
+### Comparing and uniting schemas
+
+Two schemas are `==` when they have the same fields in the same order, with the same names,
+nullability, physical types, annotations, field ids and nesting. `eql?` and `hash` agree, so
+schemas work as Hash keys. What does not count: the name of the root (`schema`, `spark_schema`,
+`duckdb_schema`...), `enum values:` (which are not stored in the file), the footer's key/value
+metadata (which is not part of the schema), and the legacy converted type of a column that has a
+logical type, since writers differ in whether they store both. A pyarrow file and a Herringbone
+file holding the same columns usually compare equal. `difference` says where two schemas part:
+
+```ruby
+a.schema.difference(b.schema).to_s # => "address.zip: optional INT32 zip vs optional BYTE_ARRAY zip (STRING)"
+```
+
+Without `schema:`, every input must have the schema of the first, or `combine` raises
+`ArgumentError` before writing anything, naming the column:
+
+```
+The schema of input 2 differs from that of input 0: address.zip: optional INT32 zip in input 0,
+optional BYTE_ARRAY zip (STRING) in input 2. Combine files with the same schema, or pass schema: ...
+```
+
+For files whose columns differ, `+` unites two schemas: the fields of the first, then the fields
+only the second has. Fields only one side has become nullable, and so does a field that is
+required on one side and nullable on the other. Fields are matched by name at the top level only,
+and anything else that differs (types, struct members, list elements) raises `ArgumentError`.
+Pass the union as `schema:`:
+
+```ruby
+schemas = inputs.map { |io| Herringbone::Reader.new(io).schema }
+Herringbone.combine(inputs, out, schema: schemas.reduce(:+))
+```
+
+Each input's fields are then fitted to `schema:`, in whatever order the input has them. Fields an
+input has as they are in `schema:` are still copied; fields it lacks are written as nulls, and
+fields it has required where `schema:` has them nullable are encoded again. An input with a field
+`schema:` lacks, or lacking a field `schema:` requires, raises `ArgumentError`.
+
+### Combining encrypted files
+
+Pass the keys of encrypted inputs in `decryption:`, as for `Reader` (`[key, older_key]` lets each
+file find its own). An encrypted column chunk can't be copied, since its encryption is tied to the
+file and to its position in it, so it is decrypted and encoded again. When an input is encrypted,
+`encryption:` (as for `Writer`) is required, so a file is never decrypted by accident:
+`encryption: false` writes a plaintext file on purpose. Plaintext inputs can go into an encrypted
+output too; their columns that get encrypted are encoded again and the rest are copied.
+
+```ruby
+Herringbone.combine(inputs, out, decryption: [key, older_key], encryption: key)
 ```
 
 ## Type mapping

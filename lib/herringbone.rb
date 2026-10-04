@@ -82,6 +82,7 @@ module Herringbone
 
   autoload :BloomFilter, "#{LIB}/bloom_filter"
   autoload :ByteValues, "#{LIB}/byte_values"
+  autoload :Combiner, "#{LIB}/combiner"
   autoload :Compression, "#{LIB}/compression"
   autoload :DecryptionConfiguration, "#{LIB}/encryption_configuration"
   autoload :Encryption, "#{LIB}/encryption"
@@ -240,6 +241,50 @@ module Herringbone
       raise ArgumentError, "The block receives the redaction: Herringbone.redact(io, output_io) { |r| r.where(user_id: 42).delete }"
     end
     (redaction || Redaction.new(&block)).apply(io_or_reader, output_io, **writer_options)
+  end
+
+  # Concatenates Parquet files into +output+: every row group of every input, in order. A shortcut
+  # for Combiner. Inputs with the output schema have their column chunks copied byte for byte (only
+  # offsets are rebased), so nothing is decoded; without +schema+, every input must have the schema
+  # of the first (see Schema#==). With +schema+ (say, the union of the inputs' schemas, Schema#+),
+  # fields an input lacks are written as nulls, and fields it has as required where the schema has
+  # them optional are encoded again.
+  #
+  #   File.open("all.parquet", "wb") { |out| Herringbone.combine([jan, feb, mar], out) }
+  #   Herringbone.combine([a, b], out, schema: Herringbone::Reader.new(a).schema + Herringbone::Reader.new(b).schema)
+  #
+  # The footer's key/value metadata is the first input's, unless +metadata:+ is given.
+  # Encrypted inputs are read with +decryption:+, and their encrypted column chunks are encoded
+  # again; the output is encrypted as +encryption:+ says, which is then required.
+  #
+  # @param inputs [Array<IO, StringIO>] the Parquet files, read with #seek and #read; not closed
+  # @param output [IO, #write] destination, written sequentially; not closed
+  # @param schema [Schema, nil] the output schema; nil to require the inputs to have the same one
+  # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, Array, #call, nil] keys of
+  #   encrypted inputs, see Reader.new
+  # @param writer_options [Hash{Symbol => Object}] Writer options for chunks encoded again (and
+  #   written nulls), +metadata:+ and +encryption:+
+  # @option writer_options [Symbol] :compression (codec of each source chunk) codec for chunks
+  #   encoded again
+  # @option writer_options [Integer, nil] :compression_level (nil) level for that codec, see Writer
+  # @option writer_options [Hash{String => String}] :metadata (the first input's) footer key/value metadata
+  # @option writer_options [EncryptionConfiguration, Hash{Symbol => Object}, Key, String, false] :encryption
+  #   (nil) encrypts the output, see Writer; required when an input is encrypted, false for a
+  #   plaintext output
+  # @option writer_options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
+  #   columns whose encoded chunks get a bloom filter, besides those whose source chunk had one
+  # @option writer_options [Integer] :page_bytes (1MB) approximate uncompressed data page size
+  # @option writer_options [Integer] :page_rows (20_000) maximum rows per data page
+  # @option writer_options [Integer] :data_page_version (1) 1 or 2
+  # @option writer_options [Boolean, Array<String>] :dictionary (true) see Writer
+  # @option writer_options [Hash{String => Symbol}] :encodings ({}) see Writer
+  # @return [Combiner::Report] rows written, and how many row groups were copied or rewritten
+  # @raise [ArgumentError] when there are no inputs, the schemas differ (naming the column), an
+  #   input does not fit +schema+, an input is encrypted and +encryption:+ is not given, or for
+  #   +row_group_bytes:+ / +row_group_rows:+
+  # @raise [DecryptionError] when an input is encrypted and a key it needs was not given
+  def combine(inputs, output, schema: nil, decryption: nil, **writer_options)
+    Combiner.new(inputs, schema: schema, decryption: decryption).apply(output, **writer_options)
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].
