@@ -409,13 +409,15 @@ module Herringbone
       # @param type [Symbol, Array, Class] declared type (see WIRE_TYPES)
       # @param value [Object] Integer, Float, String, Array or Struct matching +type+
       # @return [void]
-      # @raise [Error] when an integer type gets a value that is not an Integer in its range
+      # @raise [Error] when an integer type gets a value that is not an Integer in its range, or a
+      #   +:string+ gets a value that is not valid UTF-8 and cannot be converted to it
       def write_value(type, value)
         case type
         when :byte then @buf << (checked_int(type, value) & 0xFF)
         when :i16, :i32, :i64 then write_zigzag(checked_int(type, value))
         when :double then @buf << [value].pack("E")
-        when :binary, :string then write_binary(value)
+        when :binary then write_binary(value)
+        when :string then write_binary(utf8(value))
         when Array then write_list(type[1], value)
         else write_struct(value)
         end
@@ -453,6 +455,21 @@ module Herringbone
       def checked_int(type, value)
         raise Error, "#{value.inspect} is not a valid #{type}" unless value.is_a?(Integer) && INT_RANGES.fetch(type).cover?(value)
         value
+      end
+
+      # Parquet strings are UTF-8. Binary Strings are taken to hold UTF-8 bytes, Strings in other
+      # encodings are converted.
+      #
+      # @param s [String] value of a +:string+ field
+      # @return [String] +s+, or a UTF-8 copy of it
+      # @raise [Error] when +s+ is not valid UTF-8 and cannot be converted to it
+      def utf8(s)
+        return s if s.ascii_only? || (s.encoding == Encoding::UTF_8 && s.valid_encoding?)
+        u = (s.encoding == Encoding::BINARY) ? s.dup.force_encoding(Encoding::UTF_8) : s.encode(Encoding::UTF_8)
+        raise Error, "String in #{s.encoding} is not valid UTF-8" unless u.valid_encoding?
+        u
+      rescue EncodingError => e
+        raise Error, "String in #{s.encoding} cannot be converted to UTF-8: #{e.message}"
       end
     end
 
