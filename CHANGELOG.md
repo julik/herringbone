@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0
+
 - `Herringbone.redact` and `Herringbone::Redaction#apply` take a `Herringbone::Reader` as well as an
   IO, using the Reader's decryption.
 - `Herringbone::Schema#union` (`+`) and `#intersect` (`&`) match fields by name at every level of
