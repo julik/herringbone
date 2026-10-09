@@ -576,6 +576,23 @@ class CombineTest < Minitest::Test
     assert_match "needs the key of email", error.message
   end
 
+  def test_inputs_with_different_column_keys_or_aad_prefixes_need_encryption_for_the_output
+    a = file(0...10, encryption: {footer_key: KEY, columns: {"email" => "E" * 16}, aad_prefix: "a"})
+    b = file(10...20, encryption: {footer_key: KEY, columns: {"email" => "F" * 16}, aad_prefix: "b"})
+    readers = [Herringbone::Reader.new(StringIO.new(a), decryption: {footer_key: KEY, columns: {"email" => "E" * 16}}),
+      Herringbone::Reader.new(StringIO.new(b), decryption: {footer_key: KEY, columns: {"email" => "F" * 16}})]
+    error = assert_raises(ArgumentError) { Herringbone.combine(readers, StringIO.new) }
+    assert_equal <<~MESSAGE.chomp, error.message
+      The encrypted inputs are encrypted differently, so there is no "encrypted like the inputs":
+
+        AAD prefix differs: input 0 / input 1
+        email is encrypted with another key in input 1 than in input 0
+
+      Pass encryption: for the output (a Herringbone::Key or an EncryptionConfiguration), or
+      encryption: false to write it in plaintext.
+    MESSAGE
+  end
+
   def test_inputs_encrypted_differently_need_encryption_for_the_output
     other_key = "O" * 16
     a = file(0...100, encryption: {footer_key: KEY})

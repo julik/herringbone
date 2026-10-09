@@ -327,20 +327,9 @@ module Herringbone
       # @raise [DecryptionError] when a key of the input was not given
       def input_encryption
         decryptor = @reader.decryptor or return nil
-        chunks = @reader.row_groups.first&.columns || []
-        columns = @output_columns.each_with_index.filter_map do |col, j|
-          chunk = chunks[col.index]
-          crypto = chunk&.crypto_metadata or next
-          path = @output_schema.columns[j].dotted_path
-          with_column_key = crypto.encryption_with_column_key
-          next [path, :footer] unless with_column_key
-          key = decryptor.chunk_key(chunk, col.dotted_path)
-          key or raise DecryptionError, "The output is encrypted like the input, which needs the key of #{col.dotted_path}: " \
-            "pass it in decryption:, or pass encryption: for the output"
-          [path, {key: key, key_metadata: with_column_key.key_metadata}]
-        end
-        uniform = !columns.empty? && columns.size == @output_columns.size && columns.all? { |_, v| v == :footer }
-        decryptor.writer_settings(uniform ? nil : columns.to_h)
+        columns = @copier.encrypted_columns(@output_columns.each_with_index.to_h { |col, j| [@output_schema.columns[j].dotted_path, col] })
+        uniform = !columns.empty? && columns.size == @output_columns.size && columns.values.all?(:footer)
+        decryptor.writer_settings(uniform ? nil : columns)
       end
 
       # Tier 3: the remaining rows are encoded again, every column of them

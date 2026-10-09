@@ -798,8 +798,8 @@ and encoded again.
 
 The output is encrypted like the encrypted inputs: the same algorithm, footer mode, footer key and
 key metadata, and the same key for each column. Plaintext inputs in the same call get that
-encryption too, so nothing gets decrypted into a plaintext file by accident. An AAD prefix the
-inputs share is kept; differing ones are left out, unless readers have to supply them.
+encryption too, so nothing gets decrypted into a plaintext file by accident. The AAD prefix the
+inputs share is kept.
 
 ```ruby
 Herringbone.combine(ios, output_io, decryption: key)                     # encrypted with key, like the inputs
@@ -807,8 +807,8 @@ Herringbone.combine(ios, output_io, decryption: key, encryption: new_key) # re-k
 Herringbone.combine(ios, output_io, decryption: key, encryption: false)   # plaintext, on purpose
 ```
 
-Inputs encrypted differently (another footer key, algorithm or footer mode, a column encrypted
-with different keys) have no single "like the inputs", so `combine` raises `ArgumentError` listing
+Inputs encrypted differently (another footer key, algorithm, footer mode or AAD prefix, a column
+encrypted with different keys) have no single "like the inputs", so `combine` raises `ArgumentError` listing
 how they differ, and `encryption:` decides.
 
 ## Type mapping

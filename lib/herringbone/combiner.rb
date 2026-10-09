@@ -47,6 +47,14 @@ module Herringbone
       the fields all inputs have.
     ADVICE
 
+    # Encryption settings the inherited encryption takes from the inputs => how messages name them
+    ENCRYPTION_SETTINGS = {
+      footer_key: "footer key", footer_key_metadata: "footer key metadata", plaintext_footer: "footer mode",
+      algorithm: "algorithm", aad_prefix: "AAD prefix", store_aad_prefix: "AAD prefix storage"
+    }.freeze
+    # Settings whose values messages leave out
+    SECRET_SETTINGS = %i[footer_key aad_prefix].freeze
+
     # Converted annotations of time and timestamp columns => their unit
     CONVERTED_UNITS = {
       Format::ConvertedType::TIME_MILLIS => :millis, Format::ConvertedType::TIME_MICROS => :micros,
@@ -348,9 +356,8 @@ module Herringbone
     end
 
     # The +encryption:+ option that encrypts the output like the encrypted inputs: the same
-    # algorithm, footer mode, footer key and key metadata, and the same key for each column.
-    # Plaintext inputs get that encryption too. An AAD prefix the inputs share is kept; differing
-    # ones are left out, unless the inputs make readers supply theirs.
+    # algorithm, footer mode, footer key and key metadata, AAD prefix, and the same key for each
+    # column. Plaintext inputs get that encryption too.
     #
     # @return [EncryptionConfiguration, nil] nil when no input is encrypted
     # @raise [ArgumentError] listing how the encrypted inputs differ, when they do
@@ -358,27 +365,23 @@ module Herringbone
     def inherited_encryption
       encrypted = @inputs.select { |input| input.reader.decryptor }
       return nil if encrypted.empty?
-      settings = encrypted.map { |input| [input, input.reader.decryptor.writer_settings(nil).to_h] }
-      problems = []
-      %i[footer_key footer_key_metadata plaintext_footer algorithm].each do |setting|
-        groups = settings.group_by { |_, h| h[setting] }
+      settings = encrypted.map { |input| input.reader.decryptor.writer_settings(nil).to_h.except(:columns) }
+      problems = settings.first.keys.filter_map do |setting|
+        groups = encrypted.zip(settings).group_by { |_, h| h[setting] }
         next if groups.size == 1
-        what = {footer_key: "footer key", footer_key_metadata: "footer key metadata", plaintext_footer: "footer mode",
-                algorithm: "algorithm"}.fetch(setting)
-        problems << "#{what} differs: " + groups.map { |value, members|
-          shown = (setting == :footer_key) ? "" : " (#{value.inspect})"
-          "#{members.map { |input, _| input.report.name }.join(", ")}#{shown}"
+        "#{ENCRYPTION_SETTINGS.fetch(setting)} differs: " + groups.map { |value, members|
+          "#{members.map { |input, _| input.report.name }.join(", ")}#{" (#{value.inspect})" unless SECRET_SETTINGS.include?(setting)}"
         }.join(" / ")
       end
-      columns = inherited_columns(encrypted, problems)
-      aads = settings.map { |_, h| h.values_at(:aad_prefix, :store_aad_prefix) }.uniq
-      aad_prefix, store = aads.first
-      if aads.size > 1
-        if aads.any? { |_, stored| !stored }
-          problems << "AAD prefixes differ, and readers must supply them: " + settings.map { |input, _| input.report.name }.join(", ")
+      columns = {}
+      owners = {}
+      layouts = encrypted.map { |input| input.copier.encrypted_columns(input.sources.to_h { |j, col| [@schema.columns[j].dotted_path, col] }) }
+      encrypted.zip(layouts).each do |input, layout|
+        layout.each do |path, setting|
+          owner = owners[path] ||= input.report.name
+          columns[path] ||= setting
+          problems << "#{path} is encrypted with another key in #{input.report.name} than in #{owner}" if columns[path] != setting
         end
-        aad_prefix = nil
-        store = true
       end
       unless problems.empty?
         raise ArgumentError, <<~MESSAGE.chomp
@@ -390,59 +393,8 @@ module Herringbone
           encryption: false to write it in plaintext.
         MESSAGE
       end
-      base = settings.first.last
-      EncryptionConfiguration.new(**base.merge(columns: columns, aad_prefix: aad_prefix, store_aad_prefix: store))
-    end
-
-    # The +columns:+ of the inherited encryption: nil when every encrypted input encrypts all its
-    # columns with the footer key, else output column path => +:footer+ or its own key
-    #
-    # @param encrypted [Array<Input>] the encrypted inputs
-    # @param problems [Array<String>] how the inputs differ; added to
-    # @return [Hash{String => Symbol, Hash}, nil]
-    # @raise [DecryptionError] when the key of an encrypted column was not given
-    def inherited_columns(encrypted, problems)
-      layouts = encrypted.filter_map do |input|
-        reader = input.reader
-        chunks = reader.row_groups.first&.columns or next
-        output_of = input.sources.to_h { |j, source| [source.index, j] }
-        layout = {}
-        uniform = true
-        reader.schema.columns.each do |col|
-          j = output_of[col.index] or next
-          crypto = chunks[col.index]&.crypto_metadata
-          next uniform = false unless crypto
-          path = @schema.columns[j].dotted_path
-          with_column_key = crypto.encryption_with_column_key
-          next layout[path] = :footer unless with_column_key
-          uniform = false
-          key = reader.decryptor.chunk_key(chunks[col.index], col.dotted_path)
-          key or raise DecryptionError, "The output is encrypted like #{input.report.name}, which needs the key of " \
-            "#{col.dotted_path}: pass it in decryption:, or pass encryption: for the output"
-          layout[path] = {key: key, key_metadata: with_column_key.key_metadata}
-        end
-        [input, layout, uniform]
-      end
-      return nil if layouts.all? { |_, _, uniform| uniform }
-      merged = {}
-      owner = {}
-      key_name = ->(setting) { (setting == :footer) ? "the footer key" : "a key of its own" }
-      layouts.each do |input, layout, _|
-        layout.each do |path, setting|
-          if !merged.key?(path)
-            merged[path] = setting
-            owner[path] = input.report.name
-          elsif merged[path] != setting
-            problems << if key_name.call(merged[path]) == key_name.call(setting)
-              "#{path} is encrypted with different keys in #{owner[path]} and #{input.report.name}"
-            else
-              "#{path} is encrypted with #{key_name.call(merged[path])} in #{owner[path]}, " \
-                "with #{key_name.call(setting)} in #{input.report.name}"
-            end
-          end
-        end
-      end
-      merged
+      uniform = encrypted.zip(layouts).all? { |input, layout| layout.size == input.sources.size && layout.values.all?(:footer) }
+      EncryptionConfiguration.new(**settings.first, columns: uniform ? nil : columns)
     end
 
     # Writes row group +i+ of +input+, copying the column chunks it can. A field with a column that

@@ -44,6 +44,29 @@ module Herringbone
         [(meta.codec == Format::Codec::LZO) ? Format::Codec::SNAPPY : meta.codec, !meta.bloom_filter_offset.nil?]
       end
 
+      # The encrypted columns of a file encrypted like this one, as the +columns:+ of its
+      # EncryptionConfiguration: those encrypted with the footer key as +:footer+, the others
+      # with their key and key metadata
+      #
+      # @param sources [Hash{String => Schema::Column}] the new file's column path => the column
+      #   here that holds its values
+      # @return [Hash{String => Symbol, Hash}] the encrypted ones of +sources+
+      # @raise [DecryptionError] when the key of an encrypted column was not given
+      def encrypted_columns(sources)
+        decryptor = @reader.decryptor or return {}
+        chunks = @reader.row_groups.first&.columns || []
+        sources.filter_map do |path, col|
+          chunk = chunks[col.index]
+          crypto = chunk&.crypto_metadata or next
+          with_column_key = crypto.encryption_with_column_key
+          next [path, :footer] unless with_column_key
+          key = decryptor.chunk_key(chunk, col.dotted_path)
+          key or raise DecryptionError, "The output is encrypted like the input, which needs the key of #{col.dotted_path}: " \
+            "pass it in decryption:, or pass encryption: for the output"
+          [path, {key: key, key_metadata: with_column_key.key_metadata}]
+        end.to_h
+      end
+
       private
 
       # The chunk's pages. They are walked header by header rather than trusting
