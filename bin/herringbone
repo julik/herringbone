@@ -118,14 +118,8 @@ def decryption_from(key_flags, prompt)
     end
   end
   decryption[:footer_key] ||= plain.first.bytes if plain.size == 1
-  # combine reads a footer more than once, and its inputs may share keys
-  asked = {}
-  decryption[:keys] = lambda do |metadata, owner|
-    by_metadata.fetch(metadata) do
-      next unless prompt
-      asked.key?([metadata, owner]) ? asked[[metadata, owner]] : (asked[[metadata, owner]] = ask_key(metadata, owner))
-    end
-  end
+  asked = Hash.new { |h, (metadata, owner)| h[[metadata, owner]] = ask_key(metadata, owner) } # combine's inputs may share keys
+  decryption[:keys] = ->(metadata, owner) { by_metadata.fetch(metadata) { asked[[metadata, owner]] if prompt } }
   decryption
 end
 
@@ -153,14 +147,12 @@ when "inspect"
     (other_flags - %w[--pages --verify-checksums]).empty? &&
     (format == "text" || !other_flags.include?("--pages"))
 when "combine"
-  options, other_flags = flags.partition { |f| f.start_with?("--output=", "--compression=", "--encrypt-key=", "--schema=") }
-  output_path = options.find { |f| f.start_with?("--output=") }&.delete_prefix("--output=")
-  schema_mode = options.find { |f| f.start_with?("--schema=") }&.delete_prefix("--schema=")
-  !args.empty? && options.map { |f| f.split("=", 2).first }.uniq.size == options.size &&
-    (schema_mode.nil? || %w[union intersect].include?(schema_mode)) &&
-    (other_flags - %w[--plaintext]).empty? &&
-    !(other_flags.include?("--plaintext") && options.any? { |f| f.start_with?("--encrypt-key=") }) &&
-    (output_path ? !output_path.empty? : !$stdout.tty?)
+  valued, other_flags = flags.partition { |f| f.start_with?("--output=", "--compression=", "--encrypt-key=", "--schema=") }
+  options = valued.to_h { |f| f.delete_prefix("--").split("=", 2) }
+  plaintext = other_flags.delete("--plaintext")
+  !args.empty? && options.size == valued.size && other_flags.empty? && !(plaintext && options["encrypt-key"]) &&
+    [nil, "union", "intersect"].include?(options["schema"]) &&
+    (options.key?("output") ? !options["output"].empty? : !$stdout.tty?)
 end
 unless valid
   warn USAGE
@@ -169,36 +161,27 @@ end
 
 # Writes the inputs into one file, removing the output again when that fails
 # @return [Herringbone::Combiner::Report]
-def combine(paths, output_path, flags, options, decryption)
+def combine(paths, options, plaintext, decryption)
+  output_path = options["output"]
   if output_path && paths.any? { |p| File.expand_path(p) == File.expand_path(output_path) || (File.exist?(output_path) && File.identical?(p, output_path)) }
     raise ArgumentError, "#{output_path} is one of the inputs"
   end
   writer_options = {}
-  schema = nil
-  options.each do |option|
-    name, value = option.split("=", 2)
-    case name
-    when "--compression" then writer_options[:compression] = value.to_sym
-    when "--encrypt-key" then writer_options[:encryption] = Herringbone::Key.new(parse_key(value, "--encrypt-key"))
-    when "--schema" then schema = value.to_sym
-    end
-  end
-  writer_options[:encryption] = false if flags.include?("--plaintext")
+  writer_options[:compression] = options["compression"].to_sym if options["compression"]
+  writer_options[:encryption] = Herringbone::Key.new(parse_key(options["encrypt-key"], "--encrypt-key")) if options["encrypt-key"]
+  writer_options[:encryption] = false if plaintext
   inputs = paths.map { |p| File.open(p, "rb") }
   output = output_path ? File.open(output_path, "wb") : $stdout.binmode
-  begin
-    Herringbone.combine(inputs, output, schema: schema, decryption: decryption, **writer_options)
-  rescue Exception # standard:disable Lint/RescueException
-    # A file without its footer is of no use to anyone
-    if output_path
-      output.close
-      File.delete(output_path)
-    end
-    raise
-  ensure
-    output.close if output_path && !output.closed?
+  Herringbone.combine(inputs, output, schema: options["schema"]&.to_sym, decryption: decryption, **writer_options)
+rescue Exception # standard:disable Lint/RescueException
+  # A file without its footer is of no use to anyone
+  if output_path && output
+    output.close
+    File.delete(output_path)
   end
+  raise
 ensure
+  output.close if output_path && output && !output.closed?
   inputs&.each(&:close)
 end
 
@@ -206,7 +189,7 @@ end
 begin
   decryption = decryption_from(key_flags, prompt)
   if command == "combine"
-    report = combine(args, output_path, other_flags, options, decryption)
+    report = combine(args, options, plaintext, decryption)
     copied, rewritten = report.row_groups.values_at(:copied, :rewritten)
     warn "herringbone: #{report.rows} rows, #{copied} row groups copied, #{rewritten} encoded again"
     exit
