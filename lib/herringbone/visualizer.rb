@@ -15,6 +15,8 @@ module Herringbone
   # Used through Inspector#to_html:
   #
   #   File.open("data.parquet", "rb") { |io| Herringbone::Inspector.new(io).to_html }
+  #
+  # @api private
   class Visualizer
     # highlight.js build loaded by the page to colour the footer JSON; optional.
     HIGHLIGHT_JS = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"

@@ -14,6 +14,7 @@ module Herringbone
     # @raise [FormatError] when the filter is truncated or its header cannot be decoded
     # @raise [DecryptionError] when the column is encrypted and its key was not given, or the
     #   filter does not decrypt
+    # @api private
     def bloom_filter(row_group_index, column)
       col = bloom_filter_column(column)
       rg = row_groups.fetch(row_group_index) { raise IndexError, "No row group #{row_group_index}" }

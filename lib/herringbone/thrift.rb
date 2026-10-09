@@ -4,6 +4,8 @@ module Herringbone
   # Minimal Thrift Compact Protocol implementation, just enough for Parquet metadata.
   # Structs are described declaratively (see Herringbone::Thrift::Struct) so that
   # both the reader and the writer are driven by the same field tables.
+  #
+  # @api private
   module Thrift
     # Raised on malformed or truncated Thrift data, and on values the writer cannot encode
     class Error < StandardError; end

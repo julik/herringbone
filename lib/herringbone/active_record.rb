@@ -56,6 +56,8 @@ module Herringbone
     #   hstore    map<string, string>
     #   anything else (string, text, citext, inet, cidr, macaddr, ...) -> string
     #   Postgres arrays (column.array, or a sql_type ending in "[]") -> list of the element type
+    #
+    # @api private
     module ActiveRecordMapping
       module_function
 

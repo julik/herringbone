@@ -8,6 +8,8 @@ module Herringbone
     #
     # Written from the bitstream description in the Linux kernel's
     # Documentation/staging/lzo.rst, not from the (GPL) LZO sources.
+    #
+    # @api private
     module LZO
       # Raised for corrupt or truncated LZO input.
       class Error < StandardError; end

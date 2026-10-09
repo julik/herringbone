@@ -187,6 +187,7 @@ module Herringbone
     #
     # @param statement [Statement] the statement to add
     # @return [Redaction] self
+    # @api private
     def add_statement(statement)
       @statements << statement
       self
