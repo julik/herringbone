@@ -7,6 +7,8 @@ module Herringbone
     # entries of the requested rows (plus a small lookahead of levels for repeated columns)
     # become Ruby objects. A row starts at an entry with repetition level 0 and may continue
     # over any number of following pages.
+    #
+    # @api private
     class ColumnCursor
       # Levels decoded ahead at a time when looking for row starts in repeated columns
       LOOKAHEAD = 4096

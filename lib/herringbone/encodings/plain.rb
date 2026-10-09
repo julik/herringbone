@@ -4,6 +4,8 @@ module Herringbone
   module Encodings
     # PLAIN encoding for all physical types. Values are returned in their physical
     # Ruby form (Integer, Float, true/false, binary String); logical conversion happens elsewhere.
+    #
+    # @api private
     module Plain
       module_function
 

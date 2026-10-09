@@ -14,6 +14,8 @@ module Herringbone
     #
     # 32-bit loads are done with four getbyte calls rather than unpack1(offset:) to stay
     # compatible with Ruby 3.0 - the speed difference on MRI is marginal.
+    #
+    # @api private
     module Snappy
       # Raised for corrupt or truncated Snappy input, and for input too large to compress.
       class Error < StandardError; end

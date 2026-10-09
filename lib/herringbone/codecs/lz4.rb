@@ -4,6 +4,8 @@ module Herringbone
   module Codecs
     # Pure-Ruby LZ4: raw block format (Parquet LZ4_RAW), Hadoop-framed blocks
     # (Parquet's deprecated LZ4) and a decoder for the LZ4 frame format.
+    #
+    # @api private
     module LZ4
       # Raised for corrupt, truncated or unsupported LZ4 input.
       class Error < StandardError; end

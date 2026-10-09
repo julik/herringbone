@@ -4,6 +4,8 @@ module Herringbone
   # IO::Buffer lets the decompressors copy bytes around without allocating a String per copy.
   # It still carries an "experimental" warning, which is silenced once here: the gem only uses
   # new/for/copy/get_string/free, and falls back to String operations where it is missing.
+  #
+  # @api private
   module IOBufferSupport
     # true when IO::Buffer has the methods the decompressors use and HERRINGBONE_NO_IO_BUFFER is
     # not set in the environment (which forces the String fallback)

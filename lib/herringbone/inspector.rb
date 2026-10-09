@@ -29,6 +29,8 @@ module Herringbone
     WINDOW = 64 * 1024
 
     # Just enough of parquet.thrift's BloomFilterHeader to learn the filter's size
+    #
+    # @api private
     class BloomFilterHeader < Thrift::Struct
       field 1, :num_bytes, :i32
     end
@@ -907,6 +909,7 @@ module Herringbone
     # Decryption of an encrypted chunk's modules
     # @param chunk [ColumnChunkInfo] an encrypted chunk
     # @return [Encryption::ModuleCrypto, nil] nil when the chunk's key was not given
+    # @api private
     def chunk_crypto(chunk)
       @decryptor&.chunk(chunk.row_group.index, chunk.row_group.row_group.ordinal, chunk.column, chunk.chunk)
     rescue DecryptionError
@@ -918,6 +921,7 @@ module Herringbone
     # @param chunk [ColumnChunkInfo] chunk whose pages to walk
     # @return [Array(Array<PageInfo>, String), Array(Array<PageInfo>, nil)] the pages found, and why
     #   the walk stopped early (nil when every value was accounted for)
+    # @api private
     def walk_pages(chunk)
       return [[], "column chunk stored in external file #{chunk.external_file}"] if chunk.external_file
       if chunk.encrypted?
@@ -959,6 +963,7 @@ module Herringbone
     # Reads and decodes a chunk's ColumnIndex, decoding the per-page min/max with the column type
     # @param chunk [ColumnChunkInfo] chunk whose ColumnIndex to read
     # @return [ColumnIndexInfo, nil] nil when the chunk has none or it fails to decode
+    # @api private
     def read_column_index(chunk)
       offset, length = chunk.column_index_range
       return nil unless offset && length.positive?
@@ -985,6 +990,7 @@ module Herringbone
     # Reads and decodes a chunk's OffsetIndex
     # @param chunk [ColumnChunkInfo] chunk whose OffsetIndex to read
     # @return [OffsetIndexInfo, nil] nil when the chunk has none or it fails to decode
+    # @api private
     def read_offset_index(chunk)
       offset, length = chunk.offset_index_range
       return nil unless offset && length.positive?
@@ -1006,6 +1012,7 @@ module Herringbone
     # @param offset [Integer] file offset of the BloomFilterHeader
     # @param encrypted [Boolean] whether the filter is encrypted
     # @return [Integer, nil] nil when the header can't be decoded or has no num_bytes
+    # @api private
     def bloom_filter_size(offset, encrypted = false)
       if encrypted
         header = read_at(offset, 4).unpack1("V") or return nil
@@ -1022,6 +1029,7 @@ module Herringbone
     # :ok, :mismatch or :absent for one page (reads its body). Sets PageInfo#actual_crc.
     # @param page [PageInfo] page to check
     # @return [Symbol]
+    # @api private
     def page_checksum(page)
       return :absent unless page.crc
       page.actual_crc = page_crc(page)
@@ -1031,6 +1039,7 @@ module Herringbone
     # CRC32 of a page's body as stored
     # @param page [PageInfo] page whose compressed body to read
     # @return [Integer] unsigned 32-bit CRC
+    # @api private
     def page_crc(page)
       Zlib.crc32(read_at(page.body_offset, page.compressed_size))
     end
@@ -1039,6 +1048,7 @@ module Herringbone
     # @param chunk [ColumnChunkInfo] chunk whose page headers to compare with its ColumnIndex
     # @return [Array<Hash{Symbol => Object}>] one entry per disagreement; a single :page_count
     #   entry when the ColumnIndex and the data pages differ in number
+    # @api private
     def compare_page_index(chunk)
       ci = chunk.column_index or return []
       data = chunk.data_pages
@@ -1072,6 +1082,7 @@ module Herringbone
     # @param st [Format::Statistics, nil] statistics from column metadata or a page header
     # @param column [Schema::Column] column the statistics describe
     # @return [Stats, nil] nil when +st+ is nil
+    # @api private
     def decode_statistics(st, column)
       return nil unless st
       order = Inspector.sort_order(column)
@@ -1111,6 +1122,7 @@ module Herringbone
     # @param column [Schema::Column] column whose physical type and converter apply
     # @return [Object, nil] the converted value, a hex String when it could not be decoded, nil
     #   for nil (or empty BOOLEAN) input
+    # @api private
     def decode_value(bytes, column)
       return nil if bytes.nil?
       bytes = bytes.b
@@ -1158,6 +1170,8 @@ module Herringbone
 
       # A minimal flatbuffer reader: tables (through their vtables), scalars, strings, vectors of
       # scalars and tables, and unions. Every read is bounds-checked; malformed input raises Error.
+      #
+      # @api private
       class FlatBuffer
         # @param bytes [String] the flatbuffer (copied as binary)
         def initialize(bytes)
@@ -1241,6 +1255,8 @@ module Herringbone
       end
 
       # One flatbuffer table; fields are addressed by their slot (declaration order in the .fbs)
+      #
+      # @api private
       class Table
         # @param fb [FlatBuffer] buffer the table lives in
         # @param pos [Integer] absolute position of the table (where its vtable offset is stored)
@@ -1491,11 +1507,13 @@ module Herringbone
 
     # @param e [Integer] Parquet Encoding value
     # @return [String] its name, e.g. "RLE_DICTIONARY" (the number as a String when unknown)
+    # @api private
     def self.encoding_name(e) = Format::Encoding::NAMES[e]&.to_s || e.to_s
 
     # @param column [Schema::Column] leaf column
     # @return [String] physical type with its logical annotation, e.g. "BYTE_ARRAY STRING" or
     #   "FIXED_LEN_BYTE_ARRAY(16) UUID"
+    # @api private
     def self.type_name(column)
       node = column.node
       phys = T::NAMES[node.type].to_s
@@ -1508,6 +1526,7 @@ module Herringbone
     # @param node [Schema::Node] schema node (leaf or group)
     # @return [String, nil] e.g. "INTEGER(8, unsigned)", "TIMESTAMP(MICROS, UTC)" or "DECIMAL(10, 2)";
     #   nil when the node has no annotation
+    # @api private
     def self.logical_type_name(node)
       if (kind = node.logical_type&.kind)
         name, payload = kind
@@ -1528,6 +1547,7 @@ module Herringbone
     # :signed, :unsigned or :unknown, per the Parquet sort order rules for the column's type
     # @param column [Schema::Column] leaf column
     # @return [Symbol]
+    # @api private
     def self.sort_order(column)
       kind, _a, signed = Types.logical_of(column.node)
       case kind
@@ -1547,6 +1567,7 @@ module Herringbone
     # Recurses into Hashes, Arrays and Structs; Hash keys other than Symbols become Strings.
     # @param v [Object] value to convert
     # @return [Hash, Array, String, Integer, Float, Boolean, nil]
+    # @api private
     def self.jsonable(v)
       case v
       when Hash then v.each_with_object({}) { |(k, x), h| h[k.is_a?(Symbol) ? k : k.to_s] = jsonable(x) }
@@ -1567,6 +1588,7 @@ module Herringbone
     # Strings already tagged as valid UTF-8 are returned as they are, control characters and all.
     # @param s [String] string in any encoding
     # @return [String]
+    # @api private
     def self.text(s)
       return s if s.encoding == Encoding::UTF_8 && s.valid_encoding?
       u = s.dup.force_encoding(Encoding::UTF_8)
@@ -1577,6 +1599,7 @@ module Herringbone
     # @param bytes [String] bytes to show
     # @return [String] "0x" and lowercase hex digits; only the first 64 bytes, followed by the
     #   total size, for longer input
+    # @api private
     def self.hex(bytes)
       b = bytes.b
       (b.bytesize > 64) ? "0x#{b.byteslice(0, 64).unpack1("H*")}… (#{b.bytesize} bytes)" : "0x#{b.unpack1("H*")}"
@@ -1587,6 +1610,7 @@ module Herringbone
     # @param v [Object] decoded value
     # @param max [Integer] longest result, in characters; longer ones are cut and end in an ellipsis
     # @return [String]
+    # @api private
     def self.display(v, max: 40)
       s = case v
       when String then (v.encoding == Encoding::BINARY) ? text(v) : v
@@ -1599,6 +1623,7 @@ module Herringbone
 
     # @param n [Integer, nil] byte count
     # @return [String] e.g. "512 B", "1.50 KB" or "12.3 MB" (binary units); "?" for nil
+    # @api private
     def self.human_bytes(n)
       return "?" unless n
       units = %w[B KB MB GB TB]

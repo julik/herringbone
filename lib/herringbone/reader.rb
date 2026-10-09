@@ -308,6 +308,7 @@ module Herringbone
     # @return [Array(Format::ColumnIndex, Format::OffsetIndex)] either element may be nil
     # @raise [ArgumentError] when +column+ does not name a leaf column
     # @raise [IndexError] when the row group does not exist
+    # @api private
     def page_index(row_group_index, column)
       column = @schema.column(column) unless column.is_a?(Schema::Column)
       raise ArgumentError, "No such leaf column" unless column
@@ -338,6 +339,7 @@ module Herringbone
     # Internal (used by Redaction and Combiner): the keys and settings of an encrypted file
     #
     # @return [Encryption::FileDecryptor, nil] nil for a file that is not encrypted
+    # @api private
     attr_reader :decryptor
 
     # Internal: the decryption of one column chunk's modules
@@ -346,6 +348,7 @@ module Herringbone
     # @param column [Schema::Column] leaf column
     # @return [Encryption::ModuleCrypto, nil] nil when the chunk is not encrypted
     # @raise [DecryptionError] when the chunk is encrypted and its key was not given
+    # @api private
     def chunk_crypto(row_group_index, column)
       return nil unless @decryptor
       rg = row_groups.fetch(row_group_index)
@@ -361,6 +364,7 @@ module Herringbone
     # @option options [Boolean] :lazy leave non-dictionary values physical
     # @return [ColumnChunkReader]
     # @raise [DecryptionError] when the chunk is encrypted and its key was not given
+    # @api private
     def chunk_reader(row_group_index, column, **options)
       chunk = row_groups.fetch(row_group_index).columns.fetch(column.index)
       ColumnChunkReader.new(@io, chunk, column, crypto: chunk_crypto(row_group_index, column), **options)
@@ -685,6 +689,8 @@ module Herringbone
 
     # Rebuilds nested values of one top-level field from the levels of its leaf columns
     # (the "record assembly" half of the Dremel algorithm).
+    #
+    # @api private
     class Assembler
       # @param field [Schema::Field] top-level field to assemble
       # @param symbolize [Boolean] whether struct Hashes are keyed by Symbol instead of String

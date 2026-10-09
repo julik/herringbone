@@ -3,6 +3,8 @@
 module Herringbone
   module Encodings
     # DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY and DELTA_BYTE_ARRAY
+    #
+    # @api private
     module Delta
       module_function
 
@@ -175,6 +177,8 @@ module Herringbone
     end
 
     # BYTE_STREAM_SPLIT: byte k of every value is stored in stream k.
+    #
+    # @api private
     module ByteStreamSplit
       module_function
 

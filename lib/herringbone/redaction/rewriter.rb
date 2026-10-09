@@ -10,6 +10,8 @@ module Herringbone
     # are copied byte for byte. When rows match but none is deleted and only leaf columns change,
     # the changed chunks are re-encoded and the others copied. Otherwise the whole row group is
     # rewritten, keeping its boundary: one row group in, one (or none) out.
+    #
+    # @api private
     class Rewriter
       # A replaced column, resolved against the file's schema
       #

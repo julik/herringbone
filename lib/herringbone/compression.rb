@@ -25,6 +25,8 @@ module Herringbone
   # come from optional gems (zstd-ruby, brotli), which the application requires; if they are
   # not loaded, MissingCodecError says what to add.
   # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
+  #
+  # @api private
   module Compression
     module_function
 

@@ -5,6 +5,8 @@ module Herringbone
     # Internal (used by Redaction and Herringbone.combine): takes plaintext column chunks out of a
     # file as they are stored, for Writer#write_row_group to copy into another file, and tells how
     # a chunk that has to be encoded again should be compressed.
+    #
+    # @api private
     class ChunkCopier
       # Bytes read at a time when a page header runs past what was read of a chunk
       READ_MORE = 64 * 1024

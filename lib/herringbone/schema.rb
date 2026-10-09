@@ -307,6 +307,8 @@ module Herringbone
     end
 
     # Type inference behind Schema.infer
+    #
+    # @api private
     module Inference
       module_function
 

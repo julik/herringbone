@@ -341,6 +341,8 @@ module Herringbone
   module Codecs
     # Pure-Ruby LZ4: raw block format (Parquet LZ4_RAW), Hadoop-framed blocks
     # (Parquet's deprecated LZ4) and a decoder for the LZ4 frame format.
+    # 
+    # @api private
     module LZ4
       # Decompress a raw LZ4 block that must expand to exactly uncompressed_size bytes.
       # 
@@ -683,6 +685,8 @@ module Herringbone
     # 
     # Written from the bitstream description in the Linux kernel's
     # Documentation/staging/lzo.rst, not from the (GPL) LZO sources.
+    # 
+    # @api private
     module LZO
       # Parquet LZO (codec 3). hadoop-lzo writes Hadoop block framing; data that does not fit
       # the framing is decoded as one bare LZO1X stream.
@@ -969,6 +973,8 @@ module Herringbone
     # 
     # 32-bit loads are done with four getbyte calls rather than unpack1(offset:) to stay
     # compatible with Ruby 3.0 - the speed difference on MRI is marginal.
+    # 
+    # @api private
     module Snappy
       # _@param_ `input` — raw snappy block
       # 
@@ -1446,6 +1452,8 @@ module Herringbone
   module Encodings
     # Bit packing (LSB-first, as used by Parquet) and the RLE / bit-packed hybrid encoding
     # used for repetition/definition levels, dictionary indices and RLE booleans.
+    # 
+    # @api private
     module RLE
       # Unpacks +count+ values of +width+ bits each, starting at byte +offset+ of +data+.
       # Missing trailing bytes are treated as zeroes.
@@ -1757,6 +1765,8 @@ module Herringbone
     end
 
     # DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY and DELTA_BYTE_ARRAY
+    # 
+    # @api private
     module Delta
       # _@param_ `n` — zigzag-encoded unsigned integer
       # 
@@ -1956,6 +1966,8 @@ module Herringbone
     end
 
     # BYTE_STREAM_SPLIT: byte k of every value is stored in stream k.
+    # 
+    # @api private
     module ByteStreamSplit
       # Returns the value bytes re-interleaved into PLAIN layout
       # 
@@ -2022,6 +2034,8 @@ module Herringbone
 
     # PLAIN encoding for all physical types. Values are returned in their physical
     # Ruby form (Integer, Float, true/false, binary String); logical conversion happens elsewhere.
+    # 
+    # @api private
     module Plain
       # Decodes +count+ values of +type+ from +data+ starting at +pos+.
       # Returns [values, new_pos].
@@ -2221,6 +2235,8 @@ module Herringbone
   #   DECIMAL               <-> BigDecimal
   #   UUID                  <-> String "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   #   FLOAT16               <-> Float
+  # 
+  # @api private
   module Types
     # Shorthand for building a LogicalType union.
     # 
@@ -3392,6 +3408,8 @@ module Herringbone
 
     # Rebuilds nested values of one top-level field from the levels of its leaf columns
     # (the "record assembly" half of the Dremel algorithm).
+    # 
+    # @api private
     class Assembler
       # _@param_ `field` — top-level field to assemble
       # 
@@ -3459,6 +3477,8 @@ module Herringbone
     #   list<number>, all rows of the   2-D [rows, length] of the element type
     #     same length and no nulls
     #   anything else                   RObject of the values as: :rows returns
+    # 
+    # @api private
     module NumoColumns
       sig { void }
       def load!; end
@@ -3722,6 +3742,8 @@ module Herringbone
     # Hands out the next +k+ rows of a flat (non-repeated) numeric or boolean column as a
     # [Numo values, validity] pair: values has one slot per row (zero where the row is null),
     # validity is a Numo::Bit or nil when all rows are present.
+    # 
+    # @api private
     class NumoCursor
       # _@param_ `chunk_reader` — reader for the column's chunk in one row group
       # 
@@ -3783,6 +3805,8 @@ module Herringbone
     # bloom filters; within a row group, pages are ruled out with the page index (ColumnIndex +
     # OffsetIndex), leaving ranges of rows to read; and every row that is read is checked, so
     # results are exact.
+    # 
+    # @api private
     class Filter
       # _@param_ `schema` — schema of the file being read
       # 
@@ -4010,6 +4034,8 @@ module Herringbone
     # Incremental decoders for the contents of one data page. The page bytes are decoded as they
     # are asked for, so a caller that takes a few hundred entries at a time never holds a whole
     # page's worth of levels or values as Ruby objects.
+    # 
+    # @api private
     module PageStream
       # The levels and values of one data page
       class Page
@@ -4407,6 +4433,8 @@ module Herringbone
     # Internal (used by Redaction and Herringbone.combine): takes plaintext column chunks out of a
     # file as they are stored, for Writer#write_row_group to copy into another file, and tells how
     # a chunk that has to be encoded again should be compressed.
+    # 
+    # @api private
     class ChunkCopier
       # _@param_ `reader` — the file, whose IO the chunks are read from
       sig { params(reader: Reader).void }
@@ -4512,6 +4540,8 @@ module Herringbone
     # entries of the requested rows (plus a small lookahead of levels for repeated columns)
     # become Ruby objects. A row starts at an entry with repetition level 0 and may continue
     # over any number of following pages.
+    # 
+    # @api private
     class ColumnCursor
       # _@param_ `chunk_reader` — reader of the chunk, positioned at its start
       sig { params(chunk_reader: ColumnChunkReader).void }
@@ -4617,6 +4647,8 @@ module Herringbone
     # 
     # The declared total_compressed_size of the chunk is not relied on (some old writers
     # under-report it): pages are read until the chunk's num_values have been seen.
+    # 
+    # @api private
     class ColumnChunkReader
       # _@param_ `io` — the file, read with #seek and #read
       # 
@@ -5382,6 +5414,8 @@ module Herringbone
     end
 
     # Type inference behind Schema.infer
+    # 
+    # @api private
     module Inference
       # _@param_ `row` — sampled row
       # 
@@ -5776,6 +5810,8 @@ module Herringbone
     # Leaf types are compared as Arrays like +[:int, 32, true]+ or +[:timestamp, :micros, false]+,
     # so the same type spelled with a logical type in one file and a converted type in another
     # still matches.
+    # 
+    # @api private
     class Merge
       # _@param_ `mode` — +:union+ or +:intersect+
       sig { params(mode: Symbol).void }
@@ -5958,6 +5994,8 @@ module Herringbone
     #   hstore    map<string, string>
     #   anything else (string, text, citext, inet, cidr, macaddr, ...) -> string
     #   Postgres arrays (column.array, or a sql_type ending in "[]") -> list of the element type
+    # 
+    # @api private
     module ActiveRecordMapping
       # Declares +column+ on +builder+: hstore as map<string, string>, array columns as a list of
       # the element type, everything else as the scalar type picked by #scalar_type.
@@ -6076,6 +6114,8 @@ module Herringbone
   # Minimal Thrift Compact Protocol implementation, just enough for Parquet metadata.
   # Structs are described declaratively (see Herringbone::Thrift::Struct) so that
   # both the reader and the writer are driven by the same field tables.
+  # 
+  # @api private
   module Thrift
     # Wire type written for a declared field type
     # 
@@ -7033,6 +7073,7 @@ module Herringbone
     #   @return [Format::OffsetIndex, nil] the chunk's OffsetIndex, with source file offsets
     # @!attribute bloom_filter
     #   @return [String, nil] the chunk's encoded bloom filter, header included
+    # @api private
     class CopiedChunk < Struct
       # _@return_ — the chunk's footer entry in the source file
       sig { returns(Format::ColumnChunk) }
@@ -7068,6 +7109,7 @@ module Herringbone
     #   @return [String, Array<Integer>, nil] repetition levels, like +defs+; nil for non-repeated columns
     # @!attribute values
     #   @return [Array, ByteValues] non-null physical values
+    # @api private
     class ColumnBuffer < Struct
       # _@return_ — definition levels (unpacked to an Array while a chunk is written)
       sig { returns(T.any(String, T::Array[Integer])) }
@@ -7096,6 +7138,7 @@ module Herringbone
     #   @return [Integer] non-null values in the page
     # @!attribute range
     #   @return [Array(Object, Object), nil] [min, max] physical values, nil when there are none
+    # @api private
     class PageInfo < Struct
       # _@return_ — file offset of the page header
       sig { returns(Integer) }
@@ -7136,6 +7179,8 @@ module Herringbone
   # allocations trigger so many garbage collections that hashing becomes up to 10x slower. The
   # arithmetic is written once with the small code generators below, whose output is inlined into
   # the hashing methods: no method calls or allocations in the hot paths.
+  # 
+  # @api private
   module XXHash
     # XXH64 of a String's bytes, as an unsigned 64-bit Integer
     # 
@@ -7590,6 +7635,8 @@ module Herringbone
   # Columns that cannot be copied are encoded again from their values: those the output widens in
   # physical type, time unit or nullability, and those encrypted in the input or to be encrypted in
   # the output. Fields an input lacks are written as nulls.
+  # 
+  # @api private
   class Combiner
     # _@param_ `ios_or_readers` — the input files: IOs read with #seek and #read, or Readers (which bring their own +decryption:+); enumerated once, and none is closed
     # 
@@ -7779,6 +7826,7 @@ module Herringbone
     #     rewritten when at least one of its column chunks had to be encoded again
     # @!attribute inputs
     #   @return [Array<InputReport>] how each input was fitted to the output schema, in input order
+    # @api public
     class Report < Struct
       # _@return_ — rows written
       sig { returns(Integer) }
@@ -7804,6 +7852,7 @@ module Herringbone
     #   @return [Array<String>] fields the output holds in a wider type, or nullable
     # @!attribute dropped
     #   @return [Array<String>] fields of the input the output does not have (+schema: :intersect+)
+    # @api public
     class InputReport < Struct
       # _@return_ — "input 2", with the IO's path when it has one: "input 2 (2026-03.parquet)"
       sig { returns(String) }
@@ -8393,6 +8442,8 @@ module Herringbone
     attr_reader :name
 
     # Just enough of parquet.thrift's BloomFilterHeader to learn the filter's size
+    # 
+    # @api private
     class BloomFilterHeader < Herringbone::Thrift::Struct
     end
 
@@ -9161,6 +9212,8 @@ module Herringbone
 
       # A minimal flatbuffer reader: tables (through their vtables), scalars, strings, vectors of
       # scalars and tables, and unions. Every read is bounds-checked; malformed input raises Error.
+      # 
+      # @api private
       class FlatBuffer
         # _@param_ `bytes` — the flatbuffer (copied as binary)
         sig { params(bytes: String).void }
@@ -9252,6 +9305,8 @@ module Herringbone
       end
 
       # One flatbuffer table; fields are addressed by their slot (declaration order in the .fbs)
+      # 
+      # @api private
       class Table
         # _@param_ `fb` — buffer the table lives in
         # 
@@ -9595,6 +9650,8 @@ module Herringbone
     # are copied byte for byte. When rows match but none is deleted and only leaf columns change,
     # the changed chunks are re-encoded and the others copied. Otherwise the whole row group is
     # rewritten, keeping its boundary: one row group in, one (or none) out.
+    # 
+    # @api private
     class Rewriter
       # _@param_ `redaction` — the statements and drops to apply
       # 
@@ -9858,6 +9915,8 @@ module Herringbone
   # 
   # An encrypted module is stored as a 4-byte little-endian length, then a 12-byte nonce, the
   # ciphertext and (GCM only) a 16-byte tag.
+  # 
+  # @api private
   module Encryption
     # _@param_ `key` — candidate key
     # 
@@ -10346,6 +10405,8 @@ module Herringbone
   # Used through Inspector#to_html:
   # 
   #   File.open("data.parquet", "rb") { |io| Herringbone::Inspector.new(io).to_html }
+  # 
+  # @api private
   class Visualizer
     # +inspector+ is an Inspector. +title+ defaults to the file's name.
     # 
@@ -10459,6 +10520,8 @@ module Herringbone
   # It starts out in dictionary mode (when allowed) and switches to raw bytes once the dictionary
   # grows too large or too many values turn out to be distinct. Strings are only rebuilt when the
   # row group is flushed, one column at a time.
+  # 
+  # @api private
   class ByteValues
     # _@param_ `width` — byte length of each value for FIXED_LEN_BYTE_ARRAY, nil for BYTE_ARRAY
     # 
@@ -10566,6 +10629,8 @@ module Herringbone
   # come from optional gems (zstd-ruby, brotli), which the application requires; if they are
   # not loaded, MissingCodecError says what to add.
   # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
+  # 
+  # @api private
   module Compression
     # The library module for a codec backed by an optional gem
     # 
@@ -10781,6 +10846,8 @@ module Herringbone
   # like the writer converts them (the column's encoder), so a Date, Time, BigDecimal or UUID
   # String hashes the same bytes as the stored value. Nulls are never in a bloom filter.
   # The writer builds them (bloom_filters: option) and reads with where: consult them.
+  # 
+  # @api private
   class BloomFilter
     # Bitset size in bytes for +ndv+ distinct values at false positive probability +fpp+, per the
     # spec's formula (m = -8 * ndv / ln(1 - fpp ** (1/8)) bits), rounded up to a power of two
@@ -11137,6 +11204,8 @@ module Herringbone
   # IO::Buffer lets the decompressors copy bytes around without allocating a String per copy.
   # It still carries an "experimental" warning, which is silenced once here: the gem only uses
   # new/for/copy/get_string/free, and falls back to String operations where it is missing.
+  # 
+  # @api private
   module IOBufferSupport
   end
 

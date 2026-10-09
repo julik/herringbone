@@ -9,6 +9,8 @@ module Herringbone
   #
   # An encrypted module is stored as a 4-byte little-endian length, then a 12-byte nonce, the
   # ciphertext and (GCM only) a 16-byte tag.
+  #
+  # @api private
   module Encryption
     # Module type: the FileMetaData
     FOOTER = 0

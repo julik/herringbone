@@ -18,6 +18,8 @@ module Herringbone
   #   DECIMAL               <-> BigDecimal
   #   UUID                  <-> String "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   #   FLOAT16               <-> Float
+  #
+  # @api private
   module Types
     module_function
 

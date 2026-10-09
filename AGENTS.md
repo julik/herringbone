@@ -8,6 +8,11 @@ comment unless the code can't say it, and terse when there is one. It doesn't co
 documents every method here, private ones included (`bundle exec rake yard:lint` checks it).
 Claude Code picks the skill up through the symlink in `.claude/skills/`.
 
+Mark what users are not meant to call with `@api private`: classes and modules that only the
+library uses (YARD carries the tag down to everything inside them, so a public struct nested in
+one gets `@api public`), and public methods kept public only for other parts of the library.
+Private methods need no tag.
+
 ## Loading
 
 `lib/herringbone.rb` loads nothing but StringIO and the version: every other file is autoloaded
