@@ -55,6 +55,11 @@ module Herringbone
         Schema.new(Node.new(name: mine.root.name, repetition: :required, children: nodes))
       end
 
+      # @param field [Field] any field
+      # @return [String] its type as error messages name it: the leaf type's label ("uint16",
+      #   "timestamp(millis, UTC)", "decimal(10, 2)"...), or "struct", "list" or "map"
+      def describe(field) = kind_label(field)
+
       private
 
       # Matches the members of two groups (or the top-level fields) by name: those of +mine+ in

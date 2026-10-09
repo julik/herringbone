@@ -50,13 +50,18 @@ class CliCombineTest < Minitest::Test
       out = File.join(dir, "out.parquet")
       _, err, status = run_cli("combine", a, b, "--output=#{out}")
       refute status.success?
-      assert_match(/differs from that of input 0 in name, tag/, err)
-      assert_match(/give --union/, err)
+      assert_match(/1 of 2 inputs has another schema than input 0 \(#{Regexp.escape(a)}\):/, err)
+      assert_match(/    name  missing here, input 0 has it\n    tag   only here, input 0 lacks it/, err)
+      assert_match(/give --schema=union/, err)
       refute File.exist?(out), "A file without its footer is removed"
 
-      _, err, status = run_cli("combine", a, b, "--output=#{out}", "--union", "--compression=gzip")
+      _, err, status = run_cli("combine", a, b, "--output=#{out}", "--schema=union", "--compression=gzip")
       assert status.success?, err
       assert_equal [{"id" => 1, "name" => "a", "tag" => nil}, {"id" => 2, "name" => nil, "tag" => "x"}], rows_of(out)
+
+      _, err, status = run_cli("combine", a, b, "--output=#{out}", "--schema=intersect")
+      assert status.success?, err
+      assert_equal [{"id" => 1}, {"id" => 2}], rows_of(out)
     end
   end
 
@@ -68,8 +73,8 @@ class CliCombineTest < Minitest::Test
       b = write(File.join(dir, "b.parquet"), [{id: 2}])
       out = File.join(dir, "out.parquet")
       _, err, status = run_cli("combine", a, b, "--output=#{out}", "--key=#{key.hex}")
-      refute status.success?
-      assert_match(/give --encrypt-key=KEY to encrypt the output, or --plaintext/, err)
+      assert status.success?, err
+      assert_equal [1, 2], rows_of(out, decryption: key).map { |r| r["id"] }, "encrypted like the encrypted input"
 
       _, err, status = run_cli("combine", a, b, "--output=#{out}", "--key=#{key.hex}", "--encrypt-key=#{new_key.hex}")
       assert status.success?, err
@@ -94,7 +99,8 @@ class CliCombineTest < Minitest::Test
 
   def test_usage
     [%w[combine], %w[combine a.parquet --output=], %w[combine a.parquet --output=x --plaintext --encrypt-key=00],
-      %w[combine a.parquet --output=x --pages]].each do |args|
+      %w[combine a.parquet --output=x --pages], %w[combine a.parquet --output=x --union],
+      %w[combine a.parquet --output=x --schema=all]].each do |args|
       _, err, status = run_cli(*args)
       refute status.success?
       assert_match(/usage: herringbone/, err)

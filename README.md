@@ -155,11 +155,12 @@ See [Redaction](MANUAL.md#redaction) for reusable redactions, reports and recipe
 byte, without decoding anything:
 
 ```ruby
-Herringbone.combine([january, february, march], output)
+Herringbone.combine([january, february, march], output_io)
 ```
 
-Files with different columns combine with `schema: a.schema + b.schema`, which fills the gaps with
-nulls and widens types (`int32` and `int64` to `int64`). See [Combining files](MANUAL.md#combining-files).
+Files with different columns combine with `schema: :union`, which fills the gaps with nulls and
+widens types (`int32` and `int64` to `int64`), or `schema: :intersect`, which keeps the fields all
+of them have. See [Combining files](MANUAL.md#combining-files).
 
 ## Looking inside a file
 
