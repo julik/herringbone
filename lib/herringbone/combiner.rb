@@ -88,8 +88,8 @@ module Herringbone
       end
       readers = open_readers(ios_or_readers, decryption)
       @names = readers.each_with_index.map do |reader, k|
-        path = reader.io.path if reader.io.respond_to?(:path)
-        path ? "input #{k} (#{path})" : "input #{k}"
+        path = reader.io.path
+        path.equal?(RestrictedReadableIO::UNTITLED) ? "input #{k}" : "input #{k} (#{path})"
       end
       @conflicts = []
       @schema = output_schema(schema, readers)

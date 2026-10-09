@@ -37,7 +37,7 @@ module Herringbone
       # @return [Proc, nil] converter of the last page returned by #next_page, nil when none
       attr_reader :page_converter
 
-      # @param io [IO, StringIO] the file, read with #seek and #read
+      # @param io [IO, StringIO, RestrictedReadableIO] the file, read with #seek and #read
       # @param chunk [Format::ColumnChunk] the chunk's footer entry
       # @param column [Schema::Column] the leaf column the chunk stores
       # @param converter [Proc, nil] physical value => Ruby value, applied to values and dictionaries
@@ -46,7 +46,7 @@ module Herringbone
       #   encrypted column
       # @raise [UnsupportedError] for chunks without metadata (encrypted) or stored in another file
       def initialize(io, chunk, column, converter: column.converter, lazy: false, crypto: nil)
-        @io = io
+        @io = RestrictedReadableIO.wrap(io)
         @chunk = chunk
         @column = column
         @meta = chunk.meta_data or raise UnsupportedError, "Column chunk without metadata (encrypted?)"

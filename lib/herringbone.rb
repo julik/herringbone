@@ -97,6 +97,7 @@ module Herringbone
   autoload :MissingCodecError, "#{LIB}/compression"
   autoload :Reader, "#{LIB}/reader"
   autoload :Redaction, "#{LIB}/redaction"
+  autoload :RestrictedReadableIO, "#{LIB}/restricted_readable_io"
   autoload :Schema, "#{LIB}/schema"
   autoload :SimpleWriter, "#{LIB}/simple_writer"
   autoload :Thrift, "#{LIB}/thrift"

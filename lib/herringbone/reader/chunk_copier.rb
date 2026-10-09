@@ -10,10 +10,10 @@ module Herringbone
       READ_MORE = 64 * 1024
 
       # @param reader [Reader] reads the file's footer, page indexes and bloom filters
-      # @param io [IO, StringIO] the IO +reader+ reads, read with #seek and #read
+      # @param io [RestrictedReadableIO, IO, StringIO] the IO +reader+ reads, read with #seek and #read
       def initialize(reader, io)
         @reader = reader
-        @io = io
+        @io = RestrictedReadableIO.wrap(io)
       end
 
       # @param i [Integer] row group index
