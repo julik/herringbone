@@ -40,6 +40,32 @@ module Herringbone
   # such as a codec whose library is unavailable
   class UnsupportedError < Error; end
 
+  # Two schemas cannot be united or intersected (Schema#union, Schema#intersect). The message
+  # lists every field that does not fit, one per line, e.g.
+  #
+  #   Cannot unite the schemas, 2 fields do not fit:
+  #     price: int64 vs double (int64 does not fit a double exactly)
+  #     address.zip: int32 vs string (no common type)
+  class IncompatibleSchema < Error
+    # A field that does not fit: its dotted path, how each schema declares it, and why the two
+    # do not fit
+    Conflict = Struct.new(:path, :left, :right, :reason) do
+      # @return [String] e.g. "address.zip: int32 vs string (no common type)"
+      def to_s = "#{path.empty? ? "(top level)" : path}: #{left} vs #{right} (#{reason})"
+    end
+
+    # @return [Array<Conflict>] every field that does not fit, in schema order
+    attr_reader :conflicts
+
+    # @param conflicts [Array<Conflict>] the fields that do not fit
+    # @param operation [String] what was attempted, "unite" or "intersect"
+    def initialize(conflicts, operation:)
+      @conflicts = conflicts
+      count = (conflicts.size == 1) ? "1 field does" : "#{conflicts.size} fields do"
+      super("Cannot #{operation} the schemas, #{count} not fit:\n#{conflicts.map { |c| "  #{c}" }.join("\n")}")
+    end
+  end
+
   # An encrypted file or column cannot be read: its key was not given, the key or AAD prefix is
   # wrong, or the encrypted bytes were changed
   class DecryptionError < Error; end

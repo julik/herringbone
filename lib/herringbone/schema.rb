@@ -120,6 +120,17 @@ module Herringbone
           field_id: field_id
         )
       end
+
+      # What Schema#== compares: name, repetition, physical type and width, annotation and field id,
+      # and the same of the children. A logical type supersedes the converted type (and the
+      # decimal scale and precision, which it holds), since writers differ in whether they also
+      # store the legacy annotation. +enum_values+ is not stored in the file and does not count.
+      #
+      # @return [Array] nested Arrays of plain values, comparable with == and usable as a Hash key
+      def signature
+        annotation = logical_type ? logical_type.to_h : [converted_type, scale, precision]
+        [name, repetition, type, type_length, annotation, field_id, children&.map(&:signature)]
+      end
     end
 
     # A leaf column (one column chunk per row group)
@@ -401,6 +412,62 @@ module Herringbone
       @columns.find { |c| c.path == path }
     end
 
+    # Structural equality: the same fields in the same order, with the same names, repetition,
+    # physical types and widths, annotations, field ids and nesting (see Node#signature). The name
+    # of the root (+schema+, +spark_schema+...) does not count.
+    #
+    # @param other [Object] object to compare with
+    # @return [Boolean]
+    def ==(other)
+      other.is_a?(Schema) && signature == other.signature
+    end
+    alias_method :eql?, :==
+
+    # @return [Integer] hash consistent with #==
+    def hash = signature.hash
+
+    # The fields of this schema, then those only +other+ has, matched by name at every level of
+    # nesting (struct members, list elements, map keys and values). A field only one side has
+    # becomes optional, as does one that is optional on either side. The types of fields both
+    # have are widened without loss:
+    #
+    # * integers to the wider one: int32 + int64 -> int64, uint8 + uint32 -> uint32, and unsigned
+    #   with signed to a signed integer twice as wide: uint32 + int8 -> int64
+    # * floats to the wider one, and integers with floats to a float holding every integer
+    #   exactly: int16 + float -> float, int32 + float -> double
+    # * timestamps and times to the finer unit: millis + micros -> micros
+    # * string, enum and json to string; any of them with binary to binary
+    #
+    #   (a.schema + b.schema).fields.map(&:name) # => ["id", "name", "email"]
+    #
+    # @param other [Schema] the schema to unite with
+    # @return [Schema] a new schema, sharing no nodes with either
+    # @raise [IncompatibleSchema] listing every field without a common type (int64 + double,
+    #   uint64 + signed, decimals of another precision or scale, UTC + local timestamps, a struct and
+    #   a list...), with different field ids, or repeated and only in one schema
+    # @raise [ArgumentError] when +other+ is not a Schema
+    def union(other)
+      raise ArgumentError, "Expected a Herringbone::Schema, got #{other.class}" unless other.is_a?(Schema)
+      Merge.new(:union).call(self, other)
+    end
+    alias_method :+, :union
+
+    # The fields both schemas have, in the order of this one, matched by name at every level of
+    # nesting. Nullability and types are widened as by #union.
+    #
+    #   (a.schema & b.schema).fields.map(&:name) # => ["id", "name"]
+    #
+    # @param other [Schema] the schema to intersect with
+    # @return [Schema] a new schema, sharing no nodes with either
+    # @raise [IncompatibleSchema] listing every field without a common type or with different field
+    #   ids, and the schemas or structs that have no fields in common
+    # @raise [ArgumentError] when +other+ is not a Schema
+    def intersect(other)
+      raise ArgumentError, "Expected a Herringbone::Schema, got #{other.class}" unless other.is_a?(Schema)
+      Merge.new(:intersect).call(self, other)
+    end
+    alias_method :&, :intersect
+
     # @return [String] one line per node, indented by depth: repetition, physical type, name and
     #   annotation
     def inspect
@@ -424,6 +491,11 @@ module Herringbone
       "#<Herringbone::Schema\n#{lines.join("\n")}>"
     end
     alias_method :to_s, :inspect
+
+    protected
+
+    # @return [Array] the signatures of the top-level nodes (Node#signature), for #== and #hash
+    def signature = @root.children.map(&:signature)
 
     private
 
@@ -846,3 +918,9 @@ module Herringbone
 end
 
 require_relative "active_record"
+
+module Herringbone
+  class Schema
+    autoload :Merge, File.expand_path("schema/merge", __dir__)
+  end
+end
