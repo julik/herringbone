@@ -6,10 +6,11 @@ module Herringbone
   #
   # Every row group of every input becomes a row group of the output, in order. When an input has
   # the output schema, its column chunks are copied byte for byte and only their offsets (in the
-  # column metadata, the page index and the bloom filter references) are rebased. Columns that
-  # cannot be copied are encoded again from their values: those the output schema made nullable,
-  # those encrypted in the input or to be encrypted in the output. Fields an input lacks are
-  # written as nulls.
+  # column metadata, the page index and the bloom filter references) are rebased. That goes for
+  # each leaf column of an input whose stored bytes the output schema keeps, even when the input's
+  # schema is narrower. Columns that cannot be copied are encoded again from their values: those
+  # the output schema widens in physical type, time unit or nullability, and those encrypted in the
+  # input or to be encrypted in the output. Fields an input lacks are written as nulls.
   class Combiner
     # What #apply did
     #
@@ -27,10 +28,26 @@ module Herringbone
     # @!attribute copier
     #   @return [Reader::ChunkCopier] takes column chunks out of the input
     # @!attribute plan
-    #   @return [Hash{String => Symbol}] output field name => +:copy+, +:encode+ or +:null+
+    #   @return [Plan] where each output column comes from in the input
     # @!attribute first_rows
     #   @return [Array<Integer>] index of the first row of each row group in the input
     Input = Struct.new(:reader, :copier, :plan, :first_rows)
+
+    # How an input maps onto the output schema
+    #
+    # @!attribute sources
+    #   @return [Hash{Integer => Schema::Column}] output column index => the input's column holding
+    #     its values; output columns the input lacks are not in it
+    # @!attribute copyable
+    #   @return [Array<Integer>] output column indices whose input chunks store their values as the
+    #     output does, so they can be copied unless encryption is in the way
+    Plan = Struct.new(:sources, :copyable)
+
+    # Converted annotations of time and timestamp columns => their unit
+    CONVERTED_UNITS = {
+      Format::ConvertedType::TIME_MILLIS => :millis, Format::ConvertedType::TIME_MICROS => :micros,
+      Format::ConvertedType::TIMESTAMP_MILLIS => :millis, Format::ConvertedType::TIMESTAMP_MICROS => :micros
+    }.freeze
 
     # Writer options that make no sense here, since row groups keep their boundaries
     ROW_GROUP_OPTIONS = %i[row_group_bytes row_group_rows].freeze
@@ -113,58 +130,106 @@ module Herringbone
 
     # @param readers [Array<Reader>] the inputs
     # @return [Schema] the schema all inputs have
-    # @raise [ArgumentError] naming the first column that differs
+    # @raise [ArgumentError] naming the top-level fields that differ
     def common_schema(readers)
       first = readers.first.schema
       readers.each_with_index.drop(1).each do |reader, k|
-        diff = first.difference(reader.schema) or next
-        raise ArgumentError, "The schema of input #{k} differs from that of input 0: #{mismatch(diff, "input 0", "input #{k}")}. " \
+        next if reader.schema == first
+        raise ArgumentError, "The schema of input #{k} differs from that of input 0 in #{differing_fields(first, reader.schema)}. " \
           "Combine files with the same schema, or pass schema: (e.g. a.schema + b.schema) to fill the gaps with nulls"
       end
       first
     end
 
-    # What happens to each output field for an input: copied when the input has it as it is,
-    # encoded again when the input has it required and the output optional, written as nulls when
-    # the input lacks it
+    # @param a [Schema] one schema
+    # @param b [Schema] a schema that is not == to +a+
+    # @return [String] the top-level fields that are not the same in both, e.g. "address, phone"
+    def differing_fields(a, b)
+      names = a.fields.map(&:name) | b.fields.map(&:name)
+      differ = names.reject { |name| a.field(name)&.node&.signature == b.field(name)&.node&.signature }
+      differ.empty? ? "the order of the fields" : differ.join(", ")
+    end
+
+    # Where each output column comes from in an input. The input must be narrower than the output
+    # or the same: uniting its fields with the output's (Schema#+) must leave the output's as they
+    # are. Then each output leaf is found in the input through the logical tree, by name, so the
+    # element of a pyarrow list ("list.item") or a legacy 2-level one is still the same column.
     #
     # @param input_schema [Schema] the input's schema
     # @param k [Integer] the input's position, for error messages
-    # @return [Hash{String => Symbol}] output field name => +:copy+, +:encode+ or +:null+
+    # @return [Plan]
     # @raise [ArgumentError] when the input does not fit the output schema
     def plan(input_schema, k)
       extra = input_schema.fields.map(&:name) - @schema.fields.map(&:name)
       raise ArgumentError, "Input #{k} has the field #{extra.first}, which is not in the schema" unless extra.empty?
-      @schema.fields.to_h do |field|
+      united = begin
+        @schema + input_schema
+      rescue IncompatibleSchema => e
+        raise ArgumentError, "Input #{k} does not fit the schema (the schema's type first, then the input's):\n" +
+          e.conflicts.map { |c| "  #{c}" }.join("\n")
+      end
+      sources = {}
+      @schema.fields.each do |field|
         theirs = input_schema.field(field.name)
         mine = field.node.signature
-        action = if theirs.nil?
+        if theirs.nil?
           raise ArgumentError, "Input #{k} lacks #{field.name}, which the schema requires" unless field.optional
-          :null
-        elsif theirs.node.signature == mine
-          :copy
-        elsif field.optional && theirs.node.signature.drop(2) == mine.drop(2) && theirs.node.repetition == :required
-          :encode
+        elsif united.field(field.name).node.signature == mine
+          match_columns(field, theirs, sources)
+        elsif united.field(field.name).node.signature.drop(2) == mine.drop(2)
+          raise ArgumentError, "Input #{k} does not fit the schema: #{field.name} is nullable in the input and required in the schema"
         else
-          diff = field.node.difference(theirs.node)
-          raise ArgumentError, "Input #{k} does not fit the schema: #{mismatch(diff, "the schema", "input #{k}")}"
+          raise ArgumentError, "Input #{k} does not fit the schema: #{field.name} is wider in the input than in the schema " \
+            "(a wider type, or nullable or more members); pass the union of the schemas"
         end
-        [field.name, action]
+      end
+      copyable = sources.select { |j, source| same_bytes?(@schema.columns[j], source) }.keys
+      Plan.new(sources, copyable)
+    end
+
+    # @param mine [Schema::Field] a field of the output schema
+    # @param theirs [Schema::Field, nil] the field of the same name in the input, of the same kind
+    # @param sources [Hash{Integer => Schema::Column}] output column index => input column; added to
+    # @return [void]
+    def match_columns(mine, theirs, sources)
+      return unless theirs
+      case mine.kind
+      when :leaf then sources[mine.column.index] = theirs.column
+      when :struct
+        by_name = theirs.children_by_name
+        mine.children.each { |child| match_columns(child, by_name[child.name], sources) }
+      when :list then match_columns(mine.element, theirs.element, sources)
+      when :map
+        match_columns(mine.key, theirs.key, sources)
+        match_columns(mine.value, theirs.value, sources)
       end
     end
 
-    # @param diff [Schema::Difference] where two schemas differ
-    # @param mine [String] what to call the first schema
-    # @param theirs [String] what to call the second one
-    # @return [String] e.g. "address.zip: optional INT32 zip in input 0, optional BYTE_ARRAY zip (STRING) in input 1"
-    def mismatch(diff, mine, theirs)
-      path = diff.path.empty? ? "the top level" : diff.path
-      return "#{path} is only in #{theirs}" unless diff.mine
-      return "#{path} is only in #{mine}" unless diff.theirs
-      "#{path}: #{diff.mine} in #{mine}, #{diff.theirs} in #{theirs}"
+    # Whether a chunk of +theirs+ holds the values of +mine+ byte for byte. For a column of an
+    # input that fits the output, the widenings that keep the bytes are those of the annotation
+    # alone: int8 into int32, uint16 into int32, string into binary... Equal levels mean that no
+    # field on the way became nullable, since nullability only ever widens here.
+    #
+    # @param mine [Schema::Column] a column of the output schema
+    # @param theirs [Schema::Column] the input's column for it
+    # @return [Boolean]
+    def same_bytes?(mine, theirs)
+      mine.type == theirs.type && mine.type_length == theirs.type_length &&
+        mine.max_definition_level == theirs.max_definition_level &&
+        mine.max_repetition_level == theirs.max_repetition_level &&
+        time_unit(mine.node) == time_unit(theirs.node)
     end
 
-    # Writes row group +i+ of +input+, copying the column chunks it can
+    # @param node [Schema::Node] a leaf
+    # @return [Symbol, nil] the unit of a time or timestamp column, nil for other columns
+    def time_unit(node)
+      lt = node.logical_type
+      (lt&.timestamp || lt&.time)&.unit&.to_sym || CONVERTED_UNITS[node.converted_type]
+    end
+
+    # Writes row group +i+ of +input+, copying the column chunks it can. A field with a column that
+    # cannot be copied is read as a whole, since Reader and Writer handle top-level fields; the
+    # columns of it that can be copied still are.
     #
     # @param input [Input] the input file, its reader and its plan
     # @param i [Integer] row group index in the input
@@ -172,55 +237,50 @@ module Herringbone
     # @return [Symbol] +:copied+ or +:rewritten+
     def write_row_group(input, i, writer)
       reader = input.reader
+      sources = input.plan.sources
       chunks = reader.row_groups[i].columns
       n = reader.row_groups[i].num_rows
-      encode = @schema.fields.select do |field|
-        next false if input.plan[field.name] == :null
-        input.plan[field.name] == :encode || field.leaves.any? do |col|
-          writer.encrypted_column?(col.index) || chunks.fetch(reader.schema.column(col.path).index).crypto_metadata
-        end
-      end
+      copy = @schema.columns.select do |col|
+        source = sources[col.index]
+        input.plan.copyable.include?(col.index) && !writer.encrypted_column?(col.index) &&
+          !chunks.fetch(source.index).crypto_metadata
+      end.map(&:index)
+      present, absent = @schema.fields.partition { |field| reader.schema.field(field.name) }
+      absent.each { |field| writer.buffer_field(field.name, Array.new(n)) }
+      encode = present.reject { |field| field.leaves.all? { |col| copy.include?(col.index) } }.map(&:name)
       unless encode.empty?
-        names = encode.map(&:name)
-        data = reader.read(as: :columns, columns: names, from: input.first_rows[i], limit: n)
-        names.each { |name| writer.buffer_field(name, data[name]) }
+        data = reader.read(as: :columns, columns: encode, from: input.first_rows[i], limit: n)
+        encode.each { |name| writer.buffer_field(name, data[name]) }
       end
       copies = {}
       codecs = {}
       blooms = {}
-      @schema.fields.each do |field|
-        case input.plan[field.name]
-        when :null
-          writer.buffer_field(field.name, Array.new(n))
-        when :copy, :encode
-          field.leaves.each do |col|
-            source = reader.schema.column(col.path)
-            if encode.include?(field)
-              codec, bloom = input.copier.recode_settings(i, source)
-              codecs[col.index] = codec if codec && @keep_codecs
-              blooms[col.index] = true if bloom
-            else
-              copies[col.index] = input.copier.copy(i, source)
-            end
-          end
+      @schema.columns.each do |col|
+        source = sources[col.index] or next
+        if copy.include?(col.index)
+          copies[col.index] = input.copier.copy(i, source)
+        else
+          codec, bloom = input.copier.recode_settings(i, source)
+          codecs[col.index] = codec if codec && @keep_codecs
+          blooms[col.index] = true if bloom
         end
       end
       writer.write_row_group(n, copies: copies, codecs: codecs, bloom_filters: blooms,
-        sorting_columns: sorting_columns(reader, i))
+        sorting_columns: sorting_columns(input, i))
       (copies.size == @schema.columns.size) ? :copied : :rewritten
     end
 
     # The row group's sorting columns, pointed at the output's columns. A column the output does
     # not have ends the list, since the columns after it were only sorted within its runs.
     #
-    # @param reader [Reader] the input file the row group comes from
+    # @param input [Input] the input file the row group comes from
     # @param i [Integer] row group index
     # @return [Array<Format::SortingColumn>, nil]
-    def sorting_columns(reader, i)
+    def sorting_columns(input, i)
       out = []
-      (reader.row_groups[i].sorting_columns || []).each do |sc|
-        col = reader.schema.columns[sc.column_idx]
-        j = col && @schema.column(col.path)&.index
+      output_index = input.plan.sources.to_h { |j, source| [source.index, j] }
+      (input.reader.row_groups[i].sorting_columns || []).each do |sc|
+        j = output_index[sc.column_idx]
         break unless j
         out << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
       end

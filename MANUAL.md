@@ -718,35 +718,59 @@ schemas work as Hash keys. What does not count: the name of the root (`schema`, 
 `duckdb_schema`...), `enum values:` (which are not stored in the file), the footer's key/value
 metadata (which is not part of the schema), and the legacy converted type of a column that has a
 logical type, since writers differ in whether they store both. A pyarrow file and a Herringbone
-file holding the same columns usually compare equal. `difference` says where two schemas part:
-
-```ruby
-a.schema.difference(b.schema).to_s # => "address.zip: optional INT32 zip vs optional BYTE_ARRAY zip (STRING)"
-```
+file holding the same columns usually compare equal.
 
 Without `schema:`, every input must have the schema of the first, or `combine` raises
-`ArgumentError` before writing anything, naming the column:
+`ArgumentError` before writing anything, naming the fields that differ:
 
 ```
-The schema of input 2 differs from that of input 0: address.zip: optional INT32 zip in input 0,
-optional BYTE_ARRAY zip (STRING) in input 2. Combine files with the same schema, or pass schema: ...
+The schema of input 2 differs from that of input 0 in address. Combine files with the same schema,
+or pass schema: (e.g. a.schema + b.schema) to fill the gaps with nulls
 ```
 
-For files whose columns differ, `+` unites two schemas: the fields of the first, then the fields
-only the second has. Fields only one side has become nullable, and so does a field that is
-required on one side and nullable on the other. Fields are matched by name at the top level only,
-and anything else that differs (types, struct members, list elements) raises `ArgumentError`.
-Pass the union as `schema:`:
+For files whose columns differ, `a + b` (or `a.union(b)`) unites two schemas: the fields of `a`,
+then the fields only `b` has. `a & b` (`a.intersect(b)`) keeps the fields both have. Fields are
+matched by name at every level: struct members, list elements, map keys and values. Fields only
+one side has become nullable, and so does a field that is nullable on either side. The types of
+fields both have are widened to one that holds the values of both without loss:
+
+| Types                                    | Widened to                                  |
+|------------------------------------------|---------------------------------------------|
+| two signed or two unsigned integers      | the wider one                               |
+| unsigned and signed integer              | signed, twice as wide: `uint32 + int8` -> `int64` |
+| two floats                               | the wider one                               |
+| integer and float                        | the narrowest float holding every integer exactly: `int16 + float` -> `float`, `int32 + float` -> `double` |
+| timestamps (or times) of different units | the finer unit: `millis + micros` -> `micros` |
+| string, enum, json                       | string                                      |
+| any of those and binary                  | binary                                      |
+
+Anything else raises `Herringbone::IncompatibleSchema`, which lists every field that does not fit
+at once (`error.conflicts` has them as `path`, `left`, `right`, `reason`):
+
+```
+Cannot unite the schemas, 2 fields do not fit:
+  id: int64 vs double (int64 does not fit a double exactly)
+  address.zip: int32 vs string (no common type)
+```
+
+That is `uint64` with a signed integer, `int64` with any float, decimals of another precision or
+scale, UTC with local timestamps, dates with timestamps, a struct with a list, fields with different
+field ids, and a bare `repeated` field only one side has (it cannot be null). Pass the union as
+`schema:`:
 
 ```ruby
 schemas = inputs.map { |io| Herringbone::Reader.new(io).schema }
 Herringbone.combine(inputs, out, schema: schemas.reduce(:+))
 ```
 
-Each input's fields are then fitted to `schema:`, in whatever order the input has them. Fields an
-input has as they are in `schema:` are still copied; fields it lacks are written as nulls, and
-fields it has required where `schema:` has them nullable are encoded again. An input with a field
-`schema:` lacks, or lacking a field `schema:` requires, raises `ArgumentError`.
+Each input's fields are then fitted to `schema:` by name, in whatever order the input has them. The
+input must be the same as `schema:` or narrower: uniting it with `schema:` must change nothing.
+Fields it lacks are written as nulls. Column chunks are copied wherever the stored bytes stay the
+same, which includes widenings of the annotation alone (`int8` into `int32`, `uint16` into `int32`,
+`string` into `binary`) and list elements named another way (pyarrow's `list.item`). Columns whose
+physical type, time unit or nullability changes (`int32` into `int64`, `millis` into `micros`,
+required into nullable) are encoded again from their values. An input with a field `schema:` lacks
+or has narrower, or lacking a field `schema:` requires, raises `ArgumentError`.
 
 ### Combining encrypted files
 

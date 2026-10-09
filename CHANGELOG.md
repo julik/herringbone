@@ -11,7 +11,8 @@
 - `Herringbone::Schema#==` compares structure: field names, order, nullability, types, field ids
   and nesting.
 - `Herringbone.combine(inputs, output)` concatenates Parquet files with the same schema, copying
-  their row groups byte for byte; with `schema:` it fills fields an input lacks with nulls.
+  their row groups byte for byte. With `schema: a.schema + b.schema` it fills fields an input lacks
+  with nulls, widens narrower fields and still copies every column whose stored bytes stay the same.
 - `herringbone combine INPUT... --output=FILE` does the same from the command line, with `--union`
   for inputs with different fields and `--encrypt-key=KEY` or `--plaintext` for encrypted inputs.
 - `Herringbone.redact` raises `Herringbone::FormatError` for a corrupt page header in a row group it

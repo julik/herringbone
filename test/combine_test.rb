@@ -6,7 +6,7 @@ require "json"
 require "open3"
 require "tmpdir"
 
-# Schema#==, Schema#+ and Herringbone.combine
+# Herringbone.combine
 class CombineTest < Minitest::Test
   include WriterHelpers
 
@@ -60,132 +60,6 @@ class CombineTest < Minitest::Test
       end
     end
     assert_equal 0, Herringbone::Inspector.new(StringIO.new(bytes)).verify_checksums[:mismatch], msg
-  end
-
-  # --- Schema#== ---
-
-  def test_schemas_are_equal_by_structure
-    copy = Herringbone::Schema.from_elements(SCHEMA.to_elements)
-    assert_equal SCHEMA, copy
-    assert SCHEMA.eql?(copy)
-    assert_equal SCHEMA.hash, copy.hash
-    assert_equal 1, [SCHEMA, copy].uniq.size
-    assert_equal SCHEMA, reader_for(file(0...10)).schema
-    refute_equal SCHEMA, nil
-    refute_equal SCHEMA, "schema"
-  end
-
-  def test_root_name_and_enum_values_do_not_count
-    elements = SCHEMA.to_elements
-    elements.first.name = "spark_schema"
-    assert_equal SCHEMA, Herringbone::Schema.from_elements(elements)
-    plain = Herringbone::Schema.define { |s| s.string :state }
-    enum = Herringbone::Schema.define { |s| s.enum :state, values: %w[a b] }
-    assert_equal plain, enum
-  end
-
-  def test_logical_type_supersedes_the_converted_type
-    with_both = Herringbone::Schema.define { |s| s.string :name }
-    elements = with_both.to_elements
-    elements.last.converted_type = nil
-    assert_equal with_both, Herringbone::Schema.from_elements(elements)
-    elements.last.logical_type = nil
-    elements.last.converted_type = F::ConvertedType::UTF8
-    refute_equal with_both, Herringbone::Schema.from_elements(elements), "legacy-only annotation is another schema"
-  end
-
-  def test_what_makes_schemas_differ
-    variants = {
-      "address.zip: optional INT32 zip vs optional INT64 zip" => ->(s) {
-        s.int64 :id, null: false
-        s.string :email
-        s.struct(:address) { |a|
-          a.string :city
-          a.int64 :zip
-        }
-        s.list :tags, :string
-        s.timestamp :at
-      },
-      "id: required INT64 id vs optional INT64 id" => ->(s) {
-        s.int64 :id
-        s.string :email
-        s.struct(:address) { |a|
-          a.string :city
-          a.int32 :zip
-        }
-        s.list :tags, :string
-        s.timestamp :at
-      },
-      "at: optional INT64 at (TIMESTAMP) vs (absent)" => ->(s) {
-        s.int64 :id, null: false
-        s.string :email
-        s.struct(:address) { |a|
-          a.string :city
-          a.int32 :zip
-        }
-        s.list :tags, :string
-      },
-      "top level: fields id, email, address, tags, at vs fields email, id, address, tags, at" => ->(s) {
-        s.string :email
-        s.int64 :id, null: false
-        s.struct(:address) { |a|
-          a.string :city
-          a.int32 :zip
-        }
-        s.list :tags, :string
-        s.timestamp :at
-      }
-    }
-    variants.each do |message, block|
-      other = Herringbone::Schema.define(&block)
-      refute_equal SCHEMA, other, message
-      assert_equal message, SCHEMA.difference(other).to_s
-    end
-    assert_nil SCHEMA.difference(Herringbone::Schema.from_elements(SCHEMA.to_elements))
-  end
-
-  def test_field_ids_and_timestamp_units_count
-    a = Herringbone::Schema.define { |s| s.int64 :id, field_id: 1 }
-    b = Herringbone::Schema.define { |s| s.int64 :id, field_id: 2 }
-    refute_equal a, b
-    assert_match(/field_id=1.* vs .*field_id=2/, a.difference(b).to_s)
-    micros = Herringbone::Schema.define { |s| s.timestamp :at }
-    millis = Herringbone::Schema.define { |s| s.timestamp :at, unit: :millis }
-    refute_equal micros, millis
-  end
-
-  # --- Schema#+ ---
-
-  def test_union_adds_fields_and_widens_nullability
-    a = Herringbone::Schema.define do |s|
-      s.int64 :id, null: false
-      s.string :name, null: false
-    end
-    b = Herringbone::Schema.define do |s|
-      s.int64 :id
-      s.string :email
-    end
-    union = a + b
-    assert_equal %w[id name email], union.fields.map(&:name)
-    assert union.fields.all?(&:optional), "every field is nullable: each misses from one side or is nullable there"
-    assert_equal SCHEMA, SCHEMA + SCHEMA
-    assert_equal %w[id email address tags at], (SCHEMA + Herringbone::Schema.define { |s| s.string :email }).fields.map(&:name)
-    refute a.fields.first.optional, "the operands are left alone"
-  end
-
-  def test_union_refuses_conflicts
-    a = Herringbone::Schema.define { |s| s.struct(:address) { |x| x.string :zip } }
-    b = Herringbone::Schema.define { |s| s.struct(:address) { |x| x.int32 :zip } }
-    error = assert_raises(ArgumentError) { a + b }
-    assert_equal "Cannot unite schemas: address.zip: optional BYTE_ARRAY zip (STRING) vs optional INT32 zip", error.message
-    c = Herringbone::Schema.define { |s| s.struct(:address) { |x| x.string :zip, null: false } }
-    assert_raises(ArgumentError, "nullability only widens at the top level") { a + c }
-    repeated = Herringbone::Schema.from_elements([
-      F::SchemaElement.new(name: "schema", num_children: 1),
-      F::SchemaElement.new(name: "ids", type: F::Type::INT64, repetition_type: F::Repetition::REPEATED)
-    ])
-    assert_raises(ArgumentError) { repeated + a }
-    assert_raises(ArgumentError) { a + "schema" }
   end
 
   # --- Herringbone.combine ---
@@ -248,8 +122,7 @@ class CombineTest < Minitest::Test
     end
     b = write_to_string(other, [{"id" => 1, "address" => {"zip" => "1234"}}])
     error = assert_raises(ArgumentError) { combine([file(0...10), file(10...20), b]) }
-    assert_match "The schema of input 2 differs from that of input 0: address.zip: optional INT32 zip in input 0, " \
-      "optional BYTE_ARRAY zip (STRING) in input 2", error.message
+    assert_match "The schema of input 2 differs from that of input 0 in address.", error.message
     assert_match "schema:", error.message
   end
 
@@ -302,8 +175,136 @@ class CombineTest < Minitest::Test
       s.timestamp :at
     end
     error = assert_raises(ArgumentError) { combine([a], schema: narrowed) }
-    assert_equal "Input 0 does not fit the schema: email: required BYTE_ARRAY email (STRING) in the schema, " \
-      "optional BYTE_ARRAY email (STRING) in input 0", error.message
+    assert_equal "Input 0 does not fit the schema: email is nullable in the input and required in the schema", error.message
+  end
+
+  def test_combine_refuses_schemas_that_only_differ_in_order
+    swapped = Herringbone::Schema.define do |s|
+      s.string :email
+      s.int64 :id, null: false
+    end
+    plain = Herringbone::Schema.define do |s|
+      s.int64 :id, null: false
+      s.string :email
+    end
+    a = write_to_string(plain, [{"id" => 1}])
+    b = write_to_string(swapped, [{"id" => 2}])
+    error = assert_raises(ArgumentError) { combine([a, b]) }
+    assert_match "differs from that of input 0 in the order of the fields", error.message
+    out, report = combine([a, b], schema: plain)
+    assert_equal({copied: 2, rewritten: 0}, report.row_groups, "fields are matched by name, wherever they are")
+    assert_equal [1, 2], reader_for(out).read.map { |r| r["id"] }
+  end
+
+  def test_combine_with_a_union_schema_widens_types
+    narrow = Herringbone::Schema.define do |s|
+      s.int32 :id, null: false
+      s.int8 :score
+      s.timestamp :at, unit: :millis
+      s.struct(:address) { |a| a.string :city }
+      s.list :tags, :string
+    end
+    wide = Herringbone::Schema.define do |s|
+      s.int64 :id, null: false
+      s.uint16 :score
+      s.timestamp :at, unit: :micros
+      s.struct(:address) { |a|
+        a.string :city
+        a.string :zip
+      }
+      s.list :tags, :binary
+    end
+    at = Time.utc(2026, 10, 9, 12, 0, 0, 123_000)
+    a = write_to_string(narrow, [{"id" => 1, "score" => -3, "at" => at, "address" => {"city" => "Lyon"}, "tags" => ["x"]}])
+    b = write_to_string(wide, [{"id" => 2**40, "score" => 65_535, "at" => at + Rational(1, 1_000_000), "address" => {"zip" => "69001"}, "tags" => ["\xFF".b]}])
+    schema = reader_for(a).schema + reader_for(b).schema
+    assert_equal Herringbone::Schema.define { |s|
+      s.int64 :id, null: false
+      s.int32 :score
+      s.timestamp :at, unit: :micros
+      s.struct(:address) { |x|
+        x.string :city
+        x.string :zip
+      }
+      s.list :tags, :binary
+    }, schema
+    out, report = combine([a, b], schema: schema)
+    assert_equal({copied: 1, rewritten: 1}, report.row_groups, "b has the union's types already")
+    assert_well_formed out
+    # Widening the annotation alone keeps the bytes, so those chunks of a are still copied
+    %w[score address.city tags.list.element].each do |path|
+      assert_equal pages(a, 0, path), pages(out, 0, path), path
+    end
+    %w[id at].each { |path| refute_equal pages(a, 0, path), pages(out, 0, path), path }
+    read = reader_for(out).read
+    assert_equal [1, 2**40], read.map { |r| r["id"] }
+    assert_equal [-3, 65_535], read.map { |r| r["score"] }
+    assert_equal [at, at + Rational(1, 1_000_000)], read.map { |r| r["at"] }
+    assert_equal [{"city" => "Lyon", "zip" => nil}, {"city" => nil, "zip" => "69001"}], read.map { |r| r["address"] }
+    assert_equal [["x"], ["\xFF".b]], read.map { |r| r["tags"] }
+  end
+
+  def test_list_elements_named_another_way_are_still_copied
+    # pyarrow names the element of a list "item"
+    pyarrow = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
+      Herringbone::Schema::Node.new(name: "tags", converted_type: F::ConvertedType::LIST,
+        logical_type: F::LogicalType.new(list: F::ListType.new), children: [
+          Herringbone::Schema::Node.new(name: "list", repetition: :repeated, children: [
+            Herringbone::Schema::Node.new(name: "item", **Herringbone::Types.physical_attributes(:string))
+          ])
+        ])
+    ]))
+    ours = Herringbone::Schema.define { |s| s.list :tags, :string }
+    a = write_to_string(ours, [{"tags" => %w[a b]}])
+    b = write_to_string(pyarrow, [{"tags" => ["c", nil]}, {"tags" => nil}])
+    schema = reader_for(a).schema + reader_for(b).schema
+    assert_equal ours, schema
+    out, report = combine([a, b], schema: schema)
+    assert_equal({copied: 2, rewritten: 0}, report.row_groups)
+    assert_equal pages(b, 0, "tags.list.item"), pages(out, 1, "tags.list.element")
+    assert_equal [%w[tags list element]] * 2, reader_for(out).row_groups.map { |rg| rg.columns[0].meta_data.path_in_schema }
+    assert_equal [%w[a b], ["c", nil], nil], reader_for(out).read.map { |r| r["tags"] }
+  end
+
+  def test_columns_that_become_nullable_are_encoded_again
+    required = Herringbone::Schema.define do |s|
+      s.struct(:address, null: false) { |a| a.string :city }
+      s.string :name
+    end
+    optional = Herringbone::Schema.define do |s|
+      s.struct(:address) { |a| a.string :city }
+      s.string :name
+    end
+    a = write_to_string(required, [{"address" => {"city" => "Lyon"}, "name" => "x"}])
+    out, report = combine([a], schema: optional)
+    assert_equal({copied: 0, rewritten: 1}, report.row_groups)
+    refute_equal pages(a, 0, "address.city"), pages(out, 0, "address.city"), "a definition level more"
+    assert_equal pages(a, 0, "name"), pages(out, 0, "name")
+    assert_equal [{"address" => {"city" => "Lyon"}, "name" => "x"}], reader_for(out).read
+  end
+
+  def test_combine_with_a_schema_narrower_than_an_input
+    a = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{"id" => 2**40}])
+    error = assert_raises(ArgumentError) { combine([a], schema: Herringbone::Schema.define { |s| s.int32 :id }) }
+    assert_equal "Input 0 does not fit the schema: id is wider in the input than in the schema " \
+      "(a wider type, or nullable or more members); pass the union of the schemas", error.message
+  end
+
+  def test_combine_with_a_schema_an_input_has_no_common_type_with
+    a = write_to_string(Herringbone::Schema.define { |s|
+      s.int64 :id
+      s.string :zip
+    }, [{"id" => 1}])
+    schema = Herringbone::Schema.define do |s|
+      s.double :id
+      s.int32 :zip
+    end
+    error = assert_raises(ArgumentError) { combine([a], schema: schema) }
+    assert_equal <<~MESSAGE.chomp, error.message
+      Input 0 does not fit the schema (the schema's type first, then the input's):
+        id: double vs int64 (int64 does not fit a double exactly)
+        zip: int32 vs string (no common type)
+    MESSAGE
   end
 
   def test_combine_argument_errors

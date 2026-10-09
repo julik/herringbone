@@ -293,7 +293,7 @@ module Herringbone
       start = @pos
       chunks = @schema.columns.map do |col|
         if (copy = copies[col.index])
-          copy_column_chunk(copy)
+          copy_column_chunk(col, copy)
         else
           bloom = @bloom_filters[col.dotted_path]
           bloom ||= bloom_filter_settings({}) if bloom_filters[col.index] && BloomFilter::TYPES.include?(col.type)
@@ -781,14 +781,17 @@ module Herringbone
 
     # Writes a chunk copied from another file. The pages, the ColumnIndex and the bloom filter
     # hold no file offsets and go out as they are; the ColumnMetaData and the OffsetIndex do, so
-    # those are rebased onto where the chunk lands in this file.
+    # those are rebased onto where the chunk lands in this file. The path is this file's, which
+    # differs when the source file names list elements another way ("list.item", "array").
     #
+    # @param col [Schema::Column] the column the chunk is copied into
     # @param copy [CopiedChunk] the chunk to copy
     # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
-    def copy_column_chunk(copy)
+    def copy_column_chunk(col, copy)
       start = @pos
       shift = start - copy.start
       meta = Format::ColumnMetaData.decode(copy.chunk.meta_data.encode).first
+      meta.path_in_schema = col.path
       meta.data_page_offset += shift
       dict = meta.dictionary_page_offset
       # Some writers store 0 when there is no dictionary page

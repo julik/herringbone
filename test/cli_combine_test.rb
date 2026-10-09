@@ -50,7 +50,7 @@ class CliCombineTest < Minitest::Test
       out = File.join(dir, "out.parquet")
       _, err, status = run_cli("combine", a, b, "--output=#{out}")
       refute status.success?
-      assert_match(/name is only in input 0/, err)
+      assert_match(/differs from that of input 0 in name, tag/, err)
       assert_match(/give --union/, err)
       refute File.exist?(out), "A file without its footer is removed"
 

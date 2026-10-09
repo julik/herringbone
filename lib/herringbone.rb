@@ -247,8 +247,9 @@ module Herringbone
   # for Combiner. Inputs with the output schema have their column chunks copied byte for byte (only
   # offsets are rebased), so nothing is decoded; without +schema+, every input must have the schema
   # of the first (see Schema#==). With +schema+ (say, the union of the inputs' schemas, Schema#+),
-  # fields an input lacks are written as nulls, and fields it has as required where the schema has
-  # them optional are encoded again.
+  # each input must be the same or narrower: fields it lacks are written as nulls, and columns whose
+  # stored values change (a wider physical type or time unit, required made optional) are encoded
+  # again. The other columns are still copied.
   #
   #   File.open("all.parquet", "wb") { |out| Herringbone.combine([jan, feb, mar], out) }
   #   Herringbone.combine([a, b], out, schema: Herringbone::Reader.new(a).schema + Herringbone::Reader.new(b).schema)

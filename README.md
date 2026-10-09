@@ -159,7 +159,7 @@ Herringbone.combine([january, february, march], output)
 ```
 
 Files with different columns combine with `schema: a.schema + b.schema`, which fills the gaps with
-nulls. See [Combining files](MANUAL.md#combining-files).
+nulls and widens types (`int32` and `int64` to `int64`). See [Combining files](MANUAL.md#combining-files).
 
 ## Looking inside a file
 
