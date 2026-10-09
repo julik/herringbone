@@ -16,6 +16,15 @@ Claude Code picks the skill up through the symlink in `.claude/skills/`.
 class from another file (as `reader/bloom_filters.rb` does) is required by that class's own file.
 `test/autoload_test.rb` checks that `Herringbone.eager_load!` reaches every file under `lib/`.
 
+## Type signatures
+
+`rbi/herringbone.rbi` and `rbs/herringbone.rbs` are generated from the YARD docs by
+[sord](https://github.com/AaronC81/sord) with `bundle exec rake types` (also part of the default
+`rake`). Never edit them by hand. When a change touches a signature or a doc comment in `lib/`,
+regenerate them and commit the result before pushing a PR; CI fails when they are out of date.
+They leave out constants and declare `VERSION` as a plain `String`, so bumping the version needs
+no regeneration.
+
 ## CHANGELOG
 
 `CHANGELOG.md` lists user-visible changes per version, newest first. Add the entry in the same

@@ -12,6 +12,8 @@ group :development do
   gem "standard", "1.56.0"
   # Checks the YARD docs (`rake yard:lint`). Needs Ruby 3.3+, so older Rubies go without it
   gem "yard-lint", "1.12.0" if RUBY_VERSION >= "3.3"
+  # Generates rbi/ and rbs/ from the YARD docs (`rake types`)
+  gem "sord", "7.1.0" if RUBY_VERSION >= "3.3"
 end
 
 group :test do

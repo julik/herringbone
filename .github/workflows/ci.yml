@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Standard + yard-lint
+    name: Standard + yard-lint + types
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,6 +23,8 @@ jobs:
           bundler-cache: true
       - run: bundle exec rake standard
       - run: bundle exec rake yard:lint
+      - name: Check rbi/ and rbs/ are regenerated
+        run: bundle exec rake types && git diff --exit-code rbi rbs
 
   # Oldest supported Ruby, with the optional native Snappy gem (the runners have cmake to build
   # it); the pure-Ruby Snappy is covered by the "Without IO::Buffer" and "Without ... gems" jobs
