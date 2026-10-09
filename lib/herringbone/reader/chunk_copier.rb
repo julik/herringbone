@@ -8,12 +8,13 @@ module Herringbone
     class ChunkCopier
       # Bytes read at a time when a page header runs past what was read of a chunk
       READ_MORE = 64 * 1024
+      # Footer metadata that describes the columns, and goes stale when the schema changes
+      COLUMN_METADATA_KEYS = %w[ARROW:schema pandas].freeze
 
-      # @param reader [Reader] reads the file's footer, page indexes and bloom filters
-      # @param io [RestrictedReadableIO, IO, StringIO] the IO +reader+ reads, read with #seek and #read
-      def initialize(reader, io)
+      # @param reader [Reader] the file, whose IO the chunks are read from
+      def initialize(reader)
         @reader = reader
-        @io = RestrictedReadableIO.wrap(io)
+        @io = reader.io
       end
 
       # @param i [Integer] row group index
@@ -65,6 +66,28 @@ module Herringbone
             "pass it in decryption:, or pass encryption: for the output"
           [path, {key: key, key_metadata: with_column_key.key_metadata}]
         end.to_h
+      end
+
+      # The row group's sorting columns, pointed at the new file's columns. A column missing from
+      # +output_index+ ends the list, since the columns after it were only sorted within its runs.
+      #
+      # @param i [Integer] row group index
+      # @param output_index [Hash{Integer => Integer}] column index here => column index in the new
+      #   file, for the columns whose values the new file holds as they are
+      # @return [Array<Format::SortingColumn>, nil]
+      def sorting_columns(i, output_index)
+        out = (@reader.row_groups[i].sorting_columns || []).each_with_object([]) do |sc, acc|
+          j = output_index[sc.column_idx] or break acc
+          acc << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
+        end
+        out.empty? ? nil : out
+      end
+
+      # @param schema [Schema] the new file's schema
+      # @return [Hash{String => String, nil}] the file's key/value metadata, without the keys that
+      #   describe the columns when +schema+ is another
+      def metadata(schema)
+        (@reader.schema == schema) ? @reader.metadata : @reader.metadata.except(*COLUMN_METADATA_KEYS)
       end
 
       private

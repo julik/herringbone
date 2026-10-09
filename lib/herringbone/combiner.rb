@@ -61,11 +61,6 @@ module Herringbone
       Format::ConvertedType::TIMESTAMP_MILLIS => :millis, Format::ConvertedType::TIMESTAMP_MICROS => :micros
     }.freeze
 
-    # Writer options that make no sense here, since row groups keep their boundaries
-    ROW_GROUP_OPTIONS = %i[row_group_bytes row_group_rows].freeze
-    # Footer metadata that describes the columns, and goes stale when the schema changes
-    COLUMN_METADATA_KEYS = %w[ARROW:schema pandas].freeze
-
     # @return [Schema] the schema of the output
     attr_reader :schema
 
@@ -120,13 +115,11 @@ module Herringbone
     #   or encrypted inputs that are encrypted differently while +encryption:+ is not given
     # @raise [DecryptionError] when a column is encrypted and its key was not given
     def apply(output_io, **options)
-      bad = options.keys & ROW_GROUP_OPTIONS
-      raise ArgumentError, "#{bad.join(", ")}: combining keeps the row groups of the inputs" unless bad.empty?
+      options = {metadata: @inputs.first.copier.metadata(@schema)}.merge(options)
       options[:encryption] = inherited_encryption unless options.key?(:encryption)
       @keep_codecs = !options.key?(:compression)
-      writer = Writer.new(output_io, @schema, row_group_bytes: 1 << 62, metadata: metadata, **options)
       report = Report.new(rows: 0, row_groups: {copied: 0, rewritten: 0}, inputs: @inputs.map(&:report))
-      begin
+      Writer.open_for_copies(output_io, @schema, "combining keeps the row groups of the inputs", **options) do |writer|
         @inputs.each do |input|
           from = 0
           input.reader.row_groups.each_with_index do |rg, i|
@@ -134,12 +127,8 @@ module Herringbone
             from += rg.num_rows
           end
         end
-      rescue Exception # rubocop:disable Lint/RescueException -- also abort on Interrupt
-        writer.abort
-        raise
+        report.rows = writer.rows_written
       end
-      writer.close
-      report.rows = writer.rows_written
       report
     end
 
@@ -274,7 +263,7 @@ module Herringbone
       sources = pairs.filter_map { |a, b, _| [a.column.index, b.column] if b && a.leaf? && b.leaf? }.to_h
       widened = pairs.filter_map { |a, b, path| path if b && (a.optional != b.optional || (a.leaf? && describe(a) != describe(b))) }
       report = InputReport.new(name: @names[k], filled: filled, widened: widened, dropped: dropped)
-      Input.new(reader, Reader::ChunkCopier.new(reader, reader.io), sources, report)
+      Input.new(reader, Reader::ChunkCopier.new(reader), sources, report)
     end
 
     # Whether a chunk of +theirs+ holds the values of +mine+ byte for byte. For a column of an
@@ -425,30 +414,9 @@ module Herringbone
       present = encode.map(&:name) & input.reader.schema.fields.map(&:name)
       data = present.empty? ? {} : input.reader.read(as: :columns, columns: present, from: from, limit: n)
       encode.each { |field| writer.buffer_field(field.name, data.fetch(field.name) { Array.new(n) }) }
-      writer.write_row_group(n, copies: copies, codecs: codecs, bloom_filters: blooms, sorting_columns: sorting_columns(input, i))
+      sorting = input.copier.sorting_columns(i, input.sources.to_h { |j, source| [source.index, j] })
+      writer.write_row_group(n, copies: copies, codecs: codecs, bloom_filters: blooms, sorting_columns: sorting)
       (copies.size == @schema.columns.size) ? :copied : :rewritten
-    end
-
-    # The row group's sorting columns, pointed at the output's columns. A column the output does
-    # not have ends the list, since the columns after it were only sorted within its runs.
-    #
-    # @param input [Input] the input file the row group comes from
-    # @param i [Integer] row group index
-    # @return [Array<Format::SortingColumn>, nil]
-    def sorting_columns(input, i)
-      output_index = input.sources.to_h { |j, source| [source.index, j] }
-      out = (input.reader.row_groups[i].sorting_columns || []).each_with_object([]) do |sc, acc|
-        j = output_index[sc.column_idx] or break acc
-        acc << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
-      end
-      out.empty? ? nil : out
-    end
-
-    # @return [Hash{String => String, nil}] the first input's key/value metadata, without the keys
-    #   that describe the columns when the output schema is another
-    def metadata
-      first = @inputs.first.reader
-      (first.schema == @schema) ? first.metadata : first.metadata.except(*COLUMN_METADATA_KEYS)
     end
   end
 end
