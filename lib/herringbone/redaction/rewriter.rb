@@ -27,8 +27,6 @@ module Herringbone
       ROW_GROUP_OPTIONS = %i[row_group_bytes row_group_rows].freeze
       # Footer metadata that describes the columns, and goes stale when some are dropped
       COLUMN_METADATA_KEYS = %w[ARROW:schema pandas].freeze
-      # Bytes read at a time when a page header runs past what was read of a chunk
-      READ_MORE = 64 * 1024
       # What #current returns for a struct member of a null struct
       ABSENT = Object.new.freeze
 
@@ -43,7 +41,7 @@ module Herringbone
       # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
       def initialize(redaction, io_or_reader, decryption: nil)
         @reader = fixed_options_reader(io_or_reader, decryption)
-        @io = @reader.io
+        @copier = Reader::ChunkCopier.new(@reader, @reader.io)
         @schema = @reader.schema
         @statements = redaction.statements
         @filters = @statements.map { |s| s.where && Reader::Filter.new(@schema, s.where) }
@@ -276,7 +274,7 @@ module Herringbone
           @report.row_groups[:copied] += 1
           return
         end
-        copies = @output_columns.each_with_index.to_h { |col, j| [j, copied_chunk(i, col)] }
+        copies = @output_columns.each_with_index.to_h { |col, j| [j, @copier.copy(i, col)] }
         writer.write_row_group(rows(i), copies: copies, sorting_columns: sorting_columns(i, []))
         @report.row_groups[:copied] += 1
       end
@@ -301,7 +299,7 @@ module Herringbone
           if encoded.include?(col.index)
             chunk_settings(i, col, j, codecs, blooms)
           else
-            copies[j] = copied_chunk(i, col)
+            copies[j] = @copier.copy(i, col)
           end
         end
         writer.write_row_group(rows(i), copies: copies, codecs: codecs, bloom_filters: blooms,
@@ -329,20 +327,9 @@ module Herringbone
       # @raise [DecryptionError] when a key of the input was not given
       def input_encryption
         decryptor = @reader.decryptor or return nil
-        chunks = @reader.row_groups.first&.columns || []
-        columns = @output_columns.each_with_index.filter_map do |col, j|
-          chunk = chunks[col.index]
-          crypto = chunk&.crypto_metadata or next
-          path = @output_schema.columns[j].dotted_path
-          with_column_key = crypto.encryption_with_column_key
-          next [path, :footer] unless with_column_key
-          key = decryptor.chunk_key(chunk, col.dotted_path)
-          key or raise DecryptionError, "The output is encrypted like the input, which needs the key of #{col.dotted_path}: " \
-            "pass it in decryption:, or pass encryption: for the output"
-          [path, {key: key, key_metadata: with_column_key.key_metadata}]
-        end
-        uniform = !columns.empty? && columns.size == @output_columns.size && columns.all? { |_, v| v == :footer }
-        decryptor.writer_settings(uniform ? nil : columns.to_h)
+        columns = @copier.encrypted_columns(@output_columns.each_with_index.to_h { |col, j| [@output_schema.columns[j].dotted_path, col] })
+        uniform = !columns.empty? && columns.size == @output_columns.size && columns.values.all?(:footer)
+        decryptor.writer_settings(uniform ? nil : columns)
       end
 
       # Tier 3: the remaining rows are encoded again, every column of them
@@ -369,9 +356,8 @@ module Herringbone
         writer.write_row_group(kept, codecs: codecs, bloom_filters: blooms, sorting_columns: sorting_columns(i, rewritten))
       end
 
-      # Codec and bloom filter of a re-encoded chunk follow the source chunk: the same codec
-      # (unless +compression:+ was given; LZO cannot be written and becomes Snappy), and a bloom
-      # filter when the source chunk had one
+      # Codec and bloom filter of a re-encoded chunk follow the source chunk (see
+      # Reader::ChunkCopier#recode_settings), unless +compression:+ was given
       #
       # @param i [Integer] row group index
       # @param col [Schema::Column] the input column
@@ -380,10 +366,9 @@ module Herringbone
       # @param blooms [Hash{Integer => Boolean}] collects output column index => true
       # @return [void]
       def chunk_settings(i, col, j, codecs, blooms)
-        meta = @reader.row_groups[i].columns.fetch(col.index).meta_data
-        return unless meta
-        codecs[j] = (meta.codec == Format::Codec::LZO) ? Format::Codec::SNAPPY : meta.codec if @keep_codecs
-        blooms[j] = true if meta.bloom_filter_offset
+        codec, bloom = @copier.recode_settings(i, col)
+        codecs[j] = codec if codec && @keep_codecs
+        blooms[j] = true if bloom
       end
 
       # The row group's sorting columns that still hold: dropped or changed columns end the list,
@@ -401,100 +386,6 @@ module Herringbone
           out << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
         end
         out.empty? ? nil : out
-      end
-
-      # @param i [Integer] row group index
-      # @param col [Schema::Column] the input column
-      # @return [Writer::CopiedChunk] the chunk's pages, page index and bloom filter
-      # @raise [UnsupportedError] for an encrypted chunk or one stored in another file
-      # @raise [FormatError] when a page header is corrupt or the chunk overruns the file
-      def copied_chunk(i, col)
-        chunk = @reader.row_groups[i].columns.fetch(col.index)
-        meta = chunk.meta_data or raise UnsupportedError, "Column chunk without metadata (encrypted?)"
-        raise UnsupportedError, "Column chunks in external files are not supported" if chunk.file_path
-        column_index, offset_index = @reader.page_index(i, col)
-        start, bytes = chunk_bytes(col, meta, offset_index)
-        column_index &&= read_at(chunk.column_index_offset, chunk.column_index_length)
-        Writer::CopiedChunk.new(chunk, start, bytes, column_index, offset_index, bloom_bytes(i, col, meta))
-      end
-
-      # The chunk's pages. They are walked header by header rather than trusting
-      # total_compressed_size, which some writers get wrong: copying too little breaks the
-      # chunk, and copying too much could carry over bytes of a neighbouring chunk.
-      #
-      # @param col [Schema::Column] the input column
-      # @param meta [Format::ColumnMetaData] the chunk's metadata
-      # @param offset_index [Format::OffsetIndex, nil] the chunk's OffsetIndex, whose pages are
-      #   included even when num_values is reached before them
-      # @return [Array(Integer, String)] file offset of the first page, and the pages' bytes
-      # @raise [FormatError] when a page header is corrupt or the chunk overruns the file
-      def chunk_bytes(col, meta, offset_index)
-        start = meta.data_page_offset
-        dict = meta.dictionary_page_offset
-        start = dict if dict&.positive? && dict < start
-        last = offset_index&.page_locations&.last
-        min_end = last ? last.offset + last.compressed_page_size - start : 0
-        @io.seek(start)
-        buf = (@io.read(meta.total_compressed_size) || "").b
-        pos = 0
-        seen = 0
-        while seen < meta.num_values || pos < min_end
-          begin
-            header, body = Format::PageHeader.decode(buf, pos)
-          rescue Thrift::Error
-            raise FormatError, "Corrupt page header in #{col.dotted_path}" unless read_more(buf, start, READ_MORE)
-            retry
-          end
-          size = header.compressed_page_size
-          raise FormatError, "Negative page size in #{col.dotted_path}" if size.nil? || size.negative?
-          short = body + size - buf.bytesize
-          if short.positive? && read_more(buf, start, short) < short
-            raise FormatError, "Column #{col.dotted_path}: page overruns the file"
-          end
-          pos = body + size
-          seen += header.data_page_header&.num_values || header.data_page_header_v2&.num_values || 0
-        end
-        [start, (pos == buf.bytesize) ? buf : buf.byteslice(0, pos)]
-      end
-
-      # Appends up to +count+ bytes that follow +buf+ in the file
-      #
-      # @param buf [String] bytes read from +start+ on; appended to
-      # @param start [Integer] file offset of +buf+
-      # @param count [Integer] bytes wanted
-      # @return [Integer] bytes appended, 0 at the end of the file
-      def read_more(buf, start, count)
-        @io.seek(start + buf.bytesize)
-        more = @io.read(count)
-        return 0 if more.nil?
-        buf << more.b
-        more.bytesize
-      end
-
-      # @param offset [Integer, nil] file offset
-      # @param length [Integer, nil] byte count
-      # @return [String, nil] the bytes, nil when absent or cut off
-      def read_at(offset, length)
-        return nil unless offset && length&.positive?
-        @io.seek(offset)
-        bytes = @io.read(length)
-        (bytes&.bytesize == length) ? bytes.b : nil
-      end
-
-      # The chunk's bloom filter as stored. Filters written without a length (older writers) are
-      # decoded and encoded again. A filter that cannot be read is left out, which only costs
-      # pruning.
-      #
-      # @param i [Integer] row group index
-      # @param col [Schema::Column] the input column
-      # @param meta [Format::ColumnMetaData] the chunk's metadata
-      # @return [String, nil] header and bitset
-      def bloom_bytes(i, col, meta)
-        return nil unless meta.bloom_filter_offset
-        return read_at(meta.bloom_filter_offset, meta.bloom_filter_length) if meta.bloom_filter_length
-        @reader.bloom_filter(i, col)&.encode
-      rescue FormatError
-        nil
       end
 
       # Reads top-level fields of row group +i+ into @data, unless they are there already

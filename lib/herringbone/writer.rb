@@ -271,9 +271,9 @@ module Herringbone
     #   @return [String, nil] the chunk's encoded bloom filter, header included
     CopiedChunk = Struct.new(:chunk, :start, :bytes, :column_index, :offset_index, :bloom_filter)
 
-    # Internal (used by Redaction): writes a row group of +num_rows+ rows from the buffered values,
-    # except for the columns in +copies+, whose chunks are copied byte for byte from another file
-    # with their offsets rebased. Starts a new row group afterwards.
+    # Internal (used by Redaction and Combiner): writes a row group of +num_rows+ rows from the
+    # buffered values, except for the columns in +copies+, whose chunks are copied byte for byte
+    # from another file with their offsets rebased. Starts a new row group afterwards.
     #
     # @param num_rows [Integer] rows in the row group
     # @param copies [Hash{Integer => CopiedChunk}] column index => chunk to copy instead of encoding
@@ -293,7 +293,7 @@ module Herringbone
       start = @pos
       chunks = @schema.columns.map do |col|
         if (copy = copies[col.index])
-          copy_column_chunk(copy)
+          copy_column_chunk(col, copy)
         else
           bloom = @bloom_filters[col.dotted_path]
           bloom ||= bloom_filter_settings({}) if bloom_filters[col.index] && BloomFilter::TYPES.include?(col.type)
@@ -314,15 +314,15 @@ module Herringbone
       reset_buffers
     end
 
-    # Internal (used by Redaction): whether the column is encrypted in this file
+    # Internal (used by Redaction and Combiner): whether the column is encrypted in this file
     #
     # @param index [Integer] leaf column index
     # @return [Boolean]
     def encrypted_column?(index) = @encryption&.encrypted?(index) || false
 
-    # Internal (used by Redaction): shreds one value per row of a top-level field into the buffers,
-    # for #write_row_group. Other fields are left as they are, so the caller decides which columns
-    # are encoded and which are copied.
+    # Internal (used by Redaction and Combiner): shreds one value per row of a top-level field into
+    # the buffers, for #write_row_group. Other fields are left as they are, so the caller decides
+    # which columns are encoded and which are copied.
     #
     # @param name [String] top-level field name
     # @param values [Array] the field's value for each row
@@ -781,14 +781,17 @@ module Herringbone
 
     # Writes a chunk copied from another file. The pages, the ColumnIndex and the bloom filter
     # hold no file offsets and go out as they are; the ColumnMetaData and the OffsetIndex do, so
-    # those are rebased onto where the chunk lands in this file.
+    # those are rebased onto where the chunk lands in this file. The path is this file's, which
+    # differs when the source file names list elements another way ("list.item", "array").
     #
+    # @param col [Schema::Column] the column the chunk is copied into
     # @param copy [CopiedChunk] the chunk to copy
     # @return [Format::ColumnChunk] chunk with its ColumnMetaData, for the row group
-    def copy_column_chunk(copy)
+    def copy_column_chunk(col, copy)
       start = @pos
       shift = start - copy.start
       meta = Format::ColumnMetaData.decode(copy.chunk.meta_data.encode).first
+      meta.path_in_schema = col.path
       meta.data_page_offset += shift
       dict = meta.dictionary_page_offset
       # Some writers store 0 when there is no dictionary page

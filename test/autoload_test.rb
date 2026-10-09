@@ -20,7 +20,9 @@ class AutoloadTest < Minitest::Test
       files = $LOADED_FEATURES.select { |f| f.start_with?(#{LIB.inspect}) }.map { |f| f.delete_prefix(#{(LIB + "/").inspect}).delete_suffix(".rb") }
       puts Marshal.dump({"files" => files.sort, "openssl" => defined?(OpenSSL::Cipher) ? true : false}).unpack1("H*")
     RUBY
-    out, err, status = Open3.capture3(RbConfig.ruby, "-e", script)
+    # Without Bundler, since bundler/setup from Bundler 4 loads OpenSSL by itself
+    env = defined?(Bundler) ? Bundler.unbundled_env : ENV.to_h
+    out, err, status = Open3.capture3(env, RbConfig.ruby, "-e", script, unsetenv_others: true)
     assert status.success?, err
     Marshal.load([out.lines.last.strip].pack("H*")) # standard:disable Security/MarshalLoad
   end

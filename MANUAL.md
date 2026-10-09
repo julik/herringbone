@@ -33,6 +33,9 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [What gets erased, and what doesn't](#what-gets-erased-and-what-doesnt)
   - [Encrypted files](#encrypted-files)
   - [Recipes](#recipes)
+- [Combining files](#combining-files)
+  - [Comparing and uniting schemas](#comparing-and-uniting-schemas)
+  - [Combining encrypted files](#combining-encrypted-files)
 - [Type mapping](#type-mapping)
 - [Inspecting files](#inspecting-files)
 - [Command line](#command-line)
@@ -682,6 +685,132 @@ Herringbone.redact(io, output_io) do |r|
 end
 ```
 
+## Combining files
+
+`Herringbone.combine` concatenates Parquet files into one: every row group of every input, in
+order. The inputs are an Array (or any Enumerable) of seekable IOs or `Herringbone::Reader`s, and
+the output any IO with `#write`, like for `Reader` and `Writer`. Herringbone never opens files by
+path, and closes nothing it was given.
+
+```ruby
+paths = %w[2026-01.parquet 2026-02.parquet 2026-03.parquet]
+ios = paths.map { |path| File.open(path, "rb") }
+File.open("2026-q1.parquet", "wb") { |output_io| Herringbone.combine(ios, output_io) }
+ios.each(&:close)
+```
+
+Every input is read twice: its footer first, while `combine` works out the output schema and
+checks every input against it, then its column chunks. Keep the IOs open until `combine` returns,
+and mind the limit on open files (256 by default on macOS) when combining very many of them.
+
+When the inputs have the same schema, nothing is decoded: the column chunks are copied byte for
+byte, with their statistics, page indexes and bloom filters, and only the offsets pointing at them
+are rebased. Row groups keep their boundaries, so a hundred small files make a file of a hundred
+small row groups; to merge row groups, read the files and write the rows with `Writer` instead.
+
+The footer's key/value metadata is the first input's (without `ARROW:schema` and `pandas` when the
+output schema is another than the first input's), unless `metadata:` is given. Writer options
+(`compression:`, `page_rows:`...) apply to the column chunks that have to be encoded again;
+`row_group_bytes:` and `row_group_rows:` are refused. Those chunks keep the codec of the original
+chunk, and get a bloom filter if they had one.
+
+### Inputs with different schemas
+
+`schema:` says what the output holds:
+
+| `schema:`      | Output schema                                                    | Inputs                                       |
+|----------------|------------------------------------------------------------------|----------------------------------------------|
+| not given      | the schema of the first input                                    | must all have it (`Schema#==`)               |
+| `:union`       | every field of every input (`Schema#union`)                      | fields an input lacks are written as nulls   |
+| `:intersect`   | the fields all inputs have (`Schema#intersect`)                  | the other fields are dropped                 |
+| a `Schema`     | as given                                                         | must each fit it: the same fields or fewer, the same types or narrower |
+
+```ruby
+Herringbone.combine([old, new], output_io, schema: :union)
+Herringbone.combine([old, new], output_io, schema: :intersect)
+```
+
+Fields are matched by name at every level: struct members, list elements, map keys and values. A
+field one input lacks, or has nullable, is nullable in a union. The types of fields both have are
+widened to one that holds the values of both without loss:
+
+| Types                                    | Widened to                                  |
+|------------------------------------------|---------------------------------------------|
+| two signed or two unsigned integers      | the wider one                               |
+| unsigned and signed integer              | signed, twice as wide: `uint32 + int8` -> `int64` |
+| two floats                               | the wider one                               |
+| integer and float                        | the narrowest float holding every integer exactly: `int16 + float` -> `float`, `int32 + float` -> `double` |
+| timestamps (or times) of different units | the finer unit: `millis + micros` -> `micros` |
+| string, enum, json                       | string                                      |
+| any of those and binary                  | binary                                      |
+
+Anything else does not fit: `uint64` with a signed integer, `int64` with any float, decimals of
+another precision or scale, UTC with local timestamps, dates with timestamps, a struct with a
+list, fields with different field ids, a bare `repeated` field only some inputs have (it cannot be
+null), and inputs with no fields in common.
+
+Column chunks are copied wherever the stored bytes stay the same, which includes widenings of the
+annotation alone (`int8` into `int32`, `uint16` into `int32`, `string` into `binary`) and list
+elements named another way (pyarrow's `list.item`). Columns whose physical type, time unit or
+nullability changes (`int32` into `int64`, `millis` into `micros`, required into nullable) are
+encoded again from their values, and so are struct members that lose their siblings to an
+intersection.
+
+`combine` returns a `Combiner::Report`: `rows`, `row_groups` (`{ copied:, rewritten: }`) and
+`inputs`, which says per input which fields were `filled` with nulls, `widened` or `dropped`:
+
+```ruby
+report = Herringbone.combine(ios, output_io, schema: :union)
+report.inputs.each { |input| puts "#{input.name}: nulls in #{input.filled.join(", ")}" if input.filled.any? }
+```
+
+### When inputs do not fit
+
+Every input is checked before anything is written, and `Herringbone::IncompatibleSchema` names
+every input and every field that does not fit at once. Inputs are named by their path when the
+IO has one:
+
+```
+2 of 4 inputs have another schema than input 0 (2026-01.parquet):
+
+  input 2 (2026-03.parquet)
+    address.zip  int32 in input 0, string here
+
+  input 3 (2026-04.parquet)
+    id     required in input 0, nullable here
+    email  missing here, input 0 has it
+    mail   only here, input 0 lacks it
+
+Combine files with the same schema, or pass schema: :union to fill the fields an input lacks
+with nulls and widen the others, or schema: :intersect to keep only the fields all inputs have.
+```
+
+`error.conflicts` has the same as `Conflict`s (`path`, `left`, `right`, `reason`, and `input`, the
+position of the input). `Schema#union` and `Schema#intersect` raise the same error class, with
+`input` nil.
+
+### Combining encrypted files
+
+Pass the keys of encrypted inputs in `decryption:`, as for `Reader` (`[key, older_key]` lets each
+file find its own), or pass Readers, which bring their own keys. An encrypted column chunk can't
+be copied, since its encryption is tied to the file and to its position in it, so it is decrypted
+and encoded again.
+
+The output is encrypted like the encrypted inputs: the same algorithm, footer mode, footer key and
+key metadata, and the same key for each column. Plaintext inputs in the same call get that
+encryption too, so nothing gets decrypted into a plaintext file by accident. The AAD prefix the
+inputs share is kept.
+
+```ruby
+Herringbone.combine(ios, output_io, decryption: key)                     # encrypted with key, like the inputs
+Herringbone.combine(ios, output_io, decryption: key, encryption: new_key) # re-keyed
+Herringbone.combine(ios, output_io, decryption: key, encryption: false)   # plaintext, on purpose
+```
+
+Inputs encrypted differently (another footer key, algorithm, footer mode or AAD prefix, a column
+encrypted with different keys) have no single "like the inputs", so `combine` raises `ArgumentError` listing
+how they differ, and `encryption:` decides.
+
 ## Type mapping
 
 | Parquet | Ruby |
@@ -735,9 +864,17 @@ bin/herringbone inspect FILE [--pages]                 # text report (--pages li
 bin/herringbone inspect FILE --format=json             # everything as JSON
 bin/herringbone inspect FILE --format=html             # the HTML page, opened in your browser
 bin/herringbone inspect FILE --format=html > out.html  # the HTML page, saved
+bin/herringbone combine A B C --output=all.parquet     # concatenate files with the same schema
+bin/herringbone combine A B --schema=union > all.parquet      # fill fields an input lacks with nulls
+bin/herringbone combine A B --schema=intersect > all.parquet  # keep the fields all inputs have
 ```
 
 Add `--verify-checksums` to any `inspect` form to check page CRCs.
+
+`combine` does what [`Herringbone.combine`](#combining-files) does and prints how many row groups
+it copied and encoded again. Without `--output` it writes to stdout when that is redirected.
+`--compression=CODEC` sets the codec of the chunks it encodes again. If it fails, the output file
+is removed rather than left without a footer, and an output that is also an input is refused.
 
 Encrypted files take keys on the command line: as they are (picked by their fingerprint id, like
 a keyring), or for the footer, a column path or the key id the file stores (which `inspect`
@@ -753,6 +890,8 @@ bin/herringbone inspect FILE --aad-prefix=orders/part-0 --no-prompt
 Keys are hex, `base64:...` or `raw:...` (a 16, 24 or 32-character key that isn't valid hex is
 taken as typed too). A key the file needs but wasn't given is asked for on stdin, without echo in
 a terminal; an empty answer leaves that column unreadable. `--no-prompt` asks for nothing.
+`combine` reads encrypted inputs with the same flags, and encrypts the output like them;
+`--encrypt-key=KEY` encrypts it with one key instead, and `--plaintext` writes it decrypted.
 
 `--format` is `text` (the default), `json` or `html`; `--pages` only goes with `text`.
 In a terminal, `--format=html` writes the page to a temp file, prints its path and opens it with

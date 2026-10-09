@@ -40,29 +40,31 @@ module Herringbone
   # such as a codec whose library is unavailable
   class UnsupportedError < Error; end
 
-  # Two schemas cannot be united or intersected (Schema#union, Schema#intersect). The message
-  # lists every field that does not fit, one per line, e.g.
+  # Schemas that do not fit together: two schemas that cannot be united or intersected
+  # (Schema#union, Schema#intersect), or inputs of Herringbone.combine that do not fit the output
+  # schema or each other. The message lists every field that does not fit, one per line, e.g.
   #
   #   Cannot unite the schemas, 2 fields do not fit:
   #     price: int64 vs double (int64 does not fit a double exactly)
   #     address.zip: int32 vs string (no common type)
   class IncompatibleSchema < Error
-    # A field that does not fit: its dotted path, how each schema declares it, and why the two
-    # do not fit
-    Conflict = Struct.new(:path, :left, :right, :reason) do
+    # A field that does not fit: its dotted path, how each side declares it, why the two do not
+    # fit, and for Herringbone.combine the position of the input it was found in
+    Conflict = Struct.new(:path, :left, :right, :reason, :input) do
       # @return [String] e.g. "address.zip: int32 vs string (no common type)"
       def to_s = "#{path.empty? ? "(top level)" : path}: #{left} vs #{right} (#{reason})"
     end
 
-    # @return [Array<Conflict>] every field that does not fit, in schema order
+    # @return [Array<Conflict>] every field that does not fit, in schema (and input) order
     attr_reader :conflicts
 
     # @param conflicts [Array<Conflict>] the fields that do not fit
-    # @param operation [String] what was attempted, "unite" or "intersect"
-    def initialize(conflicts, operation:)
+    # @param operation [String, nil] what was attempted, "unite" or "intersect", for the message
+    # @param message [String, nil] the message, instead of one built from +operation+
+    def initialize(conflicts, operation: nil, message: nil)
       @conflicts = conflicts
       count = (conflicts.size == 1) ? "1 field does" : "#{conflicts.size} fields do"
-      super("Cannot #{operation} the schemas, #{count} not fit:\n#{conflicts.map { |c| "  #{c}" }.join("\n")}")
+      super(message || "Cannot #{operation} the schemas, #{count} not fit:\n#{conflicts.map { |c| "  #{c}" }.join("\n")}")
     end
   end
 
@@ -82,6 +84,7 @@ module Herringbone
 
   autoload :BloomFilter, "#{LIB}/bloom_filter"
   autoload :ByteValues, "#{LIB}/byte_values"
+  autoload :Combiner, "#{LIB}/combiner"
   autoload :Compression, "#{LIB}/compression"
   autoload :DecryptionConfiguration, "#{LIB}/encryption_configuration"
   autoload :Encryption, "#{LIB}/encryption"
@@ -240,6 +243,62 @@ module Herringbone
       raise ArgumentError, "The block receives the redaction: Herringbone.redact(io, output_io) { |r| r.where(user_id: 42).delete }"
     end
     (redaction || Redaction.new(&block)).apply(io_or_reader, output_io, **writer_options)
+  end
+
+  # Concatenates Parquet files into +output_io+: every row group of every input, in order. A
+  # shortcut for Combiner. Column chunks are copied byte for byte (only offsets are rebased)
+  # wherever the output stores a column's values as the input does, so files with the same schema
+  # are combined without decoding anything.
+  #
+  #   Herringbone.combine([jan, feb, mar], output_io)                      # the same schema
+  #   Herringbone.combine([old, new], output_io, schema: :union)           # all fields, nulls in the gaps
+  #   Herringbone.combine([a, b], output_io, schema: :intersect)           # the fields all inputs have
+  #
+  # Without +schema:+ every input must have the schema of the first (see Schema#==). With
+  # +schema: :union+ the output has the fields of all inputs, widened as Schema#union widens them,
+  # and fields an input lacks are written as nulls. With +schema: :intersect+ it has the fields all
+  # inputs have, and the others are dropped. A Schema given as +schema:+ must hold every input: each
+  # must have the same fields or fewer, in the same or narrower types. Every input is checked
+  # before anything is written, and IncompatibleSchema lists all that do not fit.
+  #
+  # The output is encrypted like the encrypted inputs, if any (plaintext inputs included), unless
+  # +encryption:+ says otherwise; +encryption: false+ writes it in plaintext. Inputs encrypted
+  # differently need +encryption:+. Herringbone never opens files by path: pass open IOs, which
+  # are read twice (footers first, then chunks), so keep them open until +combine+ returns and
+  # mind the limit on open files when combining very many of them.
+  #
+  # @param ios_or_readers [Enumerable<IO, StringIO, Reader>] the Parquet files: IOs read with #seek
+  #   and #read, or Readers, which bring their own decryption; enumerated once, none is closed
+  # @param output_io [IO, #write] destination, written sequentially; not closed
+  # @param schema [Schema, Symbol, nil] +:union+, +:intersect+, a Schema every input fits, or nil
+  #   to require the inputs to have the same schema
+  # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, Array, #call, nil] keys of
+  #   encrypted inputs given as IOs, see Reader.new
+  # @param writer_options [Hash{Symbol => Object}] Writer options for chunks encoded again (and
+  #   written nulls), +metadata:+ and +encryption:+
+  # @option writer_options [Symbol] :compression (codec of each source chunk) codec for chunks
+  #   encoded again
+  # @option writer_options [Integer, nil] :compression_level (nil) level for that codec, see Writer
+  # @option writer_options [Hash{String => String}] :metadata (the first input's) footer key/value metadata
+  # @option writer_options [EncryptionConfiguration, Hash{Symbol => Object}, Key, String, false] :encryption
+  #   (encrypted like the encrypted inputs) see Writer; false for a plaintext output
+  # @option writer_options [Boolean, Array<String>, Hash{String => Boolean, Hash}] :bloom_filters (nil)
+  #   columns whose encoded chunks get a bloom filter, besides those whose source chunk had one
+  # @option writer_options [Integer] :page_bytes (1MB) approximate uncompressed data page size
+  # @option writer_options [Integer] :page_rows (20_000) maximum rows per data page
+  # @option writer_options [Integer] :data_page_version (1) 1 or 2
+  # @option writer_options [Boolean, Array<String>] :dictionary (true) see Writer
+  # @option writer_options [Hash{String => Symbol}] :encodings ({}) see Writer
+  # @return [Combiner::Report] rows written, how many row groups were copied or rewritten, and per
+  #   input which fields were filled with nulls, widened or dropped
+  # @raise [IncompatibleSchema] listing every input (and field) that does not fit the others or
+  #   +schema:+
+  # @raise [ArgumentError] when there are no inputs, an input is neither an IO nor a Reader, the
+  #   encrypted inputs are encrypted differently and +encryption:+ is not given, or for
+  #   +row_group_bytes:+ / +row_group_rows:+
+  # @raise [DecryptionError] when an input is encrypted and a key it needs was not given
+  def combine(ios_or_readers, output_io, schema: nil, decryption: nil, **writer_options)
+    Combiner.new(ios_or_readers, schema: schema, decryption: decryption).apply(output_io, **writer_options)
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].

@@ -334,7 +334,7 @@ module Herringbone
     #   checked) and +:columns+
     def encryption = @decryptor&.describe(@schema, row_groups.first&.columns || [])
 
-    # Internal (used by Redaction): the keys and settings of an encrypted file
+    # Internal (used by Redaction and Combiner): the keys and settings of an encrypted file
     #
     # @return [Encryption::FileDecryptor, nil] nil for a file that is not encrypted
     attr_reader :decryptor
@@ -866,6 +866,7 @@ require_relative "reader/bloom_filters"
 
 module Herringbone
   class Reader
+    autoload :ChunkCopier, File.expand_path("reader/chunk_copier", __dir__)
     autoload :Filter, File.expand_path("reader/scan", __dir__)
     autoload :NumoColumns, File.expand_path("reader/numo", __dir__)
     autoload :NumoCursor, File.expand_path("reader/numo", __dir__)
