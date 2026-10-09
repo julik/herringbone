@@ -31,7 +31,8 @@ If you would like to learn more about the technologies Herringbone builds on, ch
 Please adhere to the coding conventions used throughout the project (indentation,
 accurate and terse comments, etc.) and any other requirements (such as test coverage).
 
-Run the `rake` default task to make sure code is properly formatted and documented.
+Run the `rake` default task to make sure code is properly formatted and documented, and commit
+the type signatures it regenerates in `rbi/` and `rbs/`.
 
 ## Basic expectations
 

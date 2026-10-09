@@ -20,6 +20,8 @@ module Herringbone
     #   list<number>, all rows of the   2-D [rows, length] of the element type
     #     same length and no nulls
     #   anything else                   RObject of the values as: :rows returns
+    #
+    # @api private
     module NumoColumns
       # Whether the host is little-endian, so PLAIN bytes (always little-endian) can be handed to
       # Numo's from_binary, which reads native byte order.
@@ -224,6 +226,8 @@ module Herringbone
     # Hands out the next +k+ rows of a flat (non-repeated) numeric or boolean column as a
     # [Numo values, validity] pair: values has one slot per row (zero where the row is null),
     # validity is a Numo::Bit or nil when all rows are present.
+    #
+    # @api private
     class NumoCursor
       # @param chunk_reader [ColumnChunkReader] reader for the column's chunk in one row group
       # @param spec [NumoColumns::Spec] a :fixed spec with a bin_klass

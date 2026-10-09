@@ -139,6 +139,7 @@ module Herringbone
     # @yieldreturn [Object] returned by open_for_copies
     # @return [Object] the block's value
     # @raise [ArgumentError] for +row_group_bytes:+ / +row_group_rows:+, or an invalid option
+    # @api private
     def self.open_for_copies(io, schema, refusal, **options, &block)
       bad = options.keys & ROW_GROUP_OPTIONS
       raise ArgumentError, "#{bad.join(", ")}: #{refusal}" unless bad.empty?
@@ -293,6 +294,7 @@ module Herringbone
     #   @return [Format::OffsetIndex, nil] the chunk's OffsetIndex, with source file offsets
     # @!attribute bloom_filter
     #   @return [String, nil] the chunk's encoded bloom filter, header included
+    # @api private
     CopiedChunk = Struct.new(:chunk, :start, :bytes, :column_index, :offset_index, :bloom_filter)
 
     # Internal (used by Redaction and Combiner): writes a row group of +num_rows+ rows from the
@@ -309,6 +311,7 @@ module Herringbone
     # @param sorting_columns [Array<Format::SortingColumn>, nil] stored on the RowGroup as given
     # @return [void]
     # @raise [Error] when the writer is closed
+    # @api private
     def write_row_group(num_rows, copies: {}, codecs: {}, bloom_filters: {}, sorting_columns: nil)
       raise Error, "Writer is closed" if @closed
       if @encryption && (encrypted = copies.keys.find { |i| @encryption.encrypted?(i) })
@@ -342,6 +345,7 @@ module Herringbone
     #
     # @param index [Integer] leaf column index
     # @return [Boolean]
+    # @api private
     def encrypted_column?(index) = @encryption&.encrypted?(index) || false
 
     # Internal (used by Redaction and Combiner): shreds one value per row of a top-level field into
@@ -353,6 +357,7 @@ module Herringbone
     # @return [void]
     # @raise [ArgumentError] when the schema has no such field
     # @raise [EncodeError] when a value cannot be written to the field
+    # @api private
     def buffer_field(name, values)
       field = @schema.field(name) or raise ArgumentError, "No such field #{name.inspect}"
       values.each_with_index do |value, i|
@@ -438,6 +443,7 @@ module Herringbone
     #   @return [String, Array<Integer>, nil] repetition levels, like +defs+; nil for non-repeated columns
     # @!attribute values
     #   @return [Array, ByteValues] non-null physical values
+    # @api private
     ColumnBuffer = Struct.new(:defs, :reps, :values)
 
     # Starts a new row group: fresh buffers per column, and the per-field write plan
@@ -793,6 +799,7 @@ module Herringbone
     #   @return [Integer] non-null values in the page
     # @!attribute range
     #   @return [Array(Object, Object), nil] [min, max] physical values, nil when there are none
+    # @api private
     PageInfo = Struct.new(:offset, :size, :first_row, :nulls, :non_null, :range)
 
     # @param pages [Array<PageInfo>] pages of a column chunk

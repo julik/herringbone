@@ -8,6 +8,11 @@ comment unless the code can't say it, and terse when there is one. It doesn't co
 documents every method here, private ones included (`bundle exec rake yard:lint` checks it).
 Claude Code picks the skill up through the symlink in `.claude/skills/`.
 
+Mark what users are not meant to call with `@api private`: classes and modules that only the
+library uses (YARD carries the tag down to everything inside them, so a public struct nested in
+one gets `@api public`), and public methods kept public only for other parts of the library.
+Private methods need no tag.
+
 ## Loading
 
 `lib/herringbone.rb` loads nothing but StringIO and the version: every other file is autoloaded
@@ -15,6 +20,15 @@ Claude Code picks the skill up through the symlink in `.claude/skills/`.
 `Reader::Filter`). A new file gets an `autoload` entry, not a `require_relative`; reopening a
 class from another file (as `reader/bloom_filters.rb` does) is required by that class's own file.
 `test/autoload_test.rb` checks that `Herringbone.eager_load!` reaches every file under `lib/`.
+
+## Type signatures
+
+`rbi/herringbone.rbi` and `rbs/herringbone.rbs` are generated from the YARD docs by
+[sord](https://github.com/AaronC81/sord) with `bundle exec rake types` (also part of the default
+`rake`). Never edit them by hand. When a change touches a signature or a doc comment in `lib/`,
+regenerate them and commit the result before pushing a PR; CI fails when they are out of date.
+They leave out constants and declare `VERSION` as a plain `String`, so bumping the version needs
+no regeneration.
 
 ## CHANGELOG
 

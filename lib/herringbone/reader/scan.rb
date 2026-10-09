@@ -16,6 +16,8 @@ module Herringbone
     # bloom filters; within a row group, pages are ruled out with the page index (ColumnIndex +
     # OffsetIndex), leaving ranges of rows to read; and every row that is read is checked, so
     # results are exact.
+    #
+    # @api private
     class Filter
       # One where: entry, resolved against the schema
       #

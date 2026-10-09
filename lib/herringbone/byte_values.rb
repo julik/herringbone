@@ -11,6 +11,8 @@ module Herringbone
   # It starts out in dictionary mode (when allowed) and switches to raw bytes once the dictionary
   # grows too large or too many values turn out to be distinct. Strings are only rebuilt when the
   # row group is flushed, one column at a time.
+  #
+  # @api private
   class ByteValues
     # Values in the dictionary may take this many bytes before switching to raw bytes
     MAX_DICTIONARY_BYTES = 1024 * 1024

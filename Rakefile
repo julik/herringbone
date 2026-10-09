@@ -21,4 +21,22 @@ namespace :yard do
   end
 end
 
-task default: [:"standard:fix", :"yard:lint", :test]
+desc "Regenerate the type signatures in rbi/ and rbs/ from the YARD docs with sord"
+task :types do
+  unless Gem.loaded_specs.key?("sord")
+    warn "sord is not in the bundle (it needs Ruby 3.3+), skipping types"
+    next
+  end
+  {"rbi" => "--rbi", "rbs" => "--rbs"}.each do |format, flag|
+    path = "#{format}/herringbone.#{format}"
+    mkdir_p format
+    sh "bundle exec sord gen #{path} #{flag} --skip-constants --no-sord-comments --replace-errors-with-untyped"
+    # Sord copies constants' source, which breaks on heredocs and would put the version number in
+    # the signatures, so they are skipped and VERSION is declared by hand
+    version = (format == "rbi") ? "VERSION = T.let(T.unsafe(nil), String)" : "VERSION: String"
+    signatures = File.read(path).sub(/^module Herringbone\n/) { "#{_1}  #{version}\n\n" }
+    File.write(path, signatures)
+  end
+end
+
+task default: [:"standard:fix", :"yard:lint", :types, :test]

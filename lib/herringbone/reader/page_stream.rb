@@ -5,6 +5,8 @@ module Herringbone
     # Incremental decoders for the contents of one data page. The page bytes are decoded as they
     # are asked for, so a caller that takes a few hundred entries at a time never holds a whole
     # page's worth of levels or values as Ruby objects.
+    #
+    # @api private
     module PageStream
       # Values unpacked from a bit-packed run at a time (a multiple of 8)
       CHUNK = 1024

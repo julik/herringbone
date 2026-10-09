@@ -14,6 +14,8 @@ module Herringbone
   # allocations trigger so many garbage collections that hashing becomes up to 10x slower. The
   # arithmetic is written once with the small code generators below, whose output is inlined into
   # the hashing methods: no method calls or allocations in the hot paths.
+  #
+  # @api private
   module XXHash
     # 64-bit mask
     M = 0xFFFF_FFFF_FFFF_FFFF

@@ -12,6 +12,8 @@ module Herringbone
   # Columns that cannot be copied are encoded again from their values: those the output widens in
   # physical type, time unit or nullability, and those encrypted in the input or to be encrypted in
   # the output. Fields an input lacks are written as nulls.
+  #
+  # @api private
   class Combiner
     # What #apply did
     #
@@ -22,6 +24,7 @@ module Herringbone
     #     rewritten when at least one of its column chunks had to be encoded again
     # @!attribute inputs
     #   @return [Array<InputReport>] how each input was fitted to the output schema, in input order
+    # @api public
     Report = Struct.new(:rows, :row_groups, :inputs, keyword_init: true)
 
     # How one input was fitted to the output schema. Paths are dotted field paths ("address.zip").
@@ -34,6 +37,7 @@ module Herringbone
     #   @return [Array<String>] fields the output holds in a wider type, or nullable
     # @!attribute dropped
     #   @return [Array<String>] fields of the input the output does not have (+schema: :intersect+)
+    # @api public
     InputReport = Struct.new(:name, :filled, :widened, :dropped, keyword_init: true)
 
     # One input file: its Reader (with the combiner's own options), its ChunkCopier, output column

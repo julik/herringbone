@@ -10,6 +10,8 @@ module Herringbone
     # Leaf types are compared as Arrays like +[:int, 32, true]+ or +[:timestamp, :micros, false]+,
     # so the same type spelled with a logical type in one file and a converted type in another
     # still matches.
+    #
+    # @api private
     class Merge
       # Shorthand for Format::Type
       T = Format::Type

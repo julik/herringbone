@@ -12,6 +12,8 @@ module Herringbone
   # like the writer converts them (the column's encoder), so a Date, Time, BigDecimal or UUID
   # String hashes the same bytes as the stored value. Nulls are never in a bloom filter.
   # The writer builds them (bloom_filters: option) and reads with where: consult them.
+  #
+  # @api private
   class BloomFilter
     # The spec's eight salt constants, one per word of a block
     SALT = [0x47b6137b, 0x44974d91, 0x8824ad5b, 0xa2b7289d, 0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31].freeze

@@ -13,6 +13,8 @@ module Herringbone
     #
     # The declared total_compressed_size of the chunk is not relied on (some old writers
     # under-report it): pages are read until the chunk's num_values have been seen.
+    #
+    # @api private
     class ColumnChunkReader
       # Shorthand for the physical type constants
       T = Format::Type

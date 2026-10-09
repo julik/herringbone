@@ -7,6 +7,8 @@ module Herringbone
   module Encodings
     # Bit packing (LSB-first, as used by Parquet) and the RLE / bit-packed hybrid encoding
     # used for repetition/definition levels, dictionary indices and RLE booleans.
+    #
+    # @api private
     module RLE
       module_function
 
