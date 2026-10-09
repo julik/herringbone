@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Herringbone.redact` and `Herringbone::Redaction#apply` take a `Herringbone::Reader` as well as an
+  IO, using the Reader's decryption.
 - `Herringbone::Schema#union` (`+`) and `#intersect` (`&`) match fields by name at every level of
   nesting and widen their types without loss (int32 + int64 -> int64, uint32 + int8 -> int64,
   int32 + float -> double, millis + micros -> micros, string + binary -> binary).

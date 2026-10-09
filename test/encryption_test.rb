@@ -575,6 +575,17 @@ class EncryptionTest < Minitest::Test
     assert reader.bloom_filter(0, "ssn"), "re-encoded chunks keep their bloom filter"
   end
 
+  def test_redaction_takes_the_decryption_of_a_reader
+    bytes = write(encryption: encrypted(**MODES[:column_keys]))
+    out = StringIO.new("".b)
+    reader = encrypted_reader(bytes, keys, keys: :symbol)
+    report = Herringbone.redact(reader, out) { |r| r.where(id: 7).replace(:ssn) { |ssn| ssn && "***" } }
+    assert_equal 1, report.rows_changed
+    assert_equal "PARE", out.string.byteslice(0, 4)
+    expected = expected_rows.map { |r| (r["id"] == 7 && r["ssn"]) ? r.merge("ssn" => "***") : r }
+    assert_equal expected, encrypted_reader(out.string, keys).read
+  end
+
   def test_redaction_of_plaintext_footer_and_supplied_aad_prefix
     bytes = write(encryption: encrypted(**MODES[:supplied_aad_prefix]))
     out, = redact(bytes, decryption: keys.merge(aad_prefix: "table/part-0")) { |r| r.drop :name }

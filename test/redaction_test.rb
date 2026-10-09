@@ -102,6 +102,63 @@ class RedactionTest < Minitest::Test
     end
   end
 
+  def test_takes_a_reader_whatever_its_read_options
+    reader = Herringbone::Reader.new(StringIO.new(source), keys: :symbol, time_zone: "+05:00")
+    row_keys = []
+    out = StringIO.new("".b)
+    report = Herringbone.redact(reader, out) do |r|
+      r.where(user_id: 7).delete
+      r.where("address.city" => "City 1").replace(:name) do |name, row|
+        row_keys << row.keys.first
+        name.upcase
+      end
+      r.replace(:address) { |address| address.merge("zip" => nil) }
+    end
+    expected = rows.reject { |r| r["user_id"] == 7 }.map do |r|
+      r = r.merge("address" => r["address"].merge("zip" => nil))
+      (r["address"]["city"] == "City 1") ? r.merge("name" => r["name"].upcase) : r
+    end
+    assert_roundtrip SCHEMA, expected, out.string
+    assert_equal 10, report.rows_deleted
+    assert_equal ["user_id"], row_keys.uniq
+    assert_equal :user_id, reader.read(limit: 1).first.keys.first # the caller's reader is left as it was
+  end
+
+  def test_reader_time_zone_does_not_reach_the_blocks
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :id
+      s.timestamp :at
+    end
+    at = Time.utc(2024, 5, 1, 12)
+    bytes = write_to_string(schema, [{"id" => 1, "at" => at}, {"id" => 2, "at" => at}])
+    reader = Herringbone::Reader.new(StringIO.new(bytes), time_zone: "+05:00")
+    utc = []
+    out = StringIO.new("".b)
+    Herringbone.redact(reader, out) do |r|
+      r.where(id: 2).replace(:at) do |t|
+        utc << t.utc?
+        t + 60
+      end
+    end
+    assert_equal [true], utc
+    assert_equal [{"id" => 1, "at" => at}, {"id" => 2, "at" => at + 60}], reader_for(out.string).read
+  end
+
+  def test_reader_with_decryption_is_refused
+    reader = reader_for(source)
+    redaction = Herringbone::Redaction.new { |r| r.drop :tags }
+    error = assert_raises(ArgumentError) { redaction.apply(reader, StringIO.new("".b), decryption: {footer_key: "k" * 16}) }
+    assert_match(/already has its decryption/, error.message)
+    assert_raises(ArgumentError) { redaction.affects?(reader, decryption: {footer_key: "k" * 16}) }
+  end
+
+  def test_paths_are_refused
+    redaction = Herringbone::Redaction.new { |r| r.drop :tags }
+    error = assert_raises(ArgumentError) { redaction.apply("in.parquet", StringIO.new("".b)) }
+    assert_match(/io_or_reader must be an IO/, error.message)
+    assert_raises(ArgumentError) { redaction.apply(StringIO.new(source), "out.parquet") }
+  end
+
   def test_delete_every_row_of_a_row_group_drops_it
     out, report = redact(source) { |r| r.where(user_id: 0..9).delete }
     assert_equal [100, 100], reader_for(out).row_groups.map(&:num_rows)
@@ -345,7 +402,7 @@ class RedactionTest < Minitest::Test
     assert_match(/Redaction.new \{ \|r\| r.where/, error.message)
     out = StringIO.new("".b)
     error = assert_raises(ArgumentError) { Herringbone.redact(StringIO.new(source), out) { nil } }
-    assert_match(/Herringbone.redact\(input, output\) \{ \|r\| r.where/, error.message)
+    assert_match(/Herringbone.redact\(io, output_io\) \{ \|r\| r.where/, error.message)
     assert_equal 0, out.size
   end
 
