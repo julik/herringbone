@@ -23,10 +23,6 @@ module Herringbone
       #   @return [Schema::Column, nil] the leaf column, nil when the field is nested
       Target = Struct.new(:name, :path, :field, :column)
 
-      # Writer options that make no sense here, since row groups keep their boundaries
-      ROW_GROUP_OPTIONS = %i[row_group_bytes row_group_rows].freeze
-      # Footer metadata that describes the columns, and goes stale when some are dropped
-      COLUMN_METADATA_KEYS = %w[ARROW:schema pandas].freeze
       # What #current returns for a struct member of a null struct
       ABSENT = Object.new.freeze
 
@@ -41,7 +37,7 @@ module Herringbone
       # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
       def initialize(redaction, io_or_reader, decryption: nil)
         @reader = fixed_options_reader(io_or_reader, decryption)
-        @copier = Reader::ChunkCopier.new(@reader, @reader.io)
+        @copier = Reader::ChunkCopier.new(@reader)
         @schema = @reader.schema
         @statements = redaction.statements
         @filters = @statements.map { |s| s.where && Reader::Filter.new(@schema, s.where) }
@@ -85,20 +81,13 @@ module Herringbone
       # @raise [EncodeError] when a replacement value cannot be written
       # @raise [DecryptionError] when the output is to be encrypted like the input but a key is missing
       def apply(output_io, **options)
-        bad = options.keys & ROW_GROUP_OPTIONS
-        raise ArgumentError, "#{bad.join(", ")}: a redaction keeps the row groups of the input" unless bad.empty?
         @keep_codecs = !options.key?(:compression)
-        options = {metadata: copied_metadata}.merge(options)
+        options = {metadata: @copier.metadata(@output_schema)}.merge(options)
         options[:encryption] = input_encryption unless options.key?(:encryption)
-        writer = Writer.new(output_io, @output_schema, row_group_bytes: 1 << 62, **options)
         @report = Report.new(rows_read: 0, rows_deleted: 0, rows_changed: 0, row_groups: {copied: 0, rewritten: 0})
-        begin
+        Writer.open_for_copies(output_io, @output_schema, "a redaction keeps the row groups of the input", **options) do |writer|
           @reader.row_groups.each_index { |i| redact_row_group(i, writer) }
-        rescue Exception # rubocop:disable Lint/RescueException -- also abort on Interrupt
-          writer.abort
-          raise
         end
-        writer.close
         @report.rows_read = @rows_read
         @report
       end
@@ -371,21 +360,14 @@ module Herringbone
         blooms[j] = true if bloom
       end
 
-      # The row group's sorting columns that still hold: dropped or changed columns end the list,
-      # since the columns after them were only sorted within their runs
+      # The row group's sorting columns that still hold: dropped or changed columns end the list
       #
       # @param i [Integer] row group index
       # @param rewritten [Array<Integer>] indexes of input columns whose values changed
       # @return [Array<Format::SortingColumn>, nil]
       def sorting_columns(i, rewritten)
-        out = []
-        (@reader.row_groups[i].sorting_columns || []).each do |sc|
-          col = @schema.columns[sc.column_idx]
-          j = col && !rewritten.include?(col.index) && @output_columns.index(col)
-          break unless j
-          out << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
-        end
-        out.empty? ? nil : out
+        kept = @output_columns.each_with_index.to_h { |col, j| [col.index, j] }
+        @copier.sorting_columns(i, kept.except(*rewritten))
       end
 
       # Reads top-level fields of row group +i+ into @data, unless they are there already
@@ -404,13 +386,6 @@ module Herringbone
       # @param i [Integer] row group index
       # @return [Integer] rows in the row group
       def rows(i) = @reader.row_groups[i].num_rows
-
-      # @return [Hash{String => String, nil}] the input's key/value metadata, without the keys that
-      #   describe the columns when some are dropped
-      def copied_metadata
-        meta = @reader.metadata
-        @drops.empty? ? meta : meta.except(*COLUMN_METADATA_KEYS)
-      end
 
       # @param block [Proc] a replace block
       # @return [Boolean] whether the block takes the row as a second parameter

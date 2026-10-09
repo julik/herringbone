@@ -76,6 +76,8 @@ module Herringbone
     MAX_DICTIONARY_BYTES = 1024 * 1024
     # The row group byte size is first estimated after this many rows, then after every row group
     ESTIMATE_AFTER_ROWS = 1000
+    # Options .open_for_copies refuses, since the row groups it writes keep their boundaries
+    ROW_GROUP_OPTIONS = %i[row_group_bytes row_group_rows].freeze
 
     # @return [Schema] schema the rows are written with
     attr_reader :schema
@@ -119,6 +121,28 @@ module Herringbone
       end
       writer.close
       result
+    end
+
+    # Internal (used by Redaction and Combiner): .open for a file whose row groups are all written
+    # with #write_row_group, one for each row group of another file, so they keep their boundaries
+    #
+    # @param io [IO, #write] destination
+    # @param schema [Schema] schema of the rows
+    # @param refusal [String] why +row_group_bytes:+ and +row_group_rows:+ cannot be given, e.g.
+    #   "a redaction keeps the row groups of the input"
+    # @param options [Hash{Symbol => Object}] see .open, without the row group options
+    # @option options [Symbol] :compression (:snappy) codec of the chunks encoded again
+    # @option options [Hash{String => String}] :metadata ({}) key/value metadata for the footer
+    # @option options [EncryptionConfiguration, Hash{Symbol => Object}, nil] :encryption (nil) see #initialize
+    # @yield [writer] the open writer
+    # @yieldparam writer [Writer] writer to write row groups to
+    # @yieldreturn [Object] returned by open_for_copies
+    # @return [Object] the block's value
+    # @raise [ArgumentError] for +row_group_bytes:+ / +row_group_rows:+, or an invalid option
+    def self.open_for_copies(io, schema, refusal, **options, &block)
+      bad = options.keys & ROW_GROUP_OPTIONS
+      raise ArgumentError, "#{bad.join(", ")}: #{refusal}" unless bad.empty?
+      self.open(io, schema, row_group_bytes: 1 << 62, **options, &block)
     end
 
     # Validates the options and writes the leading magic bytes to +io+.
