@@ -231,7 +231,7 @@ class CombineTest < Minitest::Test
       s.struct(:address) { |x| x.string :city }
     end
     assert_equal expected_schema, reader_for(out).schema
-    assert_equal [%w[email tags at address.zip], %w[phone]], report.inputs.map(&:dropped)
+    assert_equal [%w[email address.zip tags at], %w[phone]], report.inputs.map(&:dropped)
     assert_equal [[], %w[id]], report.inputs.map(&:widened)
     assert_equal pages(a, 0, "address.city"), pages(out, 0, "address.city"), "kept members are still copied"
     assert_equal pages(a, 0, "id"), pages(out, 0, "id")
@@ -405,6 +405,39 @@ class CombineTest < Minitest::Test
     assert_equal pages(b, 0, "tags.list.item"), pages(out, 1, "tags.list.element")
     assert_equal [%w[tags list element]] * 2, reader_for(out).row_groups.map { |rg| rg.columns[0].meta_data.path_in_schema }
     assert_equal [%w[a b], ["c", nil], nil], reader_for(out).read.map { |r| r["tags"] }
+  end
+
+  def test_a_schema_storing_the_same_values_another_way_fits
+    pyarrow_list = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
+      Herringbone::Schema::Node.new(name: "tags", converted_type: F::ConvertedType::LIST,
+        logical_type: F::LogicalType.new(list: F::ListType.new), children: [
+          Herringbone::Schema::Node.new(name: "list", repetition: :repeated, children: [
+            Herringbone::Schema::Node.new(name: "item", **Herringbone::Types.physical_attributes(:string))
+          ])
+        ])
+    ]))
+    a = write_to_string(Herringbone::Schema.define { |s| s.list :tags, :string }, [{"tags" => %w[a b]}])
+    out, report = combine([a], schema: pyarrow_list)
+    assert_equal({copied: 1, rewritten: 0}, report.row_groups)
+    assert_equal [{"tags" => %w[a b]}], reader_for(out).read
+
+    fixed = Herringbone::Schema.define { |s| s.decimal :price, precision: 8, scale: 2, physical: :fixed }
+    b = write_to_string(fixed, [{"price" => BigDecimal("12.34")}])
+    out, report = combine([b], schema: Herringbone::Schema.define { |s| s.decimal :price, precision: 8, scale: 2 })
+    assert_equal({copied: 0, rewritten: 1}, report.row_groups, "the physical type differs, the values do not")
+    assert_equal [{"price" => BigDecimal("12.34")}], reader_for(out).read
+  end
+
+  def test_schemas_annotated_another_way_are_not_the_same
+    legacy = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
+      Herringbone::Schema::Node.new(name: "name", type: F::Type::BYTE_ARRAY, converted_type: F::ConvertedType::UTF8)
+    ]))
+    a = write_to_string(Herringbone::Schema.define { |s| s.string :name }, [{"name" => "a"}])
+    b = write_to_string(legacy, [{"name" => "b"}])
+    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a, b]) }
+    assert_match "  input 1\n    the same fields as input 0, annotated or laid out another way\n", error.message
+    out, = combine([a, b], schema: :union)
+    assert_equal %w[a b], reader_for(out).read.map { |r| r["name"] }
   end
 
   def test_columns_that_become_nullable_are_encoded_again

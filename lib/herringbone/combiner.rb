@@ -36,44 +36,16 @@ module Herringbone
     #   @return [Array<String>] fields of the input the output does not have (+schema: :intersect+)
     InputReport = Struct.new(:name, :filled, :widened, :dropped, keyword_init: true)
 
-    # One input file
-    #
-    # @!attribute reader
-    #   @return [Reader] reads the input with the combiner's own options
-    # @!attribute copier
-    #   @return [Reader::ChunkCopier] takes column chunks out of the input
-    # @!attribute plan
-    #   @return [Plan] where each output column comes from in the input
-    # @!attribute first_rows
-    #   @return [Array<Integer>] index of the first row of each row group in the input
-    # @!attribute name
-    #   @return [String] how messages and the report name the input
-    Input = Struct.new(:reader, :copier, :plan, :first_rows, :name)
-
-    # How an input maps onto the output schema
-    #
-    # @!attribute sources
-    #   @return [Hash{Integer => Schema::Column}] output column index => the input's column holding
-    #     its values; output columns the input lacks are not in it
-    # @!attribute copyable
-    #   @return [Array<Integer>] output column indices whose input chunks store their values as the
-    #     output does, so they can be copied unless encryption is in the way
-    # @!attribute filled
-    #   @return [Array<String>] see InputReport#filled
-    # @!attribute widened
-    #   @return [Array<String>] see InputReport#widened
-    # @!attribute dropped
-    #   @return [Array<String>] see InputReport#dropped
-    Plan = Struct.new(:sources, :copyable, :filled, :widened, :dropped)
+    # One input file: its Reader (with the combiner's own options), its ChunkCopier, output column
+    # index => the input's column holding its values (output columns the input lacks are not in
+    # it), and its InputReport
+    Input = Struct.new(:reader, :copier, :sources, :report)
 
     # Closing paragraph of the message when inputs do not fit the output schema
     FIT_ADVICE = <<~ADVICE.chomp
       Pass a schema every input fits (schema: :union makes one), or schema: :intersect to keep only
       the fields all inputs have.
     ADVICE
-
-    # Values of +schema:+ besides a Schema
-    SCHEMA_MODES = [nil, :union, :intersect].freeze
 
     # Converted annotations of time and timestamp columns => their unit
     CONVERTED_UNITS = {
@@ -103,19 +75,20 @@ module Herringbone
     # @raise [FormatError] when an input's footer cannot be read
     # @raise [DecryptionError] when an input's footer is encrypted and cannot be decrypted
     def initialize(ios_or_readers, schema: nil, decryption: nil)
-      unless schema.is_a?(Schema) || SCHEMA_MODES.include?(schema)
+      unless schema.is_a?(Schema) || [nil, :union, :intersect].include?(schema)
         raise ArgumentError, "schema: takes :union, :intersect or a Herringbone::Schema, got #{schema.inspect}"
       end
       readers = open_readers(ios_or_readers, decryption)
-      @names = readers.each_with_index.map { |reader, k| input_name(reader, k) }
-      @schema = output_schema(schema, readers)
-      @conflicts = []
-      plans = readers.each_with_index.map { |reader, k| plan(reader.schema, k, drop: schema == :intersect) }
-      raise_conflicts(fit_header(schema), "the schema", advice: FIT_ADVICE) unless @conflicts.empty?
-      @inputs = readers.each_with_index.map do |reader, k|
-        firsts = reader.row_groups.each_with_object([0]) { |rg, acc| acc << acc.last + rg.num_rows }
-        Input.new(reader, Reader::ChunkCopier.new(reader, reader.io), plans[k], firsts, @names[k])
+      @names = readers.each_with_index.map do |reader, k|
+        path = reader.io.path if reader.io.respond_to?(:path)
+        path ? "input #{k} (#{path})" : "input #{k}"
       end
+      @conflicts = []
+      @schema = output_schema(schema, readers)
+      @inputs = readers.each_with_index.map { |reader, k| fit(reader, k, schema == :intersect) }
+      return if @conflicts.empty?
+      what = {union: "the union of the inputs", intersect: "the intersection of the inputs"}.fetch(schema, "given as schema:")
+      raise_conflicts("#{inputs_count("does", "do")} not fit the schema (#{what}):", "the schema", advice: FIT_ADVICE)
     end
 
     # @param output_io [IO, #write] destination, written sequentially; not closed
@@ -143,15 +116,14 @@ module Herringbone
       raise ArgumentError, "#{bad.join(", ")}: combining keeps the row groups of the inputs" unless bad.empty?
       options[:encryption] = inherited_encryption unless options.key?(:encryption)
       @keep_codecs = !options.key?(:compression)
-      options = {metadata: metadata}.merge(options)
-      writer = Writer.new(output_io, @schema, row_group_bytes: 1 << 62, **options)
-      report = Report.new(rows: 0, row_groups: {copied: 0, rewritten: 0}, inputs: input_reports)
+      writer = Writer.new(output_io, @schema, row_group_bytes: 1 << 62, metadata: metadata, **options)
+      report = Report.new(rows: 0, row_groups: {copied: 0, rewritten: 0}, inputs: @inputs.map(&:report))
       begin
         @inputs.each do |input|
-          input.reader.row_groups.each_index do |i|
-            next if input.reader.row_groups[i].num_rows.zero?
-            kind = write_row_group(input, i, writer)
-            report.row_groups[kind] += 1
+          from = 0
+          input.reader.row_groups.each_with_index do |rg, i|
+            report.row_groups[write_row_group(input, i, from, writer)] += 1 unless rg.num_rows.zero?
+            from += rg.num_rows
           end
         end
       rescue Exception # rubocop:disable Lint/RescueException -- also abort on Interrupt
@@ -173,30 +145,19 @@ module Herringbone
     # @return [Array<Reader>]
     # @raise [ArgumentError] when there are no inputs, or one is neither an IO nor a Reader
     def open_readers(ios_or_readers, decryption)
-      if ios_or_readers.is_a?(Reader) || ios_or_readers.respond_to?(:read) || !ios_or_readers.respond_to?(:each)
+      # A single IO is Enumerable too (over its lines), hence the check for #read
+      if ios_or_readers.respond_to?(:read) || !ios_or_readers.respond_to?(:each)
         raise ArgumentError, "Herringbone.combine takes an Enumerable of IOs or Herringbone::Readers, " \
           "got #{ios_or_readers.class}: Herringbone.combine([a, b], output_io)"
       end
-      items = ios_or_readers.to_a
-      raise ArgumentError, "Herringbone.combine needs at least one input" if items.empty?
-      items.each_with_index.map do |item, k|
-        if item.is_a?(Reader)
-          Reader.new(item.io, decryption: item.decryption)
-        elsif item.respond_to?(:seek) && item.respond_to?(:read)
-          Reader.new(item, decryption: decryption)
-        else
-          hint = "; Herringbone does not open files by path, pass File.open(path, \"rb\")" if item.is_a?(String) || item.respond_to?(:to_path)
-          raise ArgumentError, "Input #{k} is a #{item.class}, not an IO or a Herringbone::Reader#{hint}"
-        end
+      readers = ios_or_readers.each_with_index.map do |item, k|
+        next Reader.new(item.io, decryption: item.decryption) if item.is_a?(Reader)
+        next Reader.new(item, decryption: decryption) if item.respond_to?(:seek) && item.respond_to?(:read)
+        hint = "; Herringbone does not open files by path, pass File.open(path, \"rb\")" if item.is_a?(String) || item.respond_to?(:to_path)
+        raise ArgumentError, "Input #{k} is a #{item.class}, not an IO or a Herringbone::Reader#{hint}"
       end
-    end
-
-    # @param reader [Reader] an input
-    # @param k [Integer] its position
-    # @return [String] "input 2", or "input 2 (path)" for an IO with a #path
-    def input_name(reader, k)
-      path = reader.io.path if reader.io.respond_to?(:path)
-      path ? "input #{k} (#{path})" : "input #{k}"
+      raise ArgumentError, "Herringbone.combine needs at least one input" if readers.empty?
+      readers
     end
 
     # @param schema [Schema, Symbol, nil] the +schema:+ option
@@ -204,201 +165,108 @@ module Herringbone
     # @return [Schema]
     # @raise [IncompatibleSchema] when the inputs' schemas differ (nil), or do not unite or intersect
     def output_schema(schema, readers)
-      case schema
-      when Schema then schema
-      when nil then same_schema(readers)
-      else derived_schema(schema, readers)
-      end
-    end
-
-    # @param readers [Array<Reader>] the inputs
-    # @return [Schema] the schema all inputs have
-    # @raise [IncompatibleSchema] naming every field of every input that differs from input 0
-    def same_schema(readers)
+      return schema if schema.is_a?(Schema)
       first = readers.first.schema
-      @conflicts = []
       readers.each_with_index.drop(1).each do |reader, k|
-        next if reader.schema == first
-        before = @conflicts.size
-        differences(first.fields, reader.schema.fields, [], k, "input 0")
-        conflict([], nil, nil, "the fields are in another order than in input 0", k) if @conflicts.size == before
+        if schema.nil?
+          next if reader.schema == first
+          before = @conflicts.size
+          differences(first, reader.schema, k, "input 0")
+          if @conflicts.size == before
+            reordered = reader.schema.fields.map(&:name) != first.fields.map(&:name)
+            conflict([], nil, nil, reordered ? "the fields are in another order than in input 0" :
+              "the same fields as input 0, annotated or laid out another way", k)
+          end
+        else
+          first = (schema == :union) ? first + reader.schema : first & reader.schema
+        end
+      rescue IncompatibleSchema => e
+        e.conflicts.each { |c| conflict(c.path, c.left, c.right, c.reason, k) }
       end
       return first if @conflicts.empty?
-      raise_conflicts("#{inputs_count("has", "have")} another schema than #{@names[0]}:", "input 0", advice: <<~ADVICE.chomp)
-        Combine files with the same schema, or pass schema: :union to fill the fields an input lacks
-        with nulls and widen the others, or schema: :intersect to keep only the fields all inputs have.
-      ADVICE
-    end
-
-    # The union or intersection of the inputs' schemas, input by input. An input that does not
-    # fit those before it is set aside, so the inputs after it are still checked.
-    #
-    # @param mode [Symbol] +:union+ or +:intersect+
-    # @param readers [Array<Reader>] the inputs
-    # @return [Schema]
-    # @raise [IncompatibleSchema] naming every input (and field) that did not fit
-    def derived_schema(mode, readers)
-      @conflicts = []
-      result = readers.first.schema
-      readers.each_with_index.drop(1).each do |reader, k|
-        result = (mode == :union) ? result + reader.schema : result & reader.schema
-      rescue IncompatibleSchema => e
-        e.conflicts.each { |c| @conflicts << IncompatibleSchema::Conflict.new(c.path, c.left, c.right, c.reason, k) }
+      if schema.nil?
+        raise_conflicts("#{inputs_count("has", "have")} another schema than #{@names[0]}:", "input 0", advice: <<~ADVICE.chomp)
+          Combine files with the same schema, or pass schema: :union to fill the fields an input lacks
+          with nulls and widen the others, or schema: :intersect to keep only the fields all inputs have.
+        ADVICE
       end
-      return result if @conflicts.empty?
-      verb = (mode == :union) ? "unite" : "intersect"
-      raise_conflicts("Cannot #{verb} the schemas of the inputs, #{inputs_count("does", "do")} not fit those before it:",
-        "the inputs before it")
+      raise_conflicts("Cannot #{(schema == :union) ? "unite" : "intersect"} the schemas of the inputs, " \
+        "#{inputs_count("does", "do")} not fit those before it:", "the inputs before it")
     end
 
-    # Where an input's fields differ from those of another schema, recorded as conflicts
+    # Each field of +mine+ with the field of the same name in +theirs+ (nil when there is none),
+    # then the same for their members down through structs, lists and maps
     #
-    # @param mine [Array<Schema::Field>] fields of the schema compared with
-    # @param theirs [Array<Schema::Field>] fields of the input
-    # @param path [Array<String>] path of the enclosing field, empty at the top level
+    # @param mine [Schema] the schema walked
+    # @param theirs [Schema] the schema its fields are looked up in
+    # @return [Array<Array(Schema::Field, Schema::Field, String)>] field, twin and dotted path
+    def pairs(mine, theirs)
+      walk = lambda do |a, b, path|
+        [[a, b, path.join(".")]] + case (b && a.kind == b.kind) ? a.kind : nil
+        when :struct
+          by_name = b.children_by_name
+          a.children.flat_map { |c| walk.call(c, by_name[c.name], path + [c.name]) }
+        when :list then walk.call(a.element, b.element, path + ["element"])
+        when :map then walk.call(a.key, b.key, path + ["key"]) + ((a.value && b.value) ? walk.call(a.value, b.value, path + ["value"]) : [])
+        else []
+        end
+      end
+      mine.fields.flat_map { |f| walk.call(f, theirs.field(f.name), [f.name]) }
+    end
+
+    # Where the fields of +theirs+ differ from those of +mine+, recorded as conflicts
+    #
+    # @param mine [Schema] the schema compared with
+    # @param theirs [Schema] the input's schema
     # @param k [Integer] the input's position
-    # @param other [String] what to call the schema compared with, e.g. "input 0"
+    # @param other [String] what to call +mine+, e.g. "input 0"
+    # @param skip [Array<String>] paths not to compare
     # @return [void]
-    def differences(mine, theirs, path, k, other)
-      by_name = theirs.to_h { |f| [f.name, f] }
-      names = mine.map(&:name)
-      mine.each do |field|
-        twin = by_name[field.name]
-        at = path + [field.name]
-        if twin.nil?
-          conflict(at, nil, nil, "missing here, #{other} has it", k)
-        else
-          field_differences(field, twin, at, k, other)
+    def differences(mine, theirs, k, other, skip: [])
+      pairs(mine, theirs).each do |a, b, path|
+        next if skip.include?(path)
+        if b.nil? then conflict(path, nil, nil, "missing here, #{other} has it", k)
+        elsif (da = describe(a)) != (db = describe(b)) then conflict(path, da, db, nil, k)
+        elsif a.optional != b.optional
+          conflict(path, a.optional ? "nullable" : "required", b.optional ? "nullable" : "required", nil, k)
+        elsif a.node.field_id != b.node.field_id
+          conflict(path, "field_id #{a.node.field_id.inspect}", "field_id #{b.node.field_id.inspect}", nil, k)
         end
       end
-      theirs.reject { |f| names.include?(f.name) }.each { |f| conflict(path + [f.name], nil, nil, "only here, #{other} lacks it", k) }
+      pairs(theirs, mine).each { |_, a, path| conflict(path, nil, nil, "only here, #{other} lacks it", k) unless a }
     end
 
-    # @param a [Schema::Field] a field of the schema compared with
-    # @param b [Schema::Field] the field of the same name in the input
-    # @param path [Array<String>] path of the field
-    # @param k [Integer] the input's position
-    # @param other [String] what to call the schema compared with
-    # @return [void]
-    def field_differences(a, b, path, k, other)
-      return if a.node.signature.drop(1) == b.node.signature.drop(1)
-      mine = describe(a)
-      theirs = describe(b)
-      if mine != theirs then conflict(path, mine, theirs, nil, k)
-      elsif a.optional != b.optional
-        conflict(path, a.optional ? "nullable" : "required", b.optional ? "nullable" : "required", nil, k)
-      elsif a.node.field_id != b.node.field_id
-        conflict(path, "field_id #{a.node.field_id.inspect}", "field_id #{b.node.field_id.inspect}", nil, k)
-      else
-        before = @conflicts.size
-        case a.kind
-        when :struct then differences(a.children, b.children, path, k, other)
-        when :list then field_differences(a.element, b.element, path + ["element"], k, other)
-        when :map
-          field_differences(a.key, b.key, path + ["key"], k, other)
-          field_differences(a.value, b.value, path + ["value"], k, other)
-        end
-        return if @conflicts.size > before
-        how = if a.leaf? then "annotated"
-        elsif a.kind == :struct then "ordered"
-        else "laid out"
-        end
-        conflict(path, nil, nil, "#{how} another way than in #{other}", k)
-      end
-    end
-
-    # Where each output column comes from in an input, recording the conflicts when the input
-    # does not fit. The input must be the same as the output or narrower: uniting its fields with
-    # the output's (Schema#+) must leave the output's as they are. Each output leaf is found in
-    # the input through the logical tree, by name, so the element of a pyarrow list ("list.item")
-    # or of a legacy 2-level list is still the same column.
+    # Fits an input to the output schema, recording the conflicts when it does not fit. The input
+    # must be the same as the output or narrower: uniting it with the output (Schema#+) must leave
+    # the output as it is. Each output leaf is found in the input through the logical tree, by
+    # name, so the element of a pyarrow list ("list.item") or of a legacy 2-level list is still the
+    # same column.
     #
-    # @param input_schema [Schema] the input's schema
-    # @param k [Integer] the input's position
+    # @param reader [Reader] the input
+    # @param k [Integer] its position
     # @param drop [Boolean] whether fields the output lacks are dropped (+schema: :intersect+)
     #   rather than refused
-    # @return [Plan, nil] nil when the input does not fit
-    def plan(input_schema, k, drop:)
-      names = @schema.fields.map(&:name)
-      their_names = input_schema.fields.map(&:name)
-      common = names & their_names
-      if common.empty?
-        conflict([], names.join(", "), their_names.join(", "), "no fields in common with the schema", k)
-        return
-      end
-      before = @conflicts.size
-      unless drop
-        (their_names - names).each { |name| conflict([name], nil, nil, "only here, the schema lacks it", k) }
-      end
-      @schema.fields.each do |field|
-        next if field.optional || their_names.include?(field.name)
-        conflict([field.name], nil, nil, "missing here, and the schema requires it", k)
-      end
-      fitted = fitted_fields(input_schema, common, k, drop) or return
-      @schema.fields.each do |field|
-        mine = fitted.field(field.name) or next
-        field_differences(field, mine, [field.name], k, "the schema")
-      end
-      return if @conflicts.size > before
-      sources = {}
-      filled = names - their_names
-      widened = []
-      dropped = their_names - names
-      @schema.fields.each do |field|
-        match_columns(field, input_schema.field(field.name), [field.name], sources, filled, widened, dropped)
-      end
-      copyable = sources.select { |j, source| same_bytes?(@schema.columns[j], source) }.keys
-      Plan.new(sources, copyable, filled, widened, dropped)
-    end
-
-    # The input's +common+ fields as the output would hold them: united with the output schema,
-    # after dropping the struct members the output lacks when +drop+ is set. Equal to the output's
-    # fields exactly when the input fits.
-    #
-    # @param input_schema [Schema] the input's schema
-    # @param common [Array<String>] top-level fields both have
-    # @param k [Integer] the input's position
-    # @param drop [Boolean] whether struct members the output lacks are dropped
-    # @return [Schema, nil] nil when a field has no common type with the output's
-    def fitted_fields(input_schema, common, k, drop)
-      copies = Schema.from_elements(input_schema.to_elements).root.children.select { |n| common.include?(n.name) }
-      theirs = Schema.new(Schema::Node.new(name: "schema", repetition: :required, children: copies))
-      mine = Schema.from_elements(@schema.to_elements)
-      mine = Schema.new(Schema::Node.new(name: "schema", repetition: :required,
-        children: mine.root.children.select { |n| common.include?(n.name) }))
-      theirs &= mine if drop
-      mine + theirs
-    rescue IncompatibleSchema => e
-      e.conflicts.each { |c| @conflicts << IncompatibleSchema::Conflict.new(c.path, c.left, c.right, c.reason, k) }
-      nil
-    end
-
-    # @param mine [Schema::Field] a field of the output schema
-    # @param theirs [Schema::Field, nil] the field of the same name in the input, of the same kind
-    # @param path [Array<String>] path of the field
-    # @param sources [Hash{Integer => Schema::Column}] output column index => input column; added to
-    # @param filled [Array<String>] fields the input lacks; added to
-    # @param widened [Array<String>] fields the output widens; added to
-    # @param dropped [Array<String>] fields of the input the output lacks; added to
-    # @return [void]
-    def match_columns(mine, theirs, path, sources, filled, widened, dropped)
-      return unless theirs
-      dotted = path.join(".")
-      widened << dotted if mine.optional != theirs.optional || (mine.leaf? && describe(mine) != describe(theirs))
-      case mine.kind
-      when :leaf then sources[mine.column.index] = theirs.column
-      when :struct
-        by_name = theirs.children_by_name
-        mine.children.each do |child|
-          filled << "#{dotted}.#{child.name}" unless by_name.key?(child.name)
-          match_columns(child, by_name[child.name], path + [child.name], sources, filled, widened, dropped)
+    # @return [Input]
+    def fit(reader, k, drop)
+      theirs = reader.schema
+      pairs = pairs(@schema, theirs)
+      filled = pairs.filter_map { |_, b, path| path unless b }
+      dropped = pairs(theirs, @schema).filter_map { |_, a, path| path unless a }
+      if pairs.all? { |_, b, _| b.nil? }
+        conflict([], @schema.fields.map(&:name).join(", "), theirs.fields.map(&:name).join(", "), "no fields in common with the schema", k)
+      else
+        pairs.each { |a, b, path| conflict(path, nil, nil, "missing here, and the schema requires it", k) if b.nil? && !a.optional }
+        begin
+          fitted = @schema + (drop ? theirs & @schema : theirs)
+          differences(@schema, fitted, k, "the schema", skip: filled)
+        rescue IncompatibleSchema => e
+          e.conflicts.each { |c| conflict(c.path, c.left, c.right, c.reason, k) }
         end
-        dropped.concat((by_name.keys - mine.children.map(&:name)).map { |name| "#{dotted}.#{name}" })
-      when :list then match_columns(mine.element, theirs.element, path + ["element"], sources, filled, widened, dropped)
-      when :map
-        match_columns(mine.key, theirs.key, path + ["key"], sources, filled, widened, dropped)
-        match_columns(mine.value, theirs.value, path + ["value"], sources, filled, widened, dropped)
       end
+      sources = pairs.filter_map { |a, b, _| [a.column.index, b.column] if b && a.leaf? && b.leaf? }.to_h
+      widened = pairs.filter_map { |a, b, path| path if b && (a.optional != b.optional || (a.leaf? && describe(a) != describe(b))) }
+      report = InputReport.new(name: @names[k], filled: filled, widened: widened, dropped: dropped)
+      Input.new(reader, Reader::ChunkCopier.new(reader, reader.io), sources, report)
     end
 
     # Whether a chunk of +theirs+ holds the values of +mine+ byte for byte. For a column of an
@@ -427,14 +295,14 @@ module Herringbone
     # @return [String] its type as messages name it, see Schema::Merge#describe
     def describe(field) = (@describer ||= Schema::Merge.new(:union)).describe(field)
 
-    # @param path [Array<String>] path of the field, empty for the input as a whole
+    # @param path [String, Array<String>] path of the field, empty for the input as a whole
     # @param left [String, nil] the field as the schema compared with has it
     # @param right [String, nil] the field as the input has it
     # @param reason [String, nil] why they do not fit
     # @param k [Integer] the input's position
     # @return [void]
     def conflict(path, left, right, reason, k)
-      @conflicts << IncompatibleSchema::Conflict.new(path.join("."), left, right, reason, k)
+      @conflicts << IncompatibleSchema::Conflict.new(Array(path).join("."), left, right, reason, k)
     end
 
     # @param singular [String] the verb for one input, e.g. "does"
@@ -445,13 +313,6 @@ module Herringbone
       n = @conflicts.map(&:input).uniq.size
       return "The input #{singular}" if @names.size == 1
       "#{n} of #{@names.size} inputs #{(n == 1) ? singular : plural}"
-    end
-
-    # @param schema [Schema, Symbol, nil] the +schema:+ option
-    # @return [String] the first line of the message when inputs do not fit the output schema
-    def fit_header(schema)
-      what = {union: "the union of the inputs", intersect: "the intersection of the inputs"}.fetch(schema, "given as schema:")
-      "#{inputs_count("does", "do")} not fit the schema (#{what}):"
     end
 
     # Raises the conflicts, grouped by input, as one IncompatibleSchema:
@@ -482,21 +343,8 @@ module Herringbone
         end
         "  #{@names[k]}\n#{lines.map { |l| "    #{l}" }.join("\n")}"
       end
-      message = <<~MESSAGE.chomp
-        #{header}
-
-        #{groups.join("\n\n")}
-      MESSAGE
-      message += "\n\n#{advice}" if advice
+      message = [header, groups.join("\n\n"), advice].compact.join("\n\n")
       raise IncompatibleSchema.new(@conflicts, message: message)
-    end
-
-    # @return [Array<InputReport>]
-    def input_reports
-      @inputs.map do |input|
-        plan = input.plan
-        InputReport.new(name: input.name, filled: plan.filled, widened: plan.widened.uniq, dropped: plan.dropped)
-      end
     end
 
     # The +encryption:+ option that encrypts the output like the encrypted inputs: the same
@@ -519,7 +367,7 @@ module Herringbone
                 algorithm: "algorithm"}.fetch(setting)
         problems << "#{what} differs: " + groups.map { |value, members|
           shown = (setting == :footer_key) ? "" : " (#{value.inspect})"
-          "#{members.map { |input, _| input.name }.join(", ")}#{shown}"
+          "#{members.map { |input, _| input.report.name }.join(", ")}#{shown}"
         }.join(" / ")
       end
       columns = inherited_columns(encrypted, problems)
@@ -527,7 +375,7 @@ module Herringbone
       aad_prefix, store = aads.first
       if aads.size > 1
         if aads.any? { |_, stored| !stored }
-          problems << "AAD prefixes differ, and readers must supply them: " + settings.map { |input, _| input.name }.join(", ")
+          problems << "AAD prefixes differ, and readers must supply them: " + settings.map { |input, _| input.report.name }.join(", ")
         end
         aad_prefix = nil
         store = true
@@ -557,7 +405,7 @@ module Herringbone
       layouts = encrypted.filter_map do |input|
         reader = input.reader
         chunks = reader.row_groups.first&.columns or next
-        output_of = input.plan.sources.to_h { |j, source| [source.index, j] }
+        output_of = input.sources.to_h { |j, source| [source.index, j] }
         layout = {}
         uniform = true
         reader.schema.columns.each do |col|
@@ -569,7 +417,7 @@ module Herringbone
           next layout[path] = :footer unless with_column_key
           uniform = false
           key = reader.decryptor.chunk_key(chunks[col.index], col.dotted_path)
-          key or raise DecryptionError, "The output is encrypted like #{input.name}, which needs the key of " \
+          key or raise DecryptionError, "The output is encrypted like #{input.report.name}, which needs the key of " \
             "#{col.dotted_path}: pass it in decryption:, or pass encryption: for the output"
           layout[path] = {key: key, key_metadata: with_column_key.key_metadata}
         end
@@ -583,13 +431,13 @@ module Herringbone
         layout.each do |path, setting|
           if !merged.key?(path)
             merged[path] = setting
-            owner[path] = input.name
+            owner[path] = input.report.name
           elsif merged[path] != setting
             problems << if key_name.call(merged[path]) == key_name.call(setting)
-              "#{path} is encrypted with different keys in #{owner[path]} and #{input.name}"
+              "#{path} is encrypted with different keys in #{owner[path]} and #{input.report.name}"
             else
               "#{path} is encrypted with #{key_name.call(merged[path])} in #{owner[path]}, " \
-                "with #{key_name.call(setting)} in #{input.name}"
+                "with #{key_name.call(setting)} in #{input.report.name}"
             end
           end
         end
@@ -601,42 +449,31 @@ module Herringbone
     # cannot be copied is read as a whole, since Reader and Writer handle top-level fields; the
     # columns of it that can be copied still are.
     #
-    # @param input [Input] the input file, its reader and its plan
+    # @param input [Input] the input file
     # @param i [Integer] row group index in the input
+    # @param from [Integer] index of the row group's first row in the input
     # @param writer [Writer] the output
     # @return [Symbol] +:copied+ or +:rewritten+
-    def write_row_group(input, i, writer)
-      reader = input.reader
-      sources = input.plan.sources
-      chunks = reader.row_groups[i].columns
-      n = reader.row_groups[i].num_rows
-      copy = @schema.columns.select do |col|
-        source = sources[col.index]
-        input.plan.copyable.include?(col.index) && !writer.encrypted_column?(col.index) &&
-          !chunks.fetch(source.index).crypto_metadata
-      end.map(&:index)
-      present, absent = @schema.fields.partition { |field| reader.schema.field(field.name) }
-      absent.each { |field| writer.buffer_field(field.name, Array.new(n)) }
-      encode = present.reject { |field| field.leaves.all? { |col| copy.include?(col.index) } }.map(&:name)
-      unless encode.empty?
-        data = reader.read(as: :columns, columns: encode, from: input.first_rows[i], limit: n)
-        encode.each { |name| writer.buffer_field(name, data[name]) }
-      end
+    def write_row_group(input, i, from, writer)
+      chunks = input.reader.row_groups[i].columns
+      n = input.reader.row_groups[i].num_rows
       copies = {}
       codecs = {}
       blooms = {}
-      @schema.columns.each do |col|
-        source = sources[col.index] or next
-        if copy.include?(col.index)
-          copies[col.index] = input.copier.copy(i, source)
+      input.sources.each do |j, source|
+        if same_bytes?(@schema.columns[j], source) && !writer.encrypted_column?(j) && !chunks.fetch(source.index).crypto_metadata
+          copies[j] = input.copier.copy(i, source)
         else
           codec, bloom = input.copier.recode_settings(i, source)
-          codecs[col.index] = codec if codec && @keep_codecs
-          blooms[col.index] = true if bloom
+          codecs[j] = codec if codec && @keep_codecs
+          blooms[j] = true if bloom
         end
       end
-      writer.write_row_group(n, copies: copies, codecs: codecs, bloom_filters: blooms,
-        sorting_columns: sorting_columns(input, i))
+      encode = @schema.fields.reject { |field| field.leaves.all? { |col| copies.key?(col.index) } }
+      present = encode.map(&:name) & input.reader.schema.fields.map(&:name)
+      data = present.empty? ? {} : input.reader.read(as: :columns, columns: present, from: from, limit: n)
+      encode.each { |field| writer.buffer_field(field.name, data.fetch(field.name) { Array.new(n) }) }
+      writer.write_row_group(n, copies: copies, codecs: codecs, bloom_filters: blooms, sorting_columns: sorting_columns(input, i))
       (copies.size == @schema.columns.size) ? :copied : :rewritten
     end
 
@@ -647,12 +484,10 @@ module Herringbone
     # @param i [Integer] row group index
     # @return [Array<Format::SortingColumn>, nil]
     def sorting_columns(input, i)
-      out = []
-      output_index = input.plan.sources.to_h { |j, source| [source.index, j] }
-      (input.reader.row_groups[i].sorting_columns || []).each do |sc|
-        j = output_index[sc.column_idx]
-        break unless j
-        out << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
+      output_index = input.sources.to_h { |j, source| [source.index, j] }
+      out = (input.reader.row_groups[i].sorting_columns || []).each_with_object([]) do |sc, acc|
+        j = output_index[sc.column_idx] or break acc
+        acc << Format::SortingColumn.new(column_idx: j, descending: sc.descending, nulls_first: sc.nulls_first)
       end
       out.empty? ? nil : out
     end
@@ -661,8 +496,7 @@ module Herringbone
     #   that describe the columns when the output schema is another
     def metadata
       first = @inputs.first.reader
-      meta = first.metadata
-      (first.schema == @schema) ? meta : meta.except(*COLUMN_METADATA_KEYS)
+      (first.schema == @schema) ? first.metadata : first.metadata.except(*COLUMN_METADATA_KEYS)
     end
   end
 end
