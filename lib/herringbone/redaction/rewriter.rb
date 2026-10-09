@@ -33,14 +33,17 @@ module Herringbone
       ABSENT = Object.new.freeze
 
       # @param redaction [Redaction] the statements and drops to apply
-      # @param io [IO, StringIO] the input file, read with #seek and #read
-      # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
-      # @raise [ArgumentError] when a statement or drop does not fit the file's schema
+      # @param io_or_reader [IO, StringIO, Reader] the Parquet file, read with #seek and #read, or a
+      #   Reader of it (whose IO and decryption are used)
+      # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted
+      #   file, see Reader.new; not with a Reader
+      # @raise [ArgumentError] when +io_or_reader+ is neither an IO nor a Reader, when a Reader comes
+      #   with +decryption:+, or when a statement or drop does not fit the file's schema
       # @raise [FormatError] when the footer cannot be read
       # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
-      def initialize(redaction, io, decryption: nil)
-        @io = io
-        @reader = Reader.new(io, decryption: decryption)
+      def initialize(redaction, io_or_reader, decryption: nil)
+        @reader = fixed_options_reader(io_or_reader, decryption)
+        @io = @reader.io
         @schema = @reader.schema
         @statements = redaction.statements
         @filters = @statements.map { |s| s.where && Reader::Filter.new(@schema, s.where) }
@@ -66,7 +69,7 @@ module Herringbone
         end
       end
 
-      # @param output [IO, #write] destination
+      # @param output_io [IO, #write] destination
       # @param options [Hash{Symbol => Object}] Writer options for re-encoded chunks, and +metadata:+
       # @option options [Symbol] :compression (codec of each source chunk) codec for re-encoded chunks
       # @option options [Integer, nil] :compression_level (nil) level for that codec, see Writer
@@ -83,13 +86,13 @@ module Herringbone
       # @raise [ArgumentError] for +row_group_bytes:+ / +row_group_rows:+ or an invalid writer option
       # @raise [EncodeError] when a replacement value cannot be written
       # @raise [DecryptionError] when the output is to be encrypted like the input but a key is missing
-      def apply(output, **options)
+      def apply(output_io, **options)
         bad = options.keys & ROW_GROUP_OPTIONS
         raise ArgumentError, "#{bad.join(", ")}: a redaction keeps the row groups of the input" unless bad.empty?
         @keep_codecs = !options.key?(:compression)
         options = {metadata: copied_metadata}.merge(options)
         options[:encryption] = input_encryption unless options.key?(:encryption)
-        writer = Writer.new(output, @output_schema, row_group_bytes: 1 << 62, **options)
+        writer = Writer.new(output_io, @output_schema, row_group_bytes: 1 << 62, **options)
         @report = Report.new(rows_read: 0, rows_deleted: 0, rows_changed: 0, row_groups: {copied: 0, rewritten: 0})
         begin
           @reader.row_groups.each_index { |i| redact_row_group(i, writer) }
@@ -103,6 +106,29 @@ module Herringbone
       end
 
       private
+
+      # The caller's Reader may have been built with +keys:+ or +time_zone:+, which change what
+      # #read returns, so values are always read through a Reader with the default options
+      #
+      # @param io_or_reader [IO, StringIO, Reader] the Parquet file, or a Reader of it
+      # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys, for an IO only
+      # @return [Reader]
+      # @raise [ArgumentError] when +io_or_reader+ is neither an IO nor a Reader, or a Reader comes
+      #   with +decryption:+
+      def fixed_options_reader(io_or_reader, decryption)
+        if io_or_reader.is_a?(Reader)
+          if decryption
+            raise ArgumentError, "decryption: cannot be given with a Herringbone::Reader, which " \
+              "already has its decryption (pass decryption: to Reader.new instead)"
+          end
+          return Reader.new(io_or_reader.io, decryption: io_or_reader.decryption)
+        end
+        unless io_or_reader.respond_to?(:seek) && io_or_reader.respond_to?(:read)
+          raise ArgumentError, "io_or_reader must be an IO that supports #seek and #read " \
+            "(e.g. File.open(path, \"rb\")) or a Herringbone::Reader, got #{io_or_reader.class}"
+        end
+        Reader.new(io_or_reader, decryption: decryption)
+      end
 
       # @param i [Integer] row group index
       # @param writer [Writer] the output

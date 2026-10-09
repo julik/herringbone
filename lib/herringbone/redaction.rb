@@ -11,8 +11,8 @@ module Herringbone
   #     r.replace(:phone) { |phone| phone&.gsub(/\d(?=\d{3})/, "#") }
   #     r.drop :ssn
   #   end
-  #   File.open("in.parquet", "rb") do |input|
-  #     File.open("out.parquet", "wb") { |output| forget.apply(input, output) }
+  #   File.open("in.parquet", "rb") do |io|
+  #     File.open("out.parquet", "wb") { |output_io| forget.apply(io, output_io) }
   #   end
   #
   # Statements apply in declared order, per row: a deleted row is gone for later statements, and
@@ -192,34 +192,42 @@ module Herringbone
       self
     end
 
-    # Whether #apply would change +input_io+: true when a column is dropped, when a replace without
+    # Whether #apply would change +io_or_reader+: true when a column is dropped, when a replace without
     # #where meets a non-empty file, or when some row matches a #where. Reads as little as it can:
     # row groups are ruled out with statistics, bloom filters and the page index first, and only
     # the columns the conditions name are read for the rest.
     #
-    # @param input_io [IO, StringIO] the Parquet file, read with #seek and #read
-    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted file, see Reader.new
+    # @param io_or_reader [IO, StringIO, Reader] the Parquet file, read with #seek and #read, or a
+    #   Reader of it, whose IO and decryption are used
+    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted
+    #   file, see Reader.new; not with a Reader, which has its own
     # @return [Boolean]
-    # @raise [ArgumentError] when the redaction does not fit the file's schema
+    # @raise [ArgumentError] when the redaction does not fit the file's schema, or a Reader comes
+    #   with +decryption:+
     # @raise [DecryptionError] when the file is encrypted and a key it needs was not given
-    def affects?(input_io, decryption: nil)
+    def affects?(io_or_reader, decryption: nil)
       check_scopes!
-      Rewriter.new(self, input_io, decryption: decryption).affects?
+      Rewriter.new(self, io_or_reader, decryption: decryption).affects?
     end
 
-    # Writes the redacted copy of +input_io+ to +output_io+. The redaction is checked against the
+    # Writes the redacted copy of +io_or_reader+ to +output_io+. The redaction is checked against the
     # file's schema first, so a missing column, a nil for a required column or a #where without a
     # verb raise before anything is written. The output is left unfinished (no footer) when an
     # error happens later, for instance a block returning a value its column cannot store.
+    #
+    # A Reader is read with its own IO and decryption, but always with the default +keys:+ and
+    # +time_zone:+, whatever it was built with.
     #
     # An encrypted input (opened with +decryption:+) is written encrypted the same way: same
     # algorithm, footer mode, AAD prefix, keys and key metadata. +encryption:+ (see Writer) writes
     # it with other settings, and +encryption: false+ writes a plaintext file. Column chunks that
     # are encrypted in either file are re-encoded rather than copied.
     #
-    # @param input_io [IO, StringIO] the Parquet file, read with #seek and #read; not closed
+    # @param io_or_reader [IO, StringIO, Reader] the Parquet file, read with #seek and #read, or a
+    #   Reader of it; not closed
     # @param output_io [IO, #write] destination, written sequentially; not closed
-    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted input, see Reader.new
+    # @param decryption [DecryptionConfiguration, Hash{Symbol => Object}, nil] keys of an encrypted
+    #   input, see Reader.new; not with a Reader, which has its own
     # @param writer_options [Hash{Symbol => Object}] Writer options for the re-encoded column chunks
     #   (+compression:+, +bloom_filters:+, +page_rows:+, +dictionary:+...), and +metadata:+ to
     #   replace the footer key/value metadata instead of copying it
@@ -235,13 +243,14 @@ module Herringbone
     # @option writer_options [EncryptionConfiguration, Hash{Symbol => Object}, false] :encryption (as the input) see Writer;
     #   false for a plaintext output
     # @return [Report] what was done
-    # @raise [ArgumentError] when the redaction does not fit the file's schema, or for a writer
-    #   option that does not apply (+row_group_bytes:+, +row_group_rows:+)
+    # @raise [ArgumentError] when the redaction does not fit the file's schema, for a writer
+    #   option that does not apply (+row_group_bytes:+, +row_group_rows:+), or when a Reader comes
+    #   with +decryption:+
     # @raise [EncodeError] when a replacement value cannot be written to its column
     # @raise [DecryptionError] when the input is encrypted and a key it needs was not given
-    def apply(input_io, output_io, decryption: nil, **writer_options)
+    def apply(io_or_reader, output_io, decryption: nil, **writer_options)
       check_scopes!
-      Rewriter.new(self, input_io, decryption: decryption).apply(output_io, **writer_options)
+      Rewriter.new(self, io_or_reader, decryption: decryption).apply(output_io, **writer_options)
     end
 
     # Short summary for the console: one clause per statement, naming the columns but not the

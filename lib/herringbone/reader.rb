@@ -44,6 +44,12 @@ module Herringbone
     # @return [Format::FileMetaData] the file's FileMetaData (the decoded Thrift footer)
     attr_reader :file_metadata
 
+    # @return [IO, StringIO] the IO the file is read from, as given to Reader.new
+    attr_reader :io
+
+    # @return [DecryptionConfiguration, nil] the keys given as +decryption:+, nil without them
+    attr_reader :decryption
+
     # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...)
     #
     # @param io [IO, StringIO] random-access source of the Parquet bytes; the caller closes it

@@ -125,20 +125,22 @@ footers and which tools read what.
 
 `Herringbone.redact` rewrites a file with rows removed or values replaced, for GDPR "forget me"
 requests and pseudonymization. The parts of the file nothing touches are copied byte for byte.
+It reads from a seekable IO or from a `Herringbone::Reader`, which brings its own decryption, and
+writes to any IO with `#write`.
 
 ```ruby
 # Forget me: remove the rows
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.where(user_id: 42).delete
 end
 
 # Forget me, but keep the row for accounting: blank the personal columns
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
 # Pseudonymize a column across the whole file, mask another, drop a third
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
   r.replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
   r.drop :ssn, :ip_address

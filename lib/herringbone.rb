@@ -202,16 +202,17 @@ module Herringbone
     writer.rows_written
   end
 
-  # Rewrites +input+ into +output+ with rows removed or values replaced, building the Redaction from
-  # the block (or taking +redaction+). A shortcut for Redaction#apply.
+  # Rewrites +io_or_reader+ into +output_io+ with rows removed or values replaced, building the
+  # Redaction from the block (or taking +redaction+). A shortcut for Redaction#apply.
   #
-  #   Herringbone.redact(input, output) do |r|
+  #   Herringbone.redact(io, output_io) do |r|
   #     r.where(user_id: 42).delete
   #     r.replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
   #   end
   #
-  # @param input [IO, StringIO] the Parquet file, read with #seek and #read; not closed
-  # @param output [IO, #write] destination, written sequentially; not closed
+  # @param io_or_reader [IO, StringIO, Reader] the Parquet file, read with #seek and #read, or a
+  #   Reader of it, whose IO and decryption are used; not closed
+  # @param output_io [IO, #write] destination, written sequentially; not closed
   # @param redaction [Redaction, nil] the redaction to apply, instead of a block
   # @param writer_options [Hash{Symbol => Object}] Writer options for re-encoded column chunks, and
   #   +metadata:+ to replace the footer key/value metadata, see Redaction#apply
@@ -230,15 +231,15 @@ module Herringbone
   # @yieldreturn [void]
   # @return [Redaction::Report] what was done
   # @raise [ArgumentError] when given both or neither of +redaction+ and a block, a block that takes
-  #   no parameter, or when the redaction does not fit the file's schema
+  #   no parameter, a Reader with +decryption:+, or when the redaction does not fit the file's schema
   # @raise [EncodeError] when a replacement value cannot be written to its column
-  def redact(input, output, redaction = nil, **writer_options, &block)
+  def redact(io_or_reader, output_io, redaction = nil, **writer_options, &block)
     raise ArgumentError, "Herringbone.redact takes a Redaction or a block, not both" if redaction && block
     raise ArgumentError, "Herringbone.redact needs a Redaction or a block" unless redaction || block
     if block&.arity&.zero?
-      raise ArgumentError, "The block receives the redaction: Herringbone.redact(input, output) { |r| r.where(user_id: 42).delete }"
+      raise ArgumentError, "The block receives the redaction: Herringbone.redact(io, output_io) { |r| r.where(user_id: 42).delete }"
     end
-    (redaction || Redaction.new(&block)).apply(input, output, **writer_options)
+    (redaction || Redaction.new(&block)).apply(io_or_reader, output_io, **writer_options)
   end
 
   # Compression codecs this process can read and write, e.g. [:none, :snappy, :gzip, :lz4, :lz4_hadoop, :zstd].

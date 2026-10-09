@@ -520,22 +520,22 @@ nothing touches are copied byte for byte.
 
 ```ruby
 # Forget me: remove the rows
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.where(user_id: 42).delete
 end
 
 # Forget me, but keep the row for accounting: blank the personal columns
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.where(user_id: 42).replace(email: nil, name: nil, address: nil)
 end
 
 # Forget me, but keep the row linkable: pseudonymize just that user's email
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.where(user_id: 42).replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email) }
 end
 
 # Pseudonymize a column across the whole file, mask another, drop a third
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.replace(:email) { |email| OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
   r.replace(:phone) { |phone| phone && "***#{phone[-3..]}" }
   r.drop :ssn, :ip_address
@@ -575,8 +575,8 @@ forget = Herringbone::Redaction.new do |r|
   r.where(created_at: ..2.years.ago).delete      # retention works the same way
 end
 
-if forget.affects?(input)      # statistics and bloom filters first, then the where columns only
-  report = forget.apply(input, output)
+if forget.affects?(io)         # statistics and bloom filters first, then the where columns only
+  report = forget.apply(io, output_io)
   report.rows_deleted          # => 3
   report.row_groups            # => { copied: 61, rewritten: 1 }
 end
@@ -588,7 +588,16 @@ The `Redaction::Report` that `apply` returns has `rows_read`, `rows_deleted`, `r
 ### Input and output
 
 `apply` and `Herringbone.redact` take IOs like `Reader` and `Writer` do: the input must be
-seekable, the output only needs `#write`, and neither is closed. To redact in place, write to a
+seekable, the output only needs `#write`, and neither is closed. Herringbone doesn't open files by
+path, so open them yourself. The input can also be a `Herringbone::Reader` you already have, and
+then its IO and its decryption are used. Whatever `keys:` or `time_zone:` it was built with, the
+redaction reads values the same way (and blocks get rows with String keys):
+
+```ruby
+reader = Herringbone::Reader.new(io, keys: :symbol, decryption: {keys: kms_lookup})
+Herringbone.redact(reader, output_io) { |r| r.where(user_id: 42).delete }
+```
+ To redact in place, write to a
 temporary file and rename it over the original; on S3, read the object and write the new one
 through `upload_stream`.
 
@@ -619,10 +628,11 @@ there), and other files with the same person in them need their own pass.
 Pass the input's keys in `decryption:`. The output is then encrypted the same way: same algorithm,
 footer mode, AAD prefix, keys and key metadata, for the columns that are kept. `encryption:` (as
 for `Writer`) writes it with other settings, and `encryption: false` writes a plaintext file.
-`Redaction#affects?` takes `decryption:` too.
+`Redaction#affects?` takes `decryption:` too. A `Herringbone::Reader` brings its own keys, so
+`decryption:` is not given with one.
 
 ```ruby
-Herringbone.redact(input, output, decryption: {keys: kms_lookup}) do |r|
+Herringbone.redact(io, output_io, decryption: {keys: kms_lookup}) do |r|
   r.where(user_id: 42).delete
 end
 ```
@@ -639,7 +649,7 @@ rotate or destroy it to cut the link:
 ```ruby
 require "openssl"
 KEY = ENV.fetch("PSEUDONYM_KEY")
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.replace(:email) { |email| email && OpenSSL::HMAC.hexdigest("SHA256", KEY, email.downcase) }
 end
 ```
@@ -647,7 +657,7 @@ end
 Masking keeps enough to be recognizable to the person but not to anyone else:
 
 ```ruby
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.replace(:card_number) { |number| number && number[-4..].rjust(number.size, "*") }
   r.replace(:email) { |email| email&.sub(/\A(.).*@/, '\1***@') }
   r.replace(:birth_date) { |date| date && Date.new(date.year, 1, 1) }
@@ -660,7 +670,7 @@ original value to get the same fake for the same person in every file:
 ```ruby
 require "faker"
 require "zlib"
-Herringbone.redact(input, output) do |r|
+Herringbone.redact(io, output_io) do |r|
   r.replace(:name) do |name|
     next nil unless name
     Faker::Config.random = Random.new(Zlib.crc32(name))
