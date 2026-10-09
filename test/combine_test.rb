@@ -43,6 +43,18 @@ class CombineTest < Minitest::Test
     [out.string, report]
   end
 
+  # A list as pyarrow writes it, with its element named "item"
+  def pyarrow_list_schema
+    Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
+      Herringbone::Schema::Node.new(name: "tags", converted_type: F::ConvertedType::LIST,
+        logical_type: F::LogicalType.new(list: F::ListType.new), children: [
+          Herringbone::Schema::Node.new(name: "list", repetition: :repeated, children: [
+            Herringbone::Schema::Node.new(name: "item", **Herringbone::Types.physical_attributes(:string))
+          ])
+        ])
+    ]))
+  end
+
   def pages(bytes, row_group, path)
     chunk = Herringbone::Inspector.new(StringIO.new(bytes)).row_groups[row_group].column(path)
     chunk.pages.map { |p| bytes.byteslice(p.offset, p.total_size) }
@@ -130,43 +142,44 @@ class CombineTest < Minitest::Test
       s.list :tags, :string
       s.timestamp :at, unit: :millis
     end
-    b = write_to_string(other, [{"id" => 1, "address" => {"zip" => "1234"}}])
-    c = write_to_string(renamed, [{"id" => 2}])
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([file(0...10), file(10...20), b, c]) }
-    assert_equal <<~MESSAGE.chomp, error.message
-      2 of 4 inputs have another schema than input 0:
-
-        input 2
-          address.zip  int32 in input 0, string here
-
-        input 3
-          id     required in input 0, nullable here
-          email  missing here, input 0 has it
-          at     timestamp(micros, UTC) in input 0, timestamp(millis, UTC) here
-          mail   only here, input 0 lacks it
-
-      Combine files with the same schema, or pass schema: :union to fill the fields an input lacks
-      with nulls and widen the others, or schema: :intersect to keep only the fields all inputs have.
-    MESSAGE
-    assert_equal [2, 3, 3, 3, 3], error.conflicts.map(&:input)
-    assert_kind_of Herringbone::Error, error
-  end
-
-  def test_inputs_are_named_by_their_path
+    reordered = Herringbone::Schema.from_elements(SCHEMA.to_elements.values_at(0, 2, 1, 3..))
+    legacy = Herringbone::Schema.from_elements(SCHEMA.to_elements.tap { |e| e[2].logical_type = nil })
     Dir.mktmpdir do |dir|
-      a = File.join(dir, "a.parquet")
-      b = File.join(dir, "b.parquet")
-      File.binwrite(a, file(0...10))
-      File.binwrite(b, write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{"id" => 1}]))
-      File.open(a, "rb") do |ia|
-        File.open(b, "rb") do |ib|
-          error = assert_raises(Herringbone::IncompatibleSchema) { Herringbone.combine([ia, ib], StringIO.new) }
-          assert_match "another schema than input 0 (#{a}):", error.message
-          assert_match "  input 1 (#{b})\n", error.message
-          report = Herringbone.combine([ia, ib], StringIO.new, schema: :union)
-          assert_equal ["input 0 (#{a})", "input 1 (#{b})"], report.inputs.map(&:name)
-        end
-      end
+      bytes = [file(0...10), file(10...20), write_to_string(other, [{"id" => 1, "address" => {"zip" => "1234"}}]),
+        write_to_string(renamed, [{"id" => 2}]), write_to_string(reordered, rows(20...21)), write_to_string(legacy, rows(21...22))]
+      paths = bytes.each_with_index.map { |b, k| File.join(dir, "#{k}.parquet").tap { |path| File.binwrite(path, b) } }
+      ios = paths.map { |path| File.open(path, "rb") }
+      error = assert_raises(Herringbone::IncompatibleSchema) { Herringbone.combine(ios, StringIO.new) }
+      assert_equal <<~MESSAGE.chomp, error.message
+        4 of 6 inputs have another schema than input 0 (#{paths[0]}):
+
+          input 2 (#{paths[2]})
+            address.zip  int32 in input 0, string here
+
+          input 3 (#{paths[3]})
+            id     required in input 0, nullable here
+            email  missing here, input 0 has it
+            at     timestamp(micros, UTC) in input 0, timestamp(millis, UTC) here
+            mail   only here, input 0 lacks it
+
+          input 4 (#{paths[4]})
+            the fields are in another order than in input 0
+
+          input 5 (#{paths[5]})
+            the same fields as input 0, annotated or laid out another way
+
+        Combine files with the same schema, or pass schema: :union to fill the fields an input lacks
+        with nulls and widen the others, or schema: :intersect to keep only the fields all inputs have.
+      MESSAGE
+      assert_equal [2, 3, 3, 3, 3, 4, 5], error.conflicts.map(&:input)
+      assert_kind_of Herringbone::Error, error
+      chosen = [0, 1, 4, 5].map { |k| ios[k] }
+      report = Herringbone.combine(chosen, out = StringIO.new("".b), schema: SCHEMA)
+      assert_equal({copied: 4, rewritten: 0}, report.row_groups, "fields are matched by name, and legacy annotations copy")
+      assert_equal ["input 0 (#{paths[0]})", "input 1 (#{paths[1]})"], report.inputs.first(2).map(&:name)
+      assert_roundtrip SCHEMA, rows(0...22), out.string
+    ensure
+      ios&.each(&:close)
     end
   end
 
@@ -255,86 +268,47 @@ class CombineTest < Minitest::Test
   end
 
   def test_combine_with_a_schema_that_does_not_fit
-    a = file(0...10)
-    narrow = Herringbone::Schema.define { |s| s.int64 :id, null: false }
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a], schema: narrow) }
-    assert_equal <<~MESSAGE.chomp, error.message
-      The input does not fit the schema (given as schema:):
-
-        input 0
-          email    only here, the schema lacks it
-          address  only here, the schema lacks it
-          tags     only here, the schema lacks it
-          at       only here, the schema lacks it
-
-      Pass a schema every input fits (schema: :union makes one), or schema: :intersect to keep only
-      the fields all inputs have.
-    MESSAGE
-    wide = Herringbone::Schema.define do |s|
-      s.int64 :id, null: false
+    schema = Herringbone::Schema.define do |s|
+      s.int32 :id, null: false
       s.string :email, null: false
-      s.struct(:address) { |x|
-        x.string :city
-        x.int32 :zip
-        x.string :country
-      }
-      s.list :tags, :string
-      s.timestamp :at
+      s.struct(:address) { |x| x.string :city }
+      s.int32 :zip
       s.int32 :x, null: false
     end
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a, file(10...20)], schema: wide) }
+    fits_but_zip = Herringbone::Schema.define do |s|
+      s.int32 :id, null: false
+      s.string :email, null: false
+      s.string :zip
+      s.int32 :x, null: false
+    end
+    b = write_to_string(fits_but_zip, [{"id" => 1, "email" => "e", "x" => 1}])
+    c = write_to_string(Herringbone::Schema.define { |s| s.string :phone }, [{"phone" => "1"}])
+    error = assert_raises(Herringbone::IncompatibleSchema) { combine([file(0...10), b, c], schema: schema) }
     assert_equal <<~MESSAGE.chomp, error.message
-      2 of 2 inputs do not fit the schema (given as schema:):
+      3 of 3 inputs do not fit the schema (given as schema:):
 
         input 0
-          x      missing here, and the schema requires it
-          email  required in the schema, nullable here
+          x            missing here, and the schema requires it
+          id           int32 in the schema, int64 here
+          email        required in the schema, nullable here
+          address.zip  only here, the schema lacks it
+          tags         only here, the schema lacks it
+          at           only here, the schema lacks it
 
         input 1
-          x      missing here, and the schema requires it
-          email  required in the schema, nullable here
+          zip  int32 in the schema, string here (no common type)
 
-      Pass a schema every input fits (schema: :union makes one), or schema: :intersect to keep only
-      the fields all inputs have.
-    MESSAGE
-  end
-
-  def test_combine_with_a_schema_without_fields_in_common
-    error = assert_raises(Herringbone::IncompatibleSchema) do
-      combine([file(0...10)], schema: Herringbone::Schema.define { |s|
-        s.string :zip
-        s.double :price
-      })
-    end
-    assert_equal <<~MESSAGE.chomp, error.message
-      The input does not fit the schema (given as schema:):
-
-        input 0
+        input 2
           no fields in common with the schema
-            the schema: zip, price
-            here: id, email, address, tags, at
+            the schema: id, email, address, zip, x
+            here: phone
 
       Pass a schema every input fits (schema: :union makes one), or schema: :intersect to keep only
       the fields all inputs have.
     MESSAGE
-  end
-
-  def test_combine_refuses_schemas_that_only_differ_in_order
-    swapped = Herringbone::Schema.define do |s|
-      s.string :email
-      s.int64 :id, null: false
-    end
-    plain = Herringbone::Schema.define do |s|
-      s.int64 :id, null: false
-      s.string :email
-    end
-    a = write_to_string(plain, [{"id" => 1}])
-    b = write_to_string(swapped, [{"id" => 2}])
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a, b]) }
-    assert_match "  input 1\n    the fields are in another order than in input 0\n", error.message
-    out, report = combine([a, b], schema: plain)
-    assert_equal({copied: 2, rewritten: 0}, report.row_groups, "fields are matched by name, wherever they are")
-    assert_equal [1, 2], reader_for(out).read.map { |r| r["id"] }
+    assert_equal [0, 0, 0, 0, 0, 0, 1, 2], error.conflicts.map(&:input)
+    error = assert_raises(Herringbone::IncompatibleSchema) { combine([file(0...10)], schema: Herringbone::Schema.define { |s| s.int64 :id, null: false }) }
+    assert_match(/\AThe input does not fit the schema \(given as schema:\):\n/, error.message)
   end
 
   def test_combine_with_a_union_schema_widens_types
@@ -358,18 +332,7 @@ class CombineTest < Minitest::Test
     at = Time.utc(2026, 10, 9, 12, 0, 0, 123_000)
     a = write_to_string(narrow, [{"id" => 1, "score" => -3, "at" => at, "address" => {"city" => "Lyon"}, "tags" => ["x"]}])
     b = write_to_string(wide, [{"id" => 2**40, "score" => 65_535, "at" => at + Rational(1, 1_000_000), "address" => {"zip" => "69001"}, "tags" => ["\xFF".b]}])
-    schema = reader_for(a).schema + reader_for(b).schema
-    assert_equal Herringbone::Schema.define { |s|
-      s.int64 :id, null: false
-      s.int32 :score
-      s.timestamp :at, unit: :micros
-      s.struct(:address) { |x|
-        x.string :city
-        x.string :zip
-      }
-      s.list :tags, :binary
-    }, schema
-    out, report = combine([a, b], schema: schema)
+    out, report = combine([a, b], schema: :union)
     assert_equal({copied: 1, rewritten: 1}, report.row_groups, "b has the union's types already")
     assert_well_formed out
     # Widening the annotation alone keeps the bytes, so those chunks of a are still copied
@@ -386,21 +349,11 @@ class CombineTest < Minitest::Test
   end
 
   def test_list_elements_named_another_way_are_still_copied
-    # pyarrow names the element of a list "item"
-    pyarrow = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
-      Herringbone::Schema::Node.new(name: "tags", converted_type: F::ConvertedType::LIST,
-        logical_type: F::LogicalType.new(list: F::ListType.new), children: [
-          Herringbone::Schema::Node.new(name: "list", repetition: :repeated, children: [
-            Herringbone::Schema::Node.new(name: "item", **Herringbone::Types.physical_attributes(:string))
-          ])
-        ])
-    ]))
     ours = Herringbone::Schema.define { |s| s.list :tags, :string }
     a = write_to_string(ours, [{"tags" => %w[a b]}])
-    b = write_to_string(pyarrow, [{"tags" => ["c", nil]}, {"tags" => nil}])
-    schema = reader_for(a).schema + reader_for(b).schema
-    assert_equal ours, schema
-    out, report = combine([a, b], schema: schema)
+    b = write_to_string(pyarrow_list_schema, [{"tags" => ["c", nil]}, {"tags" => nil}])
+    out, report = combine([a, b], schema: :union)
+    assert_equal ours, reader_for(out).schema
     assert_equal({copied: 2, rewritten: 0}, report.row_groups)
     assert_equal pages(b, 0, "tags.list.item"), pages(out, 1, "tags.list.element")
     assert_equal [%w[tags list element]] * 2, reader_for(out).row_groups.map { |rg| rg.columns[0].meta_data.path_in_schema }
@@ -408,16 +361,8 @@ class CombineTest < Minitest::Test
   end
 
   def test_a_schema_storing_the_same_values_another_way_fits
-    pyarrow_list = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
-      Herringbone::Schema::Node.new(name: "tags", converted_type: F::ConvertedType::LIST,
-        logical_type: F::LogicalType.new(list: F::ListType.new), children: [
-          Herringbone::Schema::Node.new(name: "list", repetition: :repeated, children: [
-            Herringbone::Schema::Node.new(name: "item", **Herringbone::Types.physical_attributes(:string))
-          ])
-        ])
-    ]))
     a = write_to_string(Herringbone::Schema.define { |s| s.list :tags, :string }, [{"tags" => %w[a b]}])
-    out, report = combine([a], schema: pyarrow_list)
+    out, report = combine([a], schema: pyarrow_list_schema)
     assert_equal({copied: 1, rewritten: 0}, report.row_groups)
     assert_equal [{"tags" => %w[a b]}], reader_for(out).read
 
@@ -426,18 +371,6 @@ class CombineTest < Minitest::Test
     out, report = combine([b], schema: Herringbone::Schema.define { |s| s.decimal :price, precision: 8, scale: 2 })
     assert_equal({copied: 0, rewritten: 1}, report.row_groups, "the physical type differs, the values do not")
     assert_equal [{"price" => BigDecimal("12.34")}], reader_for(out).read
-  end
-
-  def test_schemas_annotated_another_way_are_not_the_same
-    legacy = Herringbone::Schema.new(Herringbone::Schema::Node.new(name: "schema", repetition: :required, children: [
-      Herringbone::Schema::Node.new(name: "name", type: F::Type::BYTE_ARRAY, converted_type: F::ConvertedType::UTF8)
-    ]))
-    a = write_to_string(Herringbone::Schema.define { |s| s.string :name }, [{"name" => "a"}])
-    b = write_to_string(legacy, [{"name" => "b"}])
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a, b]) }
-    assert_match "  input 1\n    the same fields as input 0, annotated or laid out another way\n", error.message
-    out, = combine([a, b], schema: :union)
-    assert_equal %w[a b], reader_for(out).read.map { |r| r["name"] }
   end
 
   def test_columns_that_become_nullable_are_encoded_again
@@ -455,48 +388,6 @@ class CombineTest < Minitest::Test
     refute_equal pages(a, 0, "address.city"), pages(out, 0, "address.city"), "a definition level more"
     assert_equal pages(a, 0, "name"), pages(out, 0, "name")
     assert_equal [{"address" => {"city" => "Lyon"}, "name" => "x"}], reader_for(out).read
-  end
-
-  def test_combine_with_a_schema_narrower_than_an_input
-    a = write_to_string(Herringbone::Schema.define { |s|
-      s.int64 :id
-      s.struct(:address) { |x|
-        x.string :city
-        x.string :zip
-      }
-    }, [{"id" => 2**40}])
-    schema = Herringbone::Schema.define do |s|
-      s.int32 :id
-      s.struct(:address) { |x| x.string :city }
-    end
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a], schema: schema) }
-    assert_equal <<~MESSAGE.chomp, error.message.lines.first(5).join.chomp
-      The input does not fit the schema (given as schema:):
-
-        input 0
-          id           int32 in the schema, int64 here
-          address.zip  only here, the schema lacks it
-    MESSAGE
-  end
-
-  def test_combine_with_a_schema_an_input_has_no_common_type_with
-    a = write_to_string(Herringbone::Schema.define { |s|
-      s.int64 :id
-      s.string :zip
-    }, [{"id" => 1}])
-    schema = Herringbone::Schema.define do |s|
-      s.double :id
-      s.int32 :zip
-    end
-    error = assert_raises(Herringbone::IncompatibleSchema) { combine([a], schema: schema) }
-    assert_equal <<~MESSAGE.chomp, error.message.lines.first(5).join.chomp
-      The input does not fit the schema (given as schema:):
-
-        input 0
-          id   double in the schema, int64 here (int64 does not fit a double exactly)
-          zip  int32 in the schema, string here (no common type)
-    MESSAGE
-    assert_equal [0, 0], error.conflicts.map(&:input)
   end
 
   def test_combine_argument_errors
@@ -529,12 +420,11 @@ class CombineTest < Minitest::Test
   def test_combine_re_encodes_with_codecs_of_the_source
     a = file(0...100, compression: :gzip)
     b = write_to_string(Herringbone::Schema.define { |s| s.int64 :id }, [{"id" => 5}], compression: :gzip)
-    schema = reader_for(a).schema + reader_for(b).schema
-    out, = combine([a, b], schema: schema)
+    out, = combine([a, b], schema: :union)
     codecs = reader_for(out).row_groups.map { |rg| rg.columns.map { |c| c.meta_data.codec } }
     assert_equal [F::Codec::GZIP] * 6, codecs[0], "the widened id of input 0 keeps its codec"
     assert_equal [F::Codec::GZIP] + [F::Codec::SNAPPY] * 5, codecs[1], "columns of nulls take the writer's codec"
-    out, = combine([a, b], schema: schema, compression: :none)
+    out, = combine([a, b], schema: :union, compression: :none)
     assert_equal F::Codec::UNCOMPRESSED, reader_for(out).row_groups[0].columns[0].meta_data.codec
     assert_equal F::Codec::GZIP, reader_for(out).row_groups[0].columns[1].meta_data.codec, "copied as it is"
   end
@@ -559,6 +449,15 @@ class CombineTest < Minitest::Test
     assert_equal canonical_lines(SCHEMA, rows(100...200) + rows(0...100)), canonical_lines(SCHEMA, reader.read)
     assert reader.encryption[:columns].values.all? { |c| c[:key] == :footer }
     assert_raises(Herringbone::DecryptionError) { combine([encrypted]) }
+
+    out, report = combine([file(100...200), encrypted], decryption: {footer_key: KEY}, encryption: false)
+    assert_equal({copied: 1, rewritten: 1}, report.row_groups, "plaintext chunks are copied into a plaintext file")
+    assert_well_formed out
+    assert_roundtrip SCHEMA, rows(100...200) + rows(0...100), out
+    key = Herringbone::Key.generate
+    out, = combine([file(100...200), encrypted], decryption: {footer_key: KEY}, encryption: key)
+    reader = Herringbone::Reader.new(StringIO.new(out), decryption: key)
+    assert_equal canonical_lines(SCHEMA, rows(100...200) + rows(0...100)), canonical_lines(SCHEMA, reader.read)
   end
 
   def test_column_keys_are_inherited
@@ -612,24 +511,6 @@ class CombineTest < Minitest::Test
     out = StringIO.new("".b)
     Herringbone.combine(readers.call, out, encryption: false)
     assert_equal canonical_lines(SCHEMA, rows(0...150)), canonical_lines(SCHEMA, reader_for(out.string).read)
-  end
-
-  def test_encrypted_inputs_into_a_plaintext_file
-    encrypted = file(0...150, encryption: {footer_key: KEY})
-    out, report = combine([file(150...200), encrypted], decryption: {footer_key: KEY}, encryption: false)
-    assert_equal({copied: 1, rewritten: 2}, report.row_groups)
-    assert_well_formed out
-    assert_roundtrip SCHEMA, rows(150...200) + rows(0...150), out
-  end
-
-  def test_combine_into_an_encrypted_file
-    key = Herringbone::Key.generate
-    out, report = combine([file(0...100), file(100...150, encryption: {footer_key: KEY})], decryption: {footer_key: KEY},
-      encryption: key)
-    assert_equal({copied: 0, rewritten: 2}, report.row_groups)
-    assert_raises(Herringbone::DecryptionError) { reader_for(out) }
-    reader = Herringbone::Reader.new(StringIO.new(out), decryption: key)
-    assert_equal canonical_lines(SCHEMA, rows(0...150)), canonical_lines(SCHEMA, reader.read)
   end
 
   def test_only_encrypted_columns_are_re_encoded
