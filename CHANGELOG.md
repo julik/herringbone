@@ -12,6 +12,8 @@
   and nesting.
 - Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,
   ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
+- Writing metadata whose integers don't fit their Thrift field raises `Herringbone::Thrift::Error`
+  instead of producing a file Herringbone itself cannot read back.
 
 ## 0.6.1
 

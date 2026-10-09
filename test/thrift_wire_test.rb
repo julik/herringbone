@@ -338,14 +338,56 @@ class ThriftWireTest < Minitest::Test
     assert_equal "head\x15\x02\x00".b, buf
   end
 
-  def test_writer_refuses_an_i32_it_could_not_read_back
-    skip "Writer encodes integers out of their declared range, which Reader then refuses"
-    assert_raises(Thrift::Error) { Everything.new(int: 2**31).encode }
+  def test_writer_refuses_integers_it_could_not_read_back
+    [[:tiny, 128], [:tiny, -129], [:short, 2**15], [:short, -2**15 - 1], [:int, 2**31],
+      [:int, -2**31 - 1], [:long, 2**63], [:long, -2**63 - 1]].each do |name, value|
+      assert_raises(Thrift::Error, "#{name}=#{value}") { Everything.new(name => value).encode }
+    end
   end
 
-  def test_writer_refuses_a_byte_out_of_range
-    skip "Writer masks a :byte to 8 bits, so 300 comes back as 44"
-    assert_raises(Thrift::Error) { Everything.new(tiny: 300).encode }
+  def test_writer_refuses_an_out_of_range_integer_inside_a_list
+    assert_raises(Thrift::Error) { Everything.new(ints: [1, 2**31]).encode }
+    assert_raises(Thrift::Error) { Everything.new(matrix: [[2**63]]).encode }
+  end
+
+  def test_writer_refuses_values_that_are_not_integers
+    assert_raises(Thrift::Error) { Everything.new(ints: [1, nil]).encode }
+    assert_raises(Thrift::Error) { Everything.new(tiny: "x").encode }
+    assert_raises(Thrift::Error) { Everything.new(int: 1.5).encode }
+  end
+
+  def test_binary_comes_back_as_binary_from_a_utf8_buffer
+    buf = Everything.new(blob: "abc", text: "abc").encode.dup.force_encoding(Encoding::UTF_8)
+    decoded = Everything.decode(buf).first
+    assert_equal Encoding::BINARY, decoded.blob.encoding
+    assert_equal Encoding::UTF_8, decoded.text.encoding
+  end
+
+  def test_negative_offset_is_refused
+    assert_raises(Thrift::Error) { Pair.decode("\x15\x02\x00".b, -3) }
+  end
+
+  class PairWithMore < Pair
+    field 3, :c, :i32
+  end
+
+  class PlainPairSubclass < Pair
+  end
+
+  def test_struct_subclasses_inherit_fields
+    assert_equal "\x15\x02\x00".b, PlainPairSubclass.new(a: 1).encode
+    assert_equal [:a, :b, :c], PairWithMore.fields.map(&:name)
+    assert_equal({a: 1, c: 3}, round_trip(PairWithMore.new(a: 1, c: 3)).to_h)
+    assert_equal [:a, :b], Pair.fields.map(&:name)
+  end
+
+  def test_equal_structs_are_eql_and_hash_alike
+    one = Pair.new(a: 1, b: 2)
+    other = Pair.new(a: 1, b: 2)
+    assert one.eql?(other)
+    assert_equal one.hash, other.hash
+    assert_equal [one], [one, other].uniq
+    refute_equal Pair.new(a: 1).hash, PlainPairSubclass.new(a: 1).hash
   end
 
   def test_wire_type_for

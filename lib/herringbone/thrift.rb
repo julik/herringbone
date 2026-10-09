@@ -47,7 +47,7 @@ module Herringbone
 
     # Values each declared integer type can hold, whatever width it came in on the wire
     INT_RANGES = {
-      i16: -2**15...2**15, i32: -2**31...2**31, i64: -2**63...2**63
+      byte: -2**7...2**7, i16: -2**15...2**15, i32: -2**31...2**31, i64: -2**63...2**63
     }.freeze
 
     # Deepest nesting of structs, lists, sets and maps read or skipped, as in Apache Thrift
@@ -94,7 +94,9 @@ module Herringbone
 
       # @param buf [String] the encoded data (binary)
       # @param pos [Integer] byte offset to start reading at
+      # @raise [Error] when +pos+ is negative
       def initialize(buf, pos = 0)
+        raise Error, "Negative offset #{pos}" if pos.negative?
         @buf = buf
         @pos = pos
         @depth = 0
@@ -197,8 +199,8 @@ module Herringbone
       # Reads one value of wire type +wire+ as declared +type+
       #
       # @param wire [Integer] wire type from the field or list header
-      # @param type [Symbol, Array, Class] declared type; +:string+ makes binary values UTF-8,
-      #   an Array or Struct subclass gives the element type or struct to read
+      # @param type [Symbol, Array, Class] declared type; +:string+ makes binary values UTF-8 and
+      #   +:binary+ makes them BINARY, an Array or Struct subclass gives the element type or struct to read
       # @return [Object] true/false, an Integer (bytes are signed), a Float, a String, an Array
       #   (or nil, see #read_list) or a Struct
       # @raise [Error] on an unsupported wire type, truncated data or an integer out of the range
@@ -217,7 +219,7 @@ module Herringbone
         when T_DOUBLE then read_double
         when T_BINARY
           s = read_binary
-          (type == :string) ? s.force_encoding(Encoding::UTF_8) : s
+          s.force_encoding((type == :string) ? Encoding::UTF_8 : Encoding::BINARY)
         when T_LIST, T_SET then read_list(type)
         when T_STRUCT then read_struct(type)
         else
@@ -407,10 +409,11 @@ module Herringbone
       # @param type [Symbol, Array, Class] declared type (see WIRE_TYPES)
       # @param value [Object] Integer, Float, String, Array or Struct matching +type+
       # @return [void]
+      # @raise [Error] when an integer type gets a value that is not an Integer in its range
       def write_value(type, value)
         case type
-        when :byte then @buf << (value & 0xFF)
-        when :i16, :i32, :i64 then write_zigzag(value)
+        when :byte then @buf << (checked_int(type, value) & 0xFF)
+        when :i16, :i32, :i64 then write_zigzag(checked_int(type, value))
         when :double then @buf << [value].pack("E")
         when :binary, :string then write_binary(value)
         when Array then write_list(type[1], value)
@@ -440,6 +443,17 @@ module Herringbone
           end
         end
       end
+
+      private
+
+      # @param type [Symbol] declared integer type, a key of INT_RANGES
+      # @param value [Object] value to be written as +type+
+      # @return [Integer] +value+
+      # @raise [Error] when +value+ is not an Integer that +type+ can hold
+      def checked_int(type, value)
+        raise Error, "#{value.inspect} is not a valid #{type}" unless value.is_a?(Integer) && INT_RANGES.fetch(type).cover?(value)
+        value
+      end
     end
 
     # A field declared on a Thrift::Struct subclass
@@ -458,14 +472,14 @@ module Herringbone
     #   field 1, :name, :i32
     class Struct
       class << self
-        # @return [Array<Field>] declared fields, sorted by id
+        # @return [Array<Field>] declared fields, sorted by id, including the superclass's
         def fields
-          @fields || []
+          @fields || ((superclass < Struct) ? superclass.fields : [])
         end
 
         # @return [Hash{Integer => Field}] declared fields by id, for decoding
         def fields_by_id
-          @fields_by_id || {}
+          @fields_by_id || ((superclass < Struct) ? superclass.fields_by_id : {})
         end
 
         # Declares a field and defines its accessor
@@ -533,6 +547,12 @@ module Herringbone
       # @return [Boolean] true when +other+ is an equal struct
       def ==(other)
         other.class == self.class && other.to_h == to_h
+      end
+      alias_method :eql?, :==
+
+      # @return [Integer] hash agreeing with #==, so equal structs work as Hash keys and in +uniq+
+      def hash
+        [self.class, to_h].hash
       end
 
       # @return [String] short class name and the set fields
