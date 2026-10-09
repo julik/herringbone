@@ -356,6 +356,25 @@ class ThriftWireTest < Minitest::Test
     assert_raises(Thrift::Error) { Everything.new(int: 1.5).encode }
   end
 
+  def test_writer_refuses_strings_that_are_not_utf8
+    assert_raises(Thrift::Error) { Everything.new(text: "\xFF").encode }
+    assert_raises(Thrift::Error) { Everything.new(text: "\xFF".b).encode }
+    assert_raises(Thrift::Error) { Everything.new(texts: ["ok", "\xC3"]).encode }
+    assert_raises(Thrift::Error) { Everything.new(text: (+"\xFF").force_encoding(Encoding::Shift_JIS)).encode }
+  end
+
+  def test_writer_converts_strings_to_utf8
+    latin = "café".encode(Encoding::ISO_8859_1)
+    assert_equal "café", round_trip(Everything.new(text: latin)).text
+    assert_equal "日本語", round_trip(Everything.new(text: "日本語".encode(Encoding::UTF_16LE))).text
+    assert_equal "café", round_trip(Everything.new(text: "café".b)).text
+    assert_equal "plain", round_trip(Everything.new(text: "plain".encode(Encoding::US_ASCII))).text
+  end
+
+  def test_writer_leaves_binary_fields_alone
+    assert_equal "\xFF".b, round_trip(Everything.new(blob: "\xFF")).blob
+  end
+
   def test_binary_comes_back_as_binary_from_a_utf8_buffer
     buf = Everything.new(blob: "abc", text: "abc").encode.dup.force_encoding(Encoding::UTF_8)
     decoded = Everything.decode(buf).first

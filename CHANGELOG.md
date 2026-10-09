@@ -14,6 +14,8 @@
   ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
 - Writing metadata whose integers don't fit their Thrift field raises `Herringbone::Thrift::Error`
   instead of producing a file Herringbone itself cannot read back.
+- Column names and key-value metadata in other encodings are converted to UTF-8 on write, and
+  ones that aren't valid UTF-8 raise `Herringbone::Thrift::Error`.
 
 ## 0.6.1
 
