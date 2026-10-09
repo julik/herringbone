@@ -44,15 +44,16 @@ module Herringbone
     # @return [Format::FileMetaData] the file's FileMetaData (the decoded Thrift footer)
     attr_reader :file_metadata
 
-    # @return [IO, StringIO] the IO the file is read from, as given to Reader.new
+    # @return [RestrictedReadableIO] the IO the file is read from, as given to Reader.new, wrapped
     attr_reader :io
 
     # @return [DecryptionConfiguration, nil] the keys given as +decryption:+, nil without them
     attr_reader :decryption
 
-    # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...)
+    # +io+ must support #seek and #read (a File opened with "rb", StringIO, Tempfile...). It is
+    # read only through a RestrictedReadableIO wrapping it.
     #
-    # @param io [IO, StringIO] random-access source of the Parquet bytes; the caller closes it
+    # @param io [IO, StringIO, RestrictedReadableIO] random-access source of the Parquet bytes; the caller closes it
     # @param keys [Symbol, String] +:string+ or +:symbol+, the key type of row and struct Hashes
     # @param time_zone [String, Integer, Object, nil] zone timestamps are returned in (see the
     #   class docs); nil keeps them in UTC
@@ -80,7 +81,7 @@ module Herringbone
       @symbolize = keys == :symbol
       @zone_converter = zone_converter(time_zone)
       @decryption = decryption.nil? ? nil : DecryptionConfiguration.from(decryption)
-      @io = io
+      @io = RestrictedReadableIO.wrap(io)
       @file_metadata = read_footer
       @schema = Schema.from_elements(@file_metadata.schema)
     end
@@ -662,8 +663,7 @@ module Herringbone
     # @raise [FormatError] when the file is too short, lacks the magic or the footer is corrupt
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def read_footer
-      @io.seek(0, IO::SEEK_END)
-      size = @io.pos
+      size = @io.size
       raise FormatError, "File too small to be Parquet (#{size} bytes)" if size < 12
       @io.seek(size - 8)
       tail = @io.read(8)

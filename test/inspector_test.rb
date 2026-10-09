@@ -321,9 +321,9 @@ class InspectorTest < Minitest::Test
   end
 
   def test_load_all_reads_everything_up_front
-    i = inspect_file(File.join(GEN, "multiple_row_groups.parquet"))
-    # the IO is closed by now, so everything below must already be loaded
-    assert i.instance_variable_get(:@io).closed?
+    file = File.open(File.join(GEN, "multiple_row_groups.parquet"), "rb")
+    i = Herringbone::Inspector.new(file).load_all
+    file.close # so everything below must already be loaded
     refute_empty i.column_chunks.first.pages
     assert JSON.generate(i.to_h)
     refute_empty i.report(pages: true)

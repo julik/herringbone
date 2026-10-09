@@ -484,13 +484,13 @@ module Herringbone
     # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def initialize(io, decryption: nil)
-      @io = io
       @decryption = decryption.nil? ? nil : DecryptionConfiguration.from(decryption)
-      unless @io.respond_to?(:read) && @io.respond_to?(:seek)
+      unless io.respond_to?(:read) && io.respond_to?(:seek)
         raise ArgumentError, "Herringbone::Inspector expects an IO that supports #seek and #read " \
           "(e.g. File.open(path, \"rb\")), got #{io.class}"
       end
-      @name = (@io.respond_to?(:path) && @io.path) ? File.basename(@io.path.to_s) : nil
+      @io = RestrictedReadableIO.wrap(io)
+      @name = File.basename(@io.path) unless @io.path.equal?(RestrictedReadableIO::UNTITLED)
       read_footer
       @schema = Schema.from_elements(@metadata.schema)
     end
@@ -1710,8 +1710,7 @@ module Herringbone
     # @raise [FormatError] when the file is too small, lacks the magic bytes or has a corrupt footer
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted
     def read_footer
-      @io.seek(0, IO::SEEK_END)
-      @file_size = @io.pos
+      @file_size = @io.size
       raise FormatError, "File too small to be Parquet (#{@file_size} bytes)" if @file_size < 12
       tail = read_at(@file_size - 8, 8)
       magic = tail.byteslice(4, 4)

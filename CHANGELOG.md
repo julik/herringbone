@@ -31,6 +31,8 @@
   instead of producing a file Herringbone itself cannot read back.
 - Column names and key-value metadata in other encodings are converted to UTF-8 on write, and
   ones that aren't valid UTF-8 raise `Herringbone::Thrift::Error`.
+- **Breaking:** `Herringbone::Reader#io` returns a `Herringbone::RestrictedReadableIO` wrapping the
+  given IO, which answers only `#read`, `#seek`, `#pos`, `#size` and `#path`.
 
 ## 0.6.1
 
