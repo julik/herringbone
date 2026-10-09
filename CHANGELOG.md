@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `Herringbone::Schema#union` (`+`) and `#intersect` (`&`) match fields by name at every level of
+  nesting and widen their types without loss (int32 + int64 -> int64, uint32 + int8 -> int64,
+  int32 + float -> double, millis + micros -> micros, string + binary -> binary).
+- `Herringbone::IncompatibleSchema` lists every field two schemas cannot agree on, at once.
+- `Herringbone::Schema#==` compares structure: field names, order, nullability, types, field ids
+  and nesting.
 - Writing allocates less: compressed pages are no longer copied before they reach the IO, and GZIP,
   ZSTD and pure-Ruby Snappy compress a page's levels and values without joining them first.
 
