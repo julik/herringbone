@@ -4972,6 +4972,26 @@ module Herringbone
     sig { params(other: Schema).returns(Schema) }
     def intersect(other); end
 
+    # The given top-level fields, in the order of this schema.
+    # 
+    #   schema.only(:id, :name).fields.map(&:name) # => ["id", "name"]
+    # 
+    # _@param_ `names` — names of top-level fields
+    # 
+    # _@return_ — a new schema, sharing no nodes with this one
+    sig { params(names: T::Array[T.any(String, Symbol)]).returns(Schema) }
+    def only(*names); end
+
+    # Every top-level field but the given ones, in the order of this schema.
+    # 
+    #   schema.except(:ssn).fields.map(&:name) # => ["id", "name"]
+    # 
+    # _@param_ `names` — names of top-level fields
+    # 
+    # _@return_ — a new schema, sharing no nodes with this one
+    sig { params(names: T::Array[T.any(String, Symbol)]).returns(Schema) }
+    def except(*names); end
+
     # _@return_ — one line per node, indented by depth: repetition, physical type, name and
     # annotation
     sig { returns(String) }
@@ -4980,6 +5000,24 @@ module Herringbone
     # _@return_ — the signatures of the top-level nodes (Node#signature), for #== and #hash
     sig { returns(T::Array[T.untyped]) }
     def signature; end
+
+    # _@param_ `names` — names given to #only or #except
+    # 
+    # _@param_ `method` — the method, for the error message
+    # 
+    # _@return_ — the names as Strings
+    sig { params(names: T::Array[T.any(String, Symbol, T::Array[T.untyped])], method: String).returns(T::Array[String]) }
+    def field_names!(names, method); end
+
+    # _@return_ — a schema of copies of the kept fields' nodes
+    sig { params(blk: T.proc.params(field: Field).returns(T::Boolean)).returns(Schema) }
+    def subset(&blk); end
+
+    # _@param_ `node` — node to copy, with its children
+    # 
+    # _@return_ — a copy sharing no nodes with the original
+    sig { params(node: Node).returns(Node) }
+    def copy_node(node); end
 
     # Appends a Column for every leaf under +node+, depth-first. A non-required node adds one
     # definition level and a repeated node one repetition level.

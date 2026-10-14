@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Herringbone::Schema#only(:id, :name)` and `#except(:ssn)` make a schema with some of the
+  top-level fields.
 - `time` columns convert a `Time` to UTC when writing, as `timestamp` columns already did, instead
   of storing its time of day in its own zone.
 - **Breaking:** `local_timestamp` and `local_time` (`s.local_timestamp :opens_at`) write the wall

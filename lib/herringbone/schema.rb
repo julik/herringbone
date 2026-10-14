@@ -470,6 +470,30 @@ module Herringbone
     end
     alias_method :&, :intersect
 
+    # The given top-level fields, in the order of this schema.
+    #
+    #   schema.only(:id, :name).fields.map(&:name) # => ["id", "name"]
+    #
+    # @param names [Array<String, Symbol>] names of top-level fields
+    # @return [Schema] a new schema, sharing no nodes with this one
+    # @raise [ArgumentError] when a name is not a top-level field, or no name is given
+    def only(*names)
+      keep = field_names!(names, "only")
+      subset { |f| keep.include?(f.name) }
+    end
+
+    # Every top-level field but the given ones, in the order of this schema.
+    #
+    #   schema.except(:ssn).fields.map(&:name) # => ["id", "name"]
+    #
+    # @param names [Array<String, Symbol>] names of top-level fields
+    # @return [Schema] a new schema, sharing no nodes with this one
+    # @raise [ArgumentError] when a name is not a top-level field, or all fields would be left out
+    def except(*names)
+      drop = field_names!(names, "except")
+      subset { |f| !drop.include?(f.name) }
+    end
+
     # @return [String] one line per node, indented by depth: repetition, physical type, name and
     #   annotation
     def inspect
@@ -500,6 +524,40 @@ module Herringbone
     def signature = @root.children.map(&:signature)
 
     private
+
+    # @param names [Array<String, Symbol, Array>] names given to #only or #except
+    # @param method [String] the method, for the error message
+    # @return [Array<String>] the names as Strings
+    # @raise [ArgumentError] when a name is not a top-level field, or no name is given
+    def field_names!(names, method)
+      names = names.flatten.map(&:to_s)
+      raise ArgumentError, "Schema##{method} needs the names of top-level fields, e.g. schema.#{method}(:id, :name)" if names.empty?
+      missing = names - @fields.map(&:name)
+      unless missing.empty?
+        raise ArgumentError, "Schema##{method}: no top-level field #{missing.join(", ")}. " \
+          "The schema has #{@fields.map(&:name).join(", ")}"
+      end
+      names
+    end
+
+    # @yieldparam field [Field] a top-level field
+    # @yieldreturn [Boolean] whether to keep it
+    # @return [Schema] a schema of copies of the kept fields' nodes
+    # @raise [ArgumentError] when no field is kept
+    def subset
+      nodes = @fields.select { |f| yield f }.map { |f| copy_node(f.node) }
+      raise ArgumentError, "A schema needs at least one field, and this would leave out all of #{@fields.map(&:name).join(", ")}" if nodes.empty?
+      Schema.new(Node.new(name: @root.name, repetition: :required, children: nodes))
+    end
+
+    # @param node [Node] node to copy, with its children
+    # @return [Node] a copy sharing no nodes with the original
+    def copy_node(node)
+      Node.new(name: node.name, repetition: node.repetition, type: node.type, type_length: node.type_length,
+        converted_type: node.converted_type, logical_type: node.logical_type, scale: node.scale,
+        precision: node.precision, field_id: node.field_id, enum_values: node.enum_values,
+        children: node.children&.map { |c| copy_node(c) })
+    end
 
     # Appends a Column for every leaf under +node+, depth-first. A non-required node adds one
     # definition level and a repeated node one repetition level.

@@ -212,6 +212,17 @@ The block receives the schema builder, and the blocks of `struct`, `list` and `m
 builder of their own, so the block can still call your methods and read your instance variables.
 A block that takes no parameter raises `ArgumentError`.
 
+`only` and `except` make a schema with some of the top-level fields, keeping their order, for
+instance to write part of a file you are reading:
+
+```ruby
+schema.only(:id, :name)  # id and name
+schema.except(:ssn)      # every field but ssn
+```
+
+A name the schema has no top-level field for raises `ArgumentError`, and so does leaving out
+every field.
+
 ### Writing with an inferred schema
 
 `Herringbone.write(io, rows)` writes an Enumerable of rows in one go, inferring the schema from the
