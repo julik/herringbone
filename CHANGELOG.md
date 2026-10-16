@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Herringbone::MissingCodecError` explains over several lines which gem to install and that it has
+  to be required before the read or write, and names the column it could not decompress up front.
 - `Herringbone::Schema#only(:id, :name)` and `#except(:ssn)` make a schema with some of the
   top-level fields.
 - `time` columns convert a `Time` to UTC when writing, as `timestamp` columns already did, instead

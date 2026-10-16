@@ -4,7 +4,8 @@ require "zlib"
 require "stringio"
 
 module Herringbone
-  # Raised when a file uses (or a writer asks for) a codec whose library is not loaded
+  # Raised when a file uses (or a writer asks for) a codec whose library is not loaded. The message
+  # says which gem to install, and that it has to be required before the read or write.
   class MissingCodecError < UnsupportedError
     # @return [String] codec name (+"ZSTD"+) and name of the gem providing it (+"zstd-ruby"+)
     attr_reader :codec, :gem_name
@@ -12,11 +13,29 @@ module Herringbone
     # @param codec [String] codec name, as shown in the message
     # @param gem_name [String] gem to add to the Gemfile
     # @param path [String] what to require to load the gem
-    def initialize(codec, gem_name, path)
+    # @param column [String, nil] dotted path of the column being read, when there is one
+    def initialize(codec, gem_name, path, column: nil)
       @codec = codec
       @gem_name = gem_name
-      super("#{codec} compression needs the \"#{gem_name}\" gem, which is not loaded. Add " \
-        "`gem \"#{gem_name}\"` to your Gemfile and `require \"#{path}\"` to use #{codec}.")
+      @path = path
+      where = column ? " to decompress column #{column}" : ""
+      super(<<~MESSAGE.chomp)
+        #{codec} compression needs the "#{gem_name}" gem#{where}, but it is not loaded.
+        Herringbone does not load optional codec gems by itself. To use #{codec}:
+
+          1. Install the gem: add `gem "#{gem_name}"` to your Gemfile, or run `gem install #{gem_name}`.
+          2. Load it with `require "#{path}"` before the read or write that needs #{codec},
+             for instance at the top of your script or in an initializer.
+      MESSAGE
+    end
+
+    # The same error, naming the column that could not be decompressed
+    #
+    # @param column [String] dotted path of the column
+    # @return [MissingCodecError]
+    # @api private
+    def for_column(column)
+      self.class.new(@codec, @gem_name, @path, column: column).tap { |e| e.set_backtrace(backtrace) if backtrace }
     end
   end
 

@@ -35,7 +35,9 @@ class CodecAvailabilityTest < Minitest::Test
       assert_equal "ZSTD", error.codec
       assert_equal "zstd-ruby", error.gem_name
       assert_match(/needs the "zstd-ruby" gem/, error.message)
-      assert_match(/Add `gem "zstd-ruby"` to your Gemfile and `require "zstd-ruby"`/, error.message)
+      assert_match(/add `gem "zstd-ruby"` to your Gemfile/, error.message)
+      assert_match(/Load it with `require "zstd-ruby"` before the read or write/, error.message)
+      assert_operator error.message.lines.size, :>, 1
 
       error = assert_raises(Herringbone::MissingCodecError) do
         Herringbone::Writer.new(StringIO.new, A_SCHEMA, compression: :brotli)
@@ -75,7 +77,8 @@ class CodecAvailabilityTest < Minitest::Test
       open_fixture(ZSTD_FILE) do |reader|
         error = assert_raises(Herringbone::MissingCodecError) { reader.read }
         assert_match(/needs the "zstd-ruby" gem/, error.message)
-        assert_match(/\(column \w+\)\z/, error.message)
+        assert_match(/\AZSTD compression needs the "zstd-ruby" gem to decompress column \w+, but/, error.message)
+        assert_match(/`require "zstd-ruby"` before the read/, error.message)
         assert_equal "zstd-ruby", error.gem_name
       end
       open_fixture(BROTLI_FILE) do |reader|

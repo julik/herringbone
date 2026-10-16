@@ -303,6 +303,8 @@ module Herringbone
       # @raise [UnsupportedError] for an unsupported codec, naming the column
       def decompress(body, size)
         Compression.decompress(@meta.codec, body, size)
+      rescue MissingCodecError => e
+        raise e.for_column(@column.dotted_path)
       rescue UnsupportedError => e
         raise e, "#{e.message} (column #{@column.dotted_path})"
       end

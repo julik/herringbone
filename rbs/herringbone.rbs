@@ -9344,14 +9344,27 @@ module Herringbone
     def strings: () -> ::Array[String]
   end
 
-  # Raised when a file uses (or a writer asks for) a codec whose library is not loaded
+  # Raised when a file uses (or a writer asks for) a codec whose library is not loaded. The message
+  # says which gem to install, and that it has to be required before the read or write.
   class MissingCodecError < Herringbone::UnsupportedError
     # _@param_ `codec` — codec name, as shown in the message
     # 
     # _@param_ `gem_name` — gem to add to the Gemfile
     # 
     # _@param_ `path` — what to require to load the gem
-    def initialize: (String codec, String gem_name, String path) -> void
+    # 
+    # _@param_ `column` — dotted path of the column being read, when there is one
+    def initialize: (
+                      String codec,
+                      String gem_name,
+                      String path,
+                      ?column: String?
+                    ) -> void
+
+    # The same error, naming the column that could not be decompressed
+    # 
+    # _@param_ `column` — dotted path of the column
+    def for_column: (String column) -> MissingCodecError
 
     # _@return_ — codec name (+"ZSTD"+) and name of the gem providing it (+"zstd-ruby"+)
     attr_reader codec: String
