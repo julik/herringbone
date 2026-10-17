@@ -4,7 +4,7 @@ A pure-Ruby reader and writer for [Apache Parquet](https://parquet.apache.org/) 
 
 - No Thrift gem and no native extensions of its own: the Thrift compact protocol, all encodings
   and the Snappy and LZ4 codecs are implemented in Ruby (ZSTD and Brotli use optional gems).
-  LZO, from Hadoop-era files, can be read but not written
+  ZSTD and LZO (from Hadoop-era files) are also read in pure Ruby; writing ZSTD needs `zstd-ruby`
 - Full nesting support (structs, lists, maps, any depth) via Dremel record shredding/assembly
 - Reads files from parquet-mr, Arrow, Spark, Impala, DuckDB, Rust writers etc.
 - Optimized reads with batches and pages
@@ -21,9 +21,9 @@ rules, combining files, type mapping and the inspector.
 gem "herringbone"
 ```
 
-Optionally add `snappy` (faster), `zstd-ruby` and `brotli` (more codecs), `xxhash` (faster bloom
-filters) or `numo-narray-alt` (`read(as: :numo)`). Herringbone uses whichever of them are loaded,
-see [Optional gems](MANUAL.md#optional-gems).
+Optionally add `snappy` (faster), `zstd-ruby` (writing ZSTD, much faster reading of it), `brotli`,
+`xxhash` (faster bloom filters) or `numo-narray-alt` (`read(as: :numo)`). Herringbone uses
+whichever of them are loaded, see [Optional gems](MANUAL.md#optional-gems).
 
 ## Exporting from Rails
 

@@ -110,6 +110,7 @@ module Herringbone
     autoload :LZ4, "#{LIB}/codecs/lz4"
     autoload :LZO, "#{LIB}/codecs/lzo"
     autoload :Snappy, "#{LIB}/codecs/snappy"
+    autoload :Zstd, "#{LIB}/codecs/zstd"
   end
 
   module Encodings

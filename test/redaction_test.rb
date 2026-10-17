@@ -521,6 +521,8 @@ class RedactionTest < Minitest::Test
       rescue Herringbone::UnsupportedError
         next # a codec gem this run goes without
       end
+      codecs = reader.file_metadata.row_groups.flat_map { |rg| rg.columns.map { |c| Herringbone::Compression::NAMES[c.meta_data.codec] } }
+      next unless (codecs - Herringbone.codecs).empty? # ZSTD is read without zstd-ruby, but not written
       name = File.basename(path)
       field = reader.schema.fields.find { |f| f.leaf? && f.optional && reader.schema.column(f.name) }
       out, report = redact(bytes) { |r| r.replace(field.name => nil) } if field

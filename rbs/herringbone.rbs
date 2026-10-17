@@ -853,6 +853,412 @@ module Herringbone
       end
     end
 
+    # Pure-Ruby Zstandard decompressor, so files written with ZSTD can be read without the
+    # zstd-ruby gem. When zstd-ruby is loaded, Compression uses it instead; writing ZSTD still
+    # needs it, as there is no compressor here.
+    # 
+    # Written from RFC 8878. Dictionaries are not supported (Parquet does not use them).
+    # 
+    # Every input is distrusted: output may never grow past the size the page header declares,
+    # every loop either consumes input or produces bounded output, and malformed tables, offsets
+    # and bitstreams raise Error instead of decoding garbage.
+    # 
+    # @api private
+    module Zstd
+      # Decompresses one or more concatenated Zstandard frames (skippable frames are ignored)
+      # 
+      # _@param_ `input` — compressed bytes
+      # 
+      # _@param_ `limit` — the decompressed size expected, which the output may not exceed
+      # 
+      # _@return_ — decompressed bytes in ASCII-8BIT
+      def decompress: (String input, Integer limit) -> String
+
+      # Decompresses one or more concatenated Zstandard frames (skippable frames are ignored)
+      # 
+      # _@param_ `input` — compressed bytes
+      # 
+      # _@param_ `limit` — the decompressed size expected, which the output may not exceed
+      # 
+      # _@return_ — decompressed bytes in ASCII-8BIT
+      def self.decompress: (String input, Integer limit) -> String
+
+      # _@param_ `src` — binary string
+      # 
+      # _@param_ `pos` — offset of the value
+      # 
+      # _@return_ — the little-endian 32-bit value at +pos+
+      def u32: (String src, Integer pos) -> Integer
+
+      # _@param_ `src` — binary string
+      # 
+      # _@param_ `pos` — offset of the value
+      # 
+      # _@return_ — the little-endian 32-bit value at +pos+
+      def self.u32: (String src, Integer pos) -> Integer
+
+      # Reads an FSE table description (RFC 8878 section 4.1.1)
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the description
+      # 
+      # _@param_ `stop` — offset it may not reach past
+      # 
+      # _@param_ `max_symbol` — largest valid symbol
+      # 
+      # _@param_ `max_log` — largest valid accuracy log
+      # 
+      # _@return_ — the normalized counts (-1 for "less than
+      # one"), the accuracy log, and the offset just past the description
+      def read_fse_counts: (
+                             String src,
+                             Integer pos,
+                             Integer stop,
+                             Integer max_symbol,
+                             Integer max_log
+                           ) -> [::Array[Integer], Integer, Integer]
+
+      # Reads an FSE table description (RFC 8878 section 4.1.1)
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the description
+      # 
+      # _@param_ `stop` — offset it may not reach past
+      # 
+      # _@param_ `max_symbol` — largest valid symbol
+      # 
+      # _@param_ `max_log` — largest valid accuracy log
+      # 
+      # _@return_ — the normalized counts (-1 for "less than
+      # one"), the accuracy log, and the offset just past the description
+      def self.read_fse_counts: (
+                                  String src,
+                                  Integer pos,
+                                  Integer stop,
+                                  Integer max_symbol,
+                                  Integer max_log
+                                ) -> [::Array[Integer], Integer, Integer]
+
+      # Spreads normalized counts over a decoding table (RFC 8878 section 4.1.1)
+      # 
+      # _@param_ `counts` — normalized count per symbol, -1 for "less than one"
+      # 
+      # _@param_ `log` — accuracy log; the counts' magnitudes add up to 2**log
+      def build_fse_table: (::Array[Integer] counts, Integer log) -> FSETable
+
+      # Spreads normalized counts over a decoding table (RFC 8878 section 4.1.1)
+      # 
+      # _@param_ `counts` — normalized count per symbol, -1 for "less than one"
+      # 
+      # _@param_ `log` — accuracy log; the counts' magnitudes add up to 2**log
+      def self.build_fse_table: (::Array[Integer] counts, Integer log) -> FSETable
+
+      # Reads a Huffman tree description (RFC 8878 section 4.2.1)
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the description
+      # 
+      # _@param_ `stop` — offset it may not reach past
+      # 
+      # _@return_ — the table, and the offset just past the description
+      def read_huffman_table: (String src, Integer pos, Integer stop) -> [HuffmanTable, Integer]
+
+      # Reads a Huffman tree description (RFC 8878 section 4.2.1)
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the description
+      # 
+      # _@param_ `stop` — offset it may not reach past
+      # 
+      # _@return_ — the table, and the offset just past the description
+      def self.read_huffman_table: (String src, Integer pos, Integer stop) -> [HuffmanTable, Integer]
+
+      # Decodes FSE-compressed Huffman weights: two states take turns over one bitstream until
+      # it runs out
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the compressed weights
+      # 
+      # _@param_ `stop` — offset just past them
+      # 
+      # _@return_ — the weights
+      def decode_huffman_weights: (String src, Integer pos, Integer stop) -> ::Array[Integer]
+
+      # Decodes FSE-compressed Huffman weights: two states take turns over one bitstream until
+      # it runs out
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the compressed weights
+      # 
+      # _@param_ `stop` — offset just past them
+      # 
+      # _@return_ — the weights
+      def self.decode_huffman_weights: (String src, Integer pos, Integer stop) -> ::Array[Integer]
+
+      # Builds the decoding table from the weights of all symbols but the last, whose weight is
+      # implied by the others
+      # 
+      # _@param_ `weights` — weight per symbol, 0 for unused symbols
+      def build_huffman_table: (::Array[Integer] weights) -> HuffmanTable
+
+      # Builds the decoding table from the weights of all symbols but the last, whose weight is
+      # implied by the others
+      # 
+      # _@param_ `weights` — weight per symbol, 0 for unused symbols
+      def self.build_huffman_table: (::Array[Integer] weights) -> HuffmanTable
+
+      # _@param_ `table`
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the stream(s), after the tree description
+      # 
+      # _@param_ `stop` — offset just past the last stream
+      # 
+      # _@param_ `size` — number of literals
+      # 
+      # _@param_ `streams` — 1, or 4 with a jump table in front
+      # 
+      # _@return_ — the literals
+      def decode_huffman_literals: (
+                                     HuffmanTable table,
+                                     String src,
+                                     Integer pos,
+                                     Integer stop,
+                                     Integer size,
+                                     Integer streams
+                                   ) -> String
+
+      # _@param_ `table`
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the stream(s), after the tree description
+      # 
+      # _@param_ `stop` — offset just past the last stream
+      # 
+      # _@param_ `size` — number of literals
+      # 
+      # _@param_ `streams` — 1, or 4 with a jump table in front
+      # 
+      # _@return_ — the literals
+      def self.decode_huffman_literals: (
+                                          HuffmanTable table,
+                                          String src,
+                                          Integer pos,
+                                          Integer stop,
+                                          Integer size,
+                                          Integer streams
+                                        ) -> String
+
+      # _@param_ `table`
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the stream
+      # 
+      # _@param_ `stop` — offset just past it
+      # 
+      # _@param_ `count` — number of literals it holds
+      # 
+      # _@return_ — the literals
+      def decode_huffman_stream: (
+                                   HuffmanTable table,
+                                   String src,
+                                   Integer pos,
+                                   Integer stop,
+                                   Integer count
+                                 ) -> String
+
+      # _@param_ `table`
+      # 
+      # _@param_ `src` — binary input
+      # 
+      # _@param_ `pos` — offset of the stream
+      # 
+      # _@param_ `stop` — offset just past it
+      # 
+      # _@param_ `count` — number of literals it holds
+      # 
+      # _@return_ — the literals
+      def self.decode_huffman_stream: (
+                                        HuffmanTable table,
+                                        String src,
+                                        Integer pos,
+                                        Integer stop,
+                                        Integer count
+                                      ) -> String
+
+      # Raised for corrupt, truncated or unsupported Zstandard input, and for input that
+      # decompresses to more than the expected size.
+      class Error < StandardError
+      end
+
+      # Reads a stream backwards, from its last byte to its first, as FSE and Huffman streams are
+      # written. The last byte holds a 1 bit marking where the stream starts. Reading past the
+      # first byte yields zeros, and is remembered so the caller can tell the stream was too short.
+      # 
+      # @api private
+      class BackwardBits
+        # _@param_ `src` — binary input
+        # 
+        # _@param_ `start` — offset of the stream's first byte
+        # 
+        # _@param_ `stop` — offset just past its last byte
+        def initialize: (String src, Integer start, Integer stop) -> void
+
+        # _@param_ `n` — number of bits, at most 56
+        # 
+        # _@return_ — the next +n+ bits, most significant first
+        def read: (Integer n) -> Integer
+
+        # _@param_ `n` — number of bits, at most 56
+        # 
+        # _@return_ — the next +n+ bits, without consuming them
+        def peek: (Integer n) -> Integer
+
+        # _@param_ `n` — number of bits to consume, after a peek of at least +n+
+        def skip: (Integer n) -> void
+
+        # _@return_ — whether more bits were read than the stream has
+        def overflowed?: () -> bool
+
+        # _@return_ — whether every bit was read, and no more
+        def finished?: () -> bool
+
+        def refill: () -> void
+      end
+
+      # An FSE decoding table: for each state, the symbol it decodes to and how to reach the
+      # next state (read +nbits+ bits, add them to +base+)
+      # 
+      # @api private
+      class FSETable < Struct
+        # Returns the value of attribute log
+        attr_accessor log: Object
+
+        # Returns the value of attribute symbols
+        attr_accessor symbols: Object
+
+        # Returns the value of attribute nbits
+        attr_accessor nbits: Object
+
+        # Returns the value of attribute base
+        attr_accessor base: Object
+      end
+
+      # A Huffman decoding table indexed by the next +max_bits+ bits of the stream
+      # 
+      # @api private
+      class HuffmanTable < Struct
+        # Returns the value of attribute max_bits
+        attr_accessor max_bits: Object
+
+        # Returns the value of attribute symbols
+        attr_accessor symbols: Object
+
+        # Returns the value of attribute lengths
+        attr_accessor lengths: Object
+      end
+
+      # Decodes one frame, appending its content to the output. Keeps what blocks of a frame
+      # share: the repeat offsets and the tables later blocks may reuse.
+      # 
+      # @api private
+      class FrameDecoder
+        # _@param_ `src` — binary input
+        # 
+        # _@param_ `pos` — offset just past the frame's magic number
+        # 
+        # _@param_ `out` — binary output, appended to
+        # 
+        # _@param_ `limit` — size +out+ may not exceed
+        def initialize: (
+                          String src,
+                          Integer pos,
+                          String _out,
+                          Integer limit
+                        ) -> void
+
+        # _@return_ — offset just past the frame
+        def decode: () -> Integer
+
+        # _@return_ — the declared content size (nil when absent) and
+        # whether a content checksum follows the blocks
+        def read_frame_header: () -> [Integer, bool]
+
+        # _@param_ `pos` — offset of the value
+        # 
+        # _@param_ `size` — its size in bytes
+        # 
+        # _@return_ — the little-endian unsigned value
+        def read_le: (Integer pos, Integer size) -> Integer
+
+        # _@param_ `n` — bytes needed at the current position
+        # 
+        # _@param_ `what` — what they are, for the message
+        def need: (Integer n, String what) -> void
+
+        # _@param_ `n` — bytes about to be appended to the output
+        def emit: (Integer n) -> void
+
+        # _@param_ `pos` — offset of the block body
+        # 
+        # _@param_ `stop` — offset just past it
+        def decode_compressed_block: (Integer pos, Integer stop) -> void
+
+        # _@param_ `mode` — 0 predefined, 1 RLE, 2 FSE-compressed, 3 repeat
+        # 
+        # _@param_ `pos` — offset of the table description
+        # 
+        # _@param_ `stop` — end of the block
+        # 
+        # _@param_ `previous` — the table of the previous block, for mode 3
+        # 
+        # _@param_ `default` — the predefined table, for mode 0
+        # 
+        # _@param_ `max_symbol` — largest valid code
+        # 
+        # _@param_ `max_log` — largest valid accuracy log
+        # 
+        # _@param_ `name` — what the codes are, for messages
+        # 
+        # _@return_ — the table, and the offset after its description
+        def read_sequence_table: (
+                                   Integer mode,
+                                   Integer pos,
+                                   Integer stop,
+                                   FSETable? previous,
+                                   FSETable default,
+                                   Integer max_symbol,
+                                   Integer max_log,
+                                   String name
+                                 ) -> [FSETable, Integer]
+
+        # Decodes the sequences and copies their literals and matches to the output
+        # 
+        # _@param_ `bits` — the sequences bitstream
+        # 
+        # _@param_ `count` — number of sequences
+        # 
+        # _@param_ `literals` — decoded literals, which the sequences copy from in order
+        def execute_sequences: (BackwardBits bits, Integer count, String literals) -> void
+
+        # _@param_ `pos` — offset of the literals section
+        # 
+        # _@param_ `stop` — end of the block
+        # 
+        # _@return_ — the literals, and the offset just past the section
+        def read_literals: (Integer pos, Integer stop) -> [String, Integer]
+      end
+    end
+
     # Pure-Ruby implementation of the raw Snappy block format (as used by Parquet),
     # see https://github.com/google/snappy/blob/main/format_description.txt
     # 
@@ -9376,7 +9782,8 @@ module Herringbone
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby and GZIP
   # uses zlib, so those always work. LZO is pure Ruby too, but can only be read. ZSTD and Brotli
   # come from optional gems (zstd-ruby, brotli), which the application requires; if they are
-  # not loaded, MissingCodecError says what to add.
+  # not loaded, MissingCodecError says what to add. ZSTD is the exception when reading: without
+  # zstd-ruby, pages are decompressed by Codecs::Zstd, in pure Ruby.
   # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
   # 
   # @api private
@@ -9532,6 +9939,20 @@ module Herringbone
     # 
     # _@return_ — a single zstd frame
     def self.zstd: (::Array[String] parts, Integer? level) -> String
+
+    # _@param_ `data` — one or more Zstandard frames
+    # 
+    # _@param_ `uncompressed_size` — expected decompressed size in bytes
+    # 
+    # _@return_ — decompressed bytes, from zstd-ruby when it is loaded, else pure Ruby
+    def unzstd: (String data, Integer uncompressed_size) -> String
+
+    # _@param_ `data` — one or more Zstandard frames
+    # 
+    # _@param_ `uncompressed_size` — expected decompressed size in bytes
+    # 
+    # _@return_ — decompressed bytes, from zstd-ruby when it is loaded, else pure Ruby
+    def self.unzstd: (String data, Integer uncompressed_size) -> String
 
     # Codec output relabelled as binary without copying it, unless it is frozen
     # 

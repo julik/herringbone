@@ -42,7 +42,8 @@ module Herringbone
   # Dispatches page (de)compression by Parquet codec id. Snappy and LZ4 are pure Ruby and GZIP
   # uses zlib, so those always work. LZO is pure Ruby too, but can only be read. ZSTD and Brotli
   # come from optional gems (zstd-ruby, brotli), which the application requires; if they are
-  # not loaded, MissingCodecError says what to add.
+  # not loaded, MissingCodecError says what to add. ZSTD is the exception when reading: without
+  # zstd-ruby, pages are decompressed by Codecs::Zstd, in pure Ruby.
   # (Snappy also uses the optional snappy gem when it is loaded, see Codecs::Snappy.)
   #
   # @api private
@@ -156,7 +157,7 @@ module Herringbone
       when Format::Codec::LZ4_RAW then Codecs::LZ4.decompress_block(data, uncompressed_size)
       when Format::Codec::LZ4 then Codecs::LZ4.decompress_hadoop(data, uncompressed_size)
       when Format::Codec::LZO then Codecs::LZO.decompress_hadoop(data, uncompressed_size)
-      when Format::Codec::ZSTD then library(codec).decompress(data)
+      when Format::Codec::ZSTD then unzstd(data, uncompressed_size)
       when Format::Codec::BROTLI then library(codec).inflate(data)
       else
         raise UnsupportedError, "Unsupported compression codec #{Format::Codec::NAMES[codec] || codec}"
@@ -221,6 +222,15 @@ module Herringbone
       stream = level ? zstd::StreamingCompress.new(level: level) : zstd::StreamingCompress.new
       parts.each { |part| stream << part }
       stream.finish
+    end
+
+    # @param data [String] one or more Zstandard frames
+    # @param uncompressed_size [Integer] expected decompressed size in bytes
+    # @return [String] decompressed bytes, from zstd-ruby when it is loaded, else pure Ruby
+    # @raise [Codecs::Zstd::Error] on corrupt data, when decompressed in pure Ruby
+    def unzstd(data, uncompressed_size)
+      zstd = loaded_library(:Zstd)
+      zstd ? zstd.decompress(data) : Codecs::Zstd.decompress(data, uncompressed_size)
     end
 
     # Codec output relabelled as binary without copying it, unless it is frozen

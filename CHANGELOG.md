@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- ZSTD files are read without the `zstd-ruby` gem, by a pure-Ruby decompressor; `zstd-ruby` is
+  still used when loaded, and still needed to write ZSTD.
+
 ## 0.8.0
 
 - `Herringbone::MissingCodecError` explains over several lines which gem to install and that it has

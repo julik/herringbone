@@ -55,7 +55,7 @@ Add these libraries to speed up and enable certain functionality:
 
 ```ruby
 gem "snappy"          # native Snappy, 2-3x faster reads and writes of typical files
-gem "zstd-ruby"       # ZSTD
+gem "zstd-ruby"       # writing ZSTD; reading falls back to pure Ruby, 30-100x slower
 gem "brotli"          # Brotli
 gem "xxhash"          # faster bloom filters
 gem "numo-narray-alt" # read(as: :numo)

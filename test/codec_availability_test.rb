@@ -4,7 +4,8 @@ require_relative "test_helper"
 require "minitest/mock"
 require "tmpdir"
 
-# ZSTD and Brotli come from optional gems: check the failure modes when they are missing
+# ZSTD and Brotli come from optional gems: check the failure modes when they are missing, and
+# that ZSTD is still read without its gem
 class CodecAvailabilityTest < Minitest::Test
   Compression = Herringbone::Compression
   ZSTD_FILE = File.join(FIXTURES_DIR, "generated", "codec_zstd.parquet")
@@ -74,17 +75,22 @@ class CodecAvailabilityTest < Minitest::Test
 
   def test_reading_names_codec_gem_and_column
     without_codec_gems do
-      open_fixture(ZSTD_FILE) do |reader|
-        error = assert_raises(Herringbone::MissingCodecError) { reader.read }
-        assert_match(/needs the "zstd-ruby" gem/, error.message)
-        assert_match(/\AZSTD compression needs the "zstd-ruby" gem to decompress column \w+, but/, error.message)
-        assert_match(/`require "zstd-ruby"` before the read/, error.message)
-        assert_equal "zstd-ruby", error.gem_name
-      end
       open_fixture(BROTLI_FILE) do |reader|
-        assert_equal "brotli", assert_raises(Herringbone::MissingCodecError) { reader.read }.gem_name
+        error = assert_raises(Herringbone::MissingCodecError) { reader.read }
+        assert_match(/\ABrotli compression needs the "brotli" gem to decompress column \w+, but/, error.message)
+        assert_match(/`require "brotli"` before the read/, error.message)
+        assert_equal "brotli", error.gem_name
       end
     end
+  end
+
+  def test_zstd_is_read_without_the_gem
+    files = [ZSTD_FILE, File.join(FIXTURES_DIR, "generated", "enc_delta_mixed_v2_zstd.parquet")]
+    expected = files.map { |path| open_fixture(path) { |r| r.read } } if Herringbone.codecs.include?(:zstd)
+    rows = without_codec_gems { files.map { |path| open_fixture(path) { |r| r.read } } }
+    rows.each { |r| refute_empty r }
+    assert_equal expected.inspect, rows.inspect if expected # the files hold NaNs, which are never ==
+    refute_includes without_codec_gems { Herringbone.codecs }, :zstd, "writing ZSTD still needs the gem"
   end
 
   def test_metadata_is_readable_without_the_codec
