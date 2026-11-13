@@ -35,6 +35,8 @@ module Herringbone
     #   @return [Hash{String => Object}] column => value, for a replace without a block
     # @!attribute block
     #   @return [Proc, nil] computes the replacement values
+    #
+    # @api private
     Statement = Struct.new(:kind, :where, :targets, :constants, :block)
 
     # What #apply did, for the audit trail an erasure needs
@@ -52,6 +54,7 @@ module Herringbone
     # Rows selected with Redaction#where, waiting for a verb: #delete or #replace
     class Scope
       # @return [Hash{String, Symbol => Object}] the conditions given to Redaction#where
+      # @api private
       attr_reader :conditions
 
       # @param redaction [Redaction] the redaction the statement is added to
@@ -63,6 +66,7 @@ module Herringbone
       end
 
       # @return [Boolean] whether a verb was called on this scope
+      # @api private
       def used? = @used
 
       # Removes the matching rows
@@ -99,9 +103,11 @@ module Herringbone
     end
 
     # @return [Array<Statement>] the statements, in declared order
+    # @api private
     attr_reader :statements
 
     # @return [Array<String>] fields and struct members to remove from the schema
+    # @api private
     attr_reader :drops
 
     # Builds a redaction. The block receives the redaction and declares the statements on it,
@@ -275,6 +281,7 @@ module Herringbone
     # @param block [Proc, nil] computes the values
     # @return [Statement]
     # @raise [ArgumentError] when given both or neither of +constants+ and a block
+    # @api private
     def self.replace_statement(where, columns, constants, block)
       if block
         unless constants.empty?

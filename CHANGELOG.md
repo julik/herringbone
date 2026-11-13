@@ -5,8 +5,19 @@
 - `Herringbone::Writer.open(io, headers: [:id, :name]) { |w| w << [1, "John"] }` infers the column
   types when no schema is given, and `Herringbone.write(io, rows, headers: [:id, :name])` writes
   Array rows with inferred types.
+- `Herringbone::FormatError` is raised for a page that cannot be decompressed, naming the codec and
+  the column, instead of `Zlib::DataError`, zstd-ruby's `RuntimeError` or an internal codec error.
+- `Herringbone::Reader` raises `Herringbone::FormatError` for a footer or page header that is
+  damaged in a way that still decodes, instead of a `NoMethodError`, `KeyError` or `TypeError`.
+- `Herringbone::Thrift::Error` is a `Herringbone::Error`, so `rescue Herringbone::Error` covers
+  footer metadata that cannot be written.
+- The gem ships its type signatures: `sig/herringbone.rbs` for RBS tools such as Steep (now valid
+  under `rbs validate`) and `rbi/herringbone.rbi` for Sorbet.
 - **Breaking:** `Herringbone::SimpleWriter` is removed: use `Herringbone::Writer.open` with
   `headers:` (and `encryption:` instead of `encrypt!(key:)`).
+- **Breaking:** `Herringbone::Inspector::ArrowSchema`, `Herringbone::Redaction::Statement`,
+  `Redaction#statements` and `#drops`, `Schema::Column#converter` and `#encoder` and
+  `Schema::Builder#nodes` are marked `@api private`; nothing replaces them.
 
 ## 0.9.1
 

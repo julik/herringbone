@@ -67,7 +67,7 @@ module Herringbone
     #   to check the stored one)
     # @raise [ArgumentError] when +io+ cannot seek and read, or +keys+ / +time_zone+ /
     #   +decryption+ are invalid
-    # @raise [FormatError] when the footer is missing or cannot be decoded
+    # @raise [FormatError] when the footer is missing, cannot be decoded or holds a schema that makes no sense
     # @raise [DecryptionError] when the footer is encrypted and cannot be decrypted, or its
     #   signature or a column's metadata does not check out
     def initialize(io, keys: :string, time_zone: nil, decryption: nil)
@@ -83,7 +83,7 @@ module Herringbone
       @decryption = decryption.nil? ? nil : DecryptionConfiguration.from(decryption)
       @io = RestrictedReadableIO.wrap(io)
       @file_metadata = read_footer
-      @schema = Schema.from_elements(@file_metadata.schema)
+      @schema = damage_as_format_error("the schema") { Schema.from_elements(@file_metadata.schema) }
     end
 
     # Total number of rows, as stated in the footer (some writers store 0)
@@ -186,23 +186,27 @@ module Herringbone
       plan_rows(filter, from).each do |rg_index, ranges|
         rg = row_groups[rg_index]
         partial = ranges != [[0, rg.num_rows]]
-        cursors = fields.map do |f|
-          f.leaves.map do |col|
-            reader = chunk_reader(rg_index, col, converter: converters[col.index], lazy: true)
-            reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
-            [col.index, ColumnCursor.new(reader)]
+        cursors = damage_as_format_error("row group #{rg_index}") do
+          fields.map do |f|
+            f.leaves.map do |col|
+              reader = chunk_reader(rg_index, col, converter: converters[col.index], lazy: true)
+              reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
+              [col.index, ColumnCursor.new(reader)]
+            end
           end
         end
         ranges.each do |first, stop|
-          cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } }
+          damage_as_format_error("row group #{rg_index}") { cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } } }
           left = stop - first
           while left.positive?
             # Rows still missing from the current batch (pending_rows counts rows in both modes)
             k = pending ? size - pending_rows : size
             raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
             k = left if left < k
-            data = assemblers.each_with_index.map do |asm, j|
-              asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
+            data = damage_as_format_error("row group #{rg_index}") do
+              assemblers.each_with_index.map do |asm, j|
+                asm.read_rows(k, cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
+              end
             end
             left -= k
             kept = k
@@ -429,21 +433,25 @@ module Herringbone
           reader.locations = page_index(rg_index, col)[1]&.page_locations if partial
           reader
         end
-        ruby_cursors = ruby_fields.map { |f| f.leaves.map { |col| [col.index, ColumnCursor.new(open.call(col))] } }
-        fast_cursors = fast.map { |j| NumoCursor.new(open.call(out_fields[j].column), specs[j]) }
+        ruby_cursors, fast_cursors = damage_as_format_error("row group #{rg_index}") do
+          [ruby_fields.map { |f| f.leaves.map { |col| [col.index, ColumnCursor.new(open.call(col))] } },
+            fast.map { |j| NumoCursor.new(open.call(out_fields[j].column), specs[j]) }]
+        end
         ranges.each do |first, stop|
-          ruby_cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } }
-          fast_cursors.each { |cursor| cursor.seek(first) }
+          damage_as_format_error("row group #{rg_index}") do
+            ruby_cursors.each { |cs| cs.each { |_, cursor| cursor.seek(first) } }
+            fast_cursors.each { |cursor| cursor.seek(first) }
+          end
           left = stop - first
           while left.positive?
             k = size - pending_rows
             raise Error, "Internal error: batch needs #{k} rows" unless k.positive? # never loop without progress
             k = step if k > step
             k = left if left < k
-            data = assemblers.each_with_index.map do |asm, j|
-              asm.read_rows(k, ruby_cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] })
+            data, numo = damage_as_format_error("row group #{rg_index}") do
+              [assemblers.each_with_index.map { |asm, j| asm.read_rows(k, ruby_cursors[j].to_h { |idx, cursor| [idx, cursor.take(k)] }) },
+                fast_cursors.map { |cursor| cursor.take(k) }]
             end
-            numo = fast_cursors.map { |cursor| cursor.take(k) }
             left -= k
             kept = k
             if filter
@@ -515,19 +523,43 @@ module Herringbone
       raise ArgumentError, "from: must not be negative" if from.negative?
       offset = 0
       plan = []
-      row_groups.each_with_index do |rg, i|
-        n = rg.num_rows
-        first = from - offset
-        offset += n
-        next if n.zero? || first >= n
-        ranges = [[first.positive? ? first : 0, n]]
-        if filter
-          next unless filter.row_group_may_match?(self, i)
-          ranges = Filter.intersect(ranges, filter.page_ranges(self, i))
+      damage_as_format_error("the list of row groups") do
+        row_groups.each_with_index do |rg, i|
+          n = rg.num_rows
+          first = from - offset
+          offset += n
+          next if n.zero? || first >= n
+          ranges = [[first.positive? ? first : 0, n]]
+          if filter
+            next unless filter.row_group_may_match?(self, i)
+            ranges = Filter.intersect(ranges, filter.page_ranges(self, i))
+          end
+          plan << [i, ranges] unless ranges.empty?
         end
-        plan << [i, ranges] unless ranges.empty?
       end
       plan
+    end
+
+    # What code tripping over damaged metadata raises: a field the Thrift struct lacks is nil, a
+    # count or an offset is negative or far too large, an enum has a value nobody defined
+    DAMAGE_ERRORS = [NoMethodError, TypeError, ArgumentError, IndexError, RangeError, ZeroDivisionError].freeze
+    private_constant :DAMAGE_ERRORS
+
+    # Runs a block that decodes a part of the file, raising FormatError where damaged metadata
+    # makes it trip. Required fields are not checked when the metadata is decoded (that would cost
+    # on every page header), so a missing one shows up as a nil or a nonsensical number later on.
+    # The block must not call into the caller's code, whose errors are not ours to rename.
+    #
+    # @param what [String] the part of the file being read, for the message
+    # @yield decodes that part
+    # @yieldreturn [Object] returned as is
+    # @return [Object] the block's value
+    # @raise [FormatError] when the block raises one of DAMAGE_ERRORS, kept as the +cause+
+    def damage_as_format_error(what)
+      yield
+    rescue *DAMAGE_ERRORS => e
+      raise FormatError, "The file is damaged: #{what} cannot be read, because the metadata describing it has " \
+        "a field missing or holds a value that makes no sense (#{e.class}: #{e.message})"
     end
 
     # Decodes one Thrift struct stored elsewhere in the file (ColumnIndex, OffsetIndex)

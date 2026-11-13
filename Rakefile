@@ -21,21 +21,39 @@ namespace :yard do
   end
 end
 
-desc "Regenerate the type signatures in rbi/ and rbs/ from the YARD docs with sord"
+# Where each format's signatures live: sig/ is where RBS tooling looks in a gem, rbi/ is Sorbet's
+SIGNATURES = {"rbs" => "sig/herringbone.rbs", "rbi" => "rbi/herringbone.rbi"}.freeze
+# Standard libraries the RBS refers to, also listed in sig/manifest.yaml for users of the gem
+RBS_LIBRARIES = %w[date].freeze
+
+desc "Regenerate the type signatures in rbi/ and sig/ from the YARD docs with sord"
 task :types do
   unless Gem.loaded_specs.key?("sord")
     warn "sord is not in the bundle (it needs Ruby 3.3+), skipping types"
     next
   end
-  {"rbi" => "--rbi", "rbs" => "--rbs"}.each do |format, flag|
-    path = "#{format}/herringbone.#{format}"
-    mkdir_p format
-    sh "bundle exec sord gen #{path} #{flag} --skip-constants --no-sord-comments --replace-errors-with-untyped"
+  SIGNATURES.each do |format, path|
+    mkdir_p File.dirname(path)
+    sh "bundle exec sord gen #{path} --#{format} --skip-constants --no-sord-comments --replace-errors-with-untyped"
     # Sord copies constants' source, which breaks on heredocs and would put the version number in
     # the signatures, so they are skipped and VERSION is declared by hand
     version = (format == "rbi") ? "VERSION = T.let(T.unsafe(nil), String)" : "VERSION: String"
     signatures = File.read(path).sub(/^module Herringbone\n/) { "#{_1}  #{version}\n\n" }
+    # Skipping constants loses `S = Thrift::Struct`, which every Format struct inherits from
+    signatures.gsub!(/ < Herringbone::Format::S$/, " < Herringbone::Thrift::Struct")
+    # A bare Struct would be Thrift::Struct inside Thrift, and RBS wants its type argument
+    signatures.gsub!(/ < Struct$/, (format == "rbi") ? " < ::Struct" : " < ::Struct[untyped]")
+    # The optional gems ship no RBS, and their types would not resolve without them anyway
+    signatures.gsub!(/\b(Numo|ActiveRecord)(::\w+)+/, "untyped") if format == "rbs"
     File.write(path, signatures)
+  end
+  Rake::Task[:"types:validate"].invoke
+end
+
+namespace :types do
+  desc "Check that sig/herringbone.rbs is valid RBS"
+  task :validate do
+    sh "bundle exec rbs -I sig #{RBS_LIBRARIES.map { "-r #{_1}" }.join(" ")} validate"
   end
 end
 

@@ -294,7 +294,7 @@ module Herringbone
 
     # A field that does not fit: its dotted path, how each side declares it, why the two do not
     # fit, and for Herringbone.combine the position of the input it was found in
-    class Conflict < Struct
+    class Conflict < ::Struct[untyped]
       # _@return_ — e.g. "address.zip: int32 vs string (no common type)"
       def to_s: () -> String
 
@@ -1163,7 +1163,7 @@ module Herringbone
       # next state (read +nbits+ bits, add them to +base+)
       # 
       # @api private
-      class FSETable < Struct
+      class FSETable < ::Struct[untyped]
         # Returns the value of attribute log
         attr_accessor log: Object
 
@@ -1180,7 +1180,7 @@ module Herringbone
       # A Huffman decoding table indexed by the next +max_bits+ bits of the stream
       # 
       # @api private
-      class HuffmanTable < Struct
+      class HuffmanTable < ::Struct[untyped]
         # Returns the value of attribute max_bits
         attr_accessor max_bits: Object
 
@@ -2869,84 +2869,84 @@ module Herringbone
     end
 
     # Byte and level-histogram statistics for a page or column chunk.
-    class SizeStatistics < Herringbone::Format::S
+    class SizeStatistics < Herringbone::Thrift::Struct
     end
 
     # Min/max and count statistics for a page or column chunk. +max+/+min+ are the deprecated
     # signed-order fields; +max_value+/+min_value+ use the column's sort order.
-    class Statistics < Herringbone::Format::S
+    class Statistics < Herringbone::Thrift::Struct
     end
 
     # STRING logical type.
-    class StringType < Herringbone::Format::S
+    class StringType < Herringbone::Thrift::Struct
     end
 
     # UUID logical type (16-byte FIXED_LEN_BYTE_ARRAY).
-    class UUIDType < Herringbone::Format::S
+    class UUIDType < Herringbone::Thrift::Struct
     end
 
     # MAP logical type.
-    class MapType < Herringbone::Format::S
+    class MapType < Herringbone::Thrift::Struct
     end
 
     # LIST logical type.
-    class ListType < Herringbone::Format::S
+    class ListType < Herringbone::Thrift::Struct
     end
 
     # ENUM logical type.
-    class EnumType < Herringbone::Format::S
+    class EnumType < Herringbone::Thrift::Struct
     end
 
     # DATE logical type.
-    class DateType < Herringbone::Format::S
+    class DateType < Herringbone::Thrift::Struct
     end
 
     # FLOAT16 logical type (2-byte FIXED_LEN_BYTE_ARRAY, little-endian half precision).
-    class Float16Type < Herringbone::Format::S
+    class Float16Type < Herringbone::Thrift::Struct
     end
 
     # UNKNOWN logical type: the column is always null.
-    class NullType < Herringbone::Format::S
+    class NullType < Herringbone::Thrift::Struct
     end
 
     # JSON logical type.
-    class JsonType < Herringbone::Format::S
+    class JsonType < Herringbone::Thrift::Struct
     end
 
     # BSON logical type.
-    class BsonType < Herringbone::Format::S
+    class BsonType < Herringbone::Thrift::Struct
     end
 
     # Millisecond member of the TimeUnit union.
-    class MilliSeconds < Herringbone::Format::S
+    class MilliSeconds < Herringbone::Thrift::Struct
     end
 
     # Microsecond member of the TimeUnit union.
-    class MicroSeconds < Herringbone::Format::S
+    class MicroSeconds < Herringbone::Thrift::Struct
     end
 
     # Nanosecond member of the TimeUnit union.
-    class NanoSeconds < Herringbone::Format::S
+    class NanoSeconds < Herringbone::Thrift::Struct
     end
 
     # ColumnOrder member: values are ordered according to their (logical) type.
-    class TypeDefinedOrder < Herringbone::Format::S
+    class TypeDefinedOrder < Herringbone::Thrift::Struct
     end
 
     # Header of an index page; has no fields in the spec.
-    class IndexPageHeader < Herringbone::Format::S
+    class IndexPageHeader < Herringbone::Thrift::Struct
     end
 
     # VARIANT logical type.
-    class VariantType < Herringbone::Format::S
+    class VariantType < Herringbone::Thrift::Struct
     end
 
     # DECIMAL logical type: unscaled integer value divided by 10 to the power of +scale+.
-    class DecimalType < Herringbone::Format::S
+    class DecimalType < Herringbone::Thrift::Struct
     end
 
     # Union of time units for TIME and TIMESTAMP; exactly one member is set.
-    class TimeUnit < Herringbone::Format::S
+    class TimeUnit < Herringbone::Thrift::Struct
       # _@return_ — a unit with the +millis+ member set
       def self.millis: () -> TimeUnit
 
@@ -2961,20 +2961,20 @@ module Herringbone
     end
 
     # TIMESTAMP logical type.
-    class TimestampType < Herringbone::Format::S
+    class TimestampType < Herringbone::Thrift::Struct
     end
 
     # TIME logical type.
-    class TimeType < Herringbone::Format::S
+    class TimeType < Herringbone::Thrift::Struct
     end
 
     # INTEGER logical type (bit width 8, 16, 32 or 64; signed or unsigned).
-    class IntType < Herringbone::Format::S
+    class IntType < Herringbone::Thrift::Struct
     end
 
     # Union of logical type annotations; exactly one member is set. Field id 9 is reserved
     # (for INTERVAL) in parquet.thrift.
-    class LogicalType < Herringbone::Format::S
+    class LogicalType < Herringbone::Thrift::Struct
       # Returns [kind_symbol, payload] for whichever union member is set
       # 
       # _@return_ — member name and its struct, or nil when
@@ -2984,81 +2984,81 @@ module Herringbone
 
     # One node of the schema, flattened depth-first into +FileMetaData#schema+. Groups carry
     # +num_children+; leaves carry the physical +type+.
-    class SchemaElement < Herringbone::Format::S
+    class SchemaElement < Herringbone::Thrift::Struct
     end
 
     # Header of a v1 data page: levels and values share one compressed block.
-    class DataPageHeader < Herringbone::Format::S
+    class DataPageHeader < Herringbone::Thrift::Struct
     end
 
     # Header of a dictionary page.
-    class DictionaryPageHeader < Herringbone::Format::S
+    class DictionaryPageHeader < Herringbone::Thrift::Struct
     end
 
     # Header of a v2 data page: levels are stored uncompressed before the (optionally
     # compressed) values, with their byte lengths given here.
-    class DataPageHeaderV2 < Herringbone::Format::S
+    class DataPageHeaderV2 < Herringbone::Thrift::Struct
     end
 
     # Header preceding every page; +type+ (a PageType) says which sub-header is set.
-    class PageHeader < Herringbone::Format::S
+    class PageHeader < Herringbone::Thrift::Struct
     end
 
     # Application-defined key/value metadata entry.
-    class KeyValue < Herringbone::Format::S
+    class KeyValue < Herringbone::Thrift::Struct
     end
 
     # Sort order of one column within a row group.
-    class SortingColumn < Herringbone::Format::S
+    class SortingColumn < Herringbone::Thrift::Struct
     end
 
     # Number of pages of a given type and encoding in a column chunk.
-    class PageEncodingStats < Herringbone::Format::S
+    class PageEncodingStats < Herringbone::Thrift::Struct
     end
 
     # Metadata of a column chunk: where its pages are, how they are encoded and compressed.
-    class ColumnMetaData < Herringbone::Format::S
+    class ColumnMetaData < Herringbone::Thrift::Struct
     end
 
     # Algorithm settings shared by both algorithms: the AAD prefix (unless readers must supply
     # it) and the file's unique id, which together make the file's part of every module's AAD.
-    class AesGcmV1 < Herringbone::Format::S
+    class AesGcmV1 < Herringbone::Thrift::Struct
     end
 
     # AES_GCM_CTR_V1: like AesGcmV1, but pages are encrypted with AES-CTR, without a tag.
-    class AesGcmCtrV1 < Herringbone::Format::S
+    class AesGcmCtrV1 < Herringbone::Thrift::Struct
     end
 
     # Union of encryption algorithms; exactly one member is set.
-    class EncryptionAlgorithm < Herringbone::Format::S
+    class EncryptionAlgorithm < Herringbone::Thrift::Struct
       # _@return_ — whichever member is set
       def settings: () -> (AesGcmV1 | AesGcmCtrV1)?
     end
 
     # ColumnCryptoMetaData member: the column is encrypted with the footer key.
-    class EncryptionWithFooterKey < Herringbone::Format::S
+    class EncryptionWithFooterKey < Herringbone::Thrift::Struct
     end
 
     # ColumnCryptoMetaData member: the column is encrypted with a key of its own.
-    class EncryptionWithColumnKey < Herringbone::Format::S
+    class EncryptionWithColumnKey < Herringbone::Thrift::Struct
     end
 
     # Union saying which key an encrypted column uses; exactly one member is set.
-    class ColumnCryptoMetaData < Herringbone::Format::S
+    class ColumnCryptoMetaData < Herringbone::Thrift::Struct
     end
 
     # Stored in the clear before an encrypted footer (files with the PARE magic).
-    class FileCryptoMetaData < Herringbone::Format::S
+    class FileCryptoMetaData < Herringbone::Thrift::Struct
     end
 
     # One column of a row group, plus the locations of its page index. In encrypted columns
     # +crypto_metadata+ names the key, and +encrypted_column_metadata+ holds the ColumnMetaData
     # when it is encrypted on its own.
-    class ColumnChunk < Herringbone::Format::S
+    class ColumnChunk < Herringbone::Thrift::Struct
     end
 
     # A horizontal slice of the file, holding one ColumnChunk per leaf column.
-    class RowGroup < Herringbone::Format::S
+    class RowGroup < Herringbone::Thrift::Struct
     end
 
     # Ordering of the per-page min/max values in a ColumnIndex (+BoundaryOrder+ enum).
@@ -3066,52 +3066,52 @@ module Herringbone
     end
 
     # Location of one data page within the file.
-    class PageLocation < Herringbone::Format::S
+    class PageLocation < Herringbone::Thrift::Struct
     end
 
     # Offset index of a column chunk: the location of each of its data pages.
-    class OffsetIndex < Herringbone::Format::S
+    class OffsetIndex < Herringbone::Thrift::Struct
     end
 
     # Column index of a column chunk: per-page min/max values and null information.
-    class ColumnIndex < Herringbone::Format::S
+    class ColumnIndex < Herringbone::Thrift::Struct
     end
 
     # Union describing how min/max statistics of a column are ordered.
-    class ColumnOrder < Herringbone::Format::S
+    class ColumnOrder < Herringbone::Thrift::Struct
     end
 
     # The file footer: schema, row groups and file-level metadata. The encryption fields are
     # only set in encrypted files with a plaintext footer.
-    class FileMetaData < Herringbone::Format::S
+    class FileMetaData < Herringbone::Thrift::Struct
     end
 
     # Split block bloom filter algorithm.
-    class SplitBlockAlgorithm < Herringbone::Format::S
+    class SplitBlockAlgorithm < Herringbone::Thrift::Struct
     end
 
     # XXH64 hash with seed 0.
-    class XxHash < Herringbone::Format::S
+    class XxHash < Herringbone::Thrift::Struct
     end
 
     # Bloom filter bitset stored uncompressed.
-    class BloomFilterUncompressed < Herringbone::Format::S
+    class BloomFilterUncompressed < Herringbone::Thrift::Struct
     end
 
     # Union of bloom filter algorithms.
-    class BloomFilterAlgorithm < Herringbone::Format::S
+    class BloomFilterAlgorithm < Herringbone::Thrift::Struct
     end
 
     # Union of hash functions used to feed the bloom filter.
-    class BloomFilterHash < Herringbone::Format::S
+    class BloomFilterHash < Herringbone::Thrift::Struct
     end
 
     # Union of bloom filter compressions.
-    class BloomFilterCompression < Herringbone::Format::S
+    class BloomFilterCompression < Herringbone::Thrift::Struct
     end
 
     # Header preceding the bitset of a column chunk's bloom filter.
-    class BloomFilterHeader < Herringbone::Format::S
+    class BloomFilterHeader < Herringbone::Thrift::Struct
     end
   end
 
@@ -3209,7 +3209,7 @@ module Herringbone
                       ?where: ::Hash[(String | Symbol), Object]?,
                       ?from: Integer?,
                       ?limit: Integer?
-                    ) ?{ ((::Array[::Hash[untyped, untyped]] | ::Hash[(String | Symbol), ::Array[untyped]] | ::Hash[(String | Symbol), Numo::NArray]) batch) -> void } -> (Reader | ::Enumerator[untyped])
+                    ) ?{ ((::Array[::Hash[untyped, untyped]] | ::Hash[(String | Symbol), ::Array[untyped]] | ::Hash[(String | Symbol), untyped]) batch) -> void } -> (Reader | ::Enumerator[untyped])
 
     # What a read with +where:+ / +from:+ would touch, without reading any data: an Array of
     # { row_group:, rows:, ranges: [[first_row, end_row), ...] } for the row groups that are
@@ -3263,7 +3263,7 @@ module Herringbone
                 ?where: ::Hash[(String | Symbol), Object]?,
                 ?from: Integer?,
                 ?limit: Integer?
-              ) -> (::Array[::Hash[untyped, untyped]] | ::Hash[(String | Symbol), ::Array[untyped]] | ::Hash[(String | Symbol), Numo::NArray])
+              ) -> (::Array[::Hash[untyped, untyped]] | ::Hash[(String | Symbol), ::Array[untyped]] | ::Hash[(String | Symbol), untyped])
 
     # Internal (used by reads with where:/from:): [ColumnIndex or nil, OffsetIndex or nil] of a
     # leaf column in a row group. Cached per chunk; a missing or damaged index reads as nil.
@@ -3332,7 +3332,7 @@ module Herringbone
                            ::Hash[(String | Symbol), Object]? where,
                            Integer? from,
                            Integer? limit
-                         ) ?{ (::Hash[(String | Symbol), Numo::NArray] batch) -> void } -> void
+                         ) ?{ (::Hash[(String | Symbol), untyped] batch) -> void } -> void
 
     # Checks the columns:, where: and from: options of a read that returns no rows (limit: 0),
     # so it raises for bad options like any other read
@@ -3351,7 +3351,7 @@ module Herringbone
     # _@param_ `columns` — top-level fields to return
     # 
     # _@return_ — field name => zero-length Numo array
-    def numo_empty: ((::Array[(String | Symbol)] | String | Symbol)? columns) -> ::Hash[(String | Symbol), Numo::NArray]
+    def numo_empty: ((::Array[(String | Symbol)] | String | Symbol)? columns) -> ::Hash[(String | Symbol), untyped]
 
     # [[row_group_index, [[first_row, end_row), ...]], ...] to read, after ruling out row groups
     # (statistics, bloom filters) and pages (page index), and skipping the first +from+ rows
@@ -3363,6 +3363,16 @@ module Herringbone
     # _@return_ — row group index and its
     # half-open row ranges, for row groups that have rows left to read
     def plan_rows: (Filter? filter, Integer? from) -> ::Array[[Integer, ::Array[[Integer, Integer]]]]
+
+    # Runs a block that decodes a part of the file, raising FormatError where damaged metadata
+    # makes it trip. Required fields are not checked when the metadata is decoded (that would cost
+    # on every page header), so a missing one shows up as a nil or a nonsensical number later on.
+    # The block must not call into the caller's code, whose errors are not ours to rename.
+    # 
+    # _@param_ `what` — the part of the file being read, for the message
+    # 
+    # _@return_ — the block's value
+    def damage_as_format_error: (String what) ?{ () -> Object } -> Object
 
     # Decodes one Thrift struct stored elsewhere in the file (ColumnIndex, OffsetIndex)
     # 
@@ -3545,12 +3555,12 @@ module Herringbone
     # "numo/narray" (from numo-narray-alt or numo-narray) is required on first use.
     # 
     # Flat INT32 / INT64 / FLOAT / DOUBLE / BOOLEAN columns are decoded without a Ruby object
-    # per value: PLAIN and BYTE_STREAM_SPLIT pages go through Numo::X.from_binary, dictionary
+    # per value: PLAIN and BYTE_STREAM_SPLIT pages go through untyped.from_binary, dictionary
     # pages through dictionary[indices], and definition levels become a validity mask. Other
     # columns are read like as: :columns and converted per batch.
     # 
     # Type mapping (following Polars' Series#to_numo and Rover):
-    #   INT32 / INT64 (also TIME)       Numo::Int32 / Int64
+    #   INT32 / INT64 (also TIME)       untyped / Int64
     #   INT(8/16, signed)               Int8 / Int16
     #   INT(8/16/32/64, unsigned)       UInt8 / UInt16 / UInt32 / UInt64
     #   FLOAT / FLOAT16 / DOUBLE        SFloat / SFloat / DFloat, NaN for nulls
@@ -3609,7 +3619,7 @@ module Herringbone
       def self.leaf_classes: (Schema::Column column) -> ([Class, Class] | [Class, NilClass])?
 
       # The result for a field read through Numo cursors: +parts+ are [values, validity] pairs
-      # (validity is a Numo::Bit, or nil when every value is present)
+      # (validity is a untyped, or nil when every value is present)
       # Booleans with nulls become an RObject of true/false/nil, other types with nulls a float
       # array with NaN in the null slots.
       # 
@@ -3618,10 +3628,10 @@ module Herringbone
       # _@param_ `parts` — one [values, validity] pair per batch
       # 
       # _@return_ — the whole column
-      def finish_fixed: (Spec spec, ::Array[[Numo::NArray, Numo::Bit]] parts) -> Numo::NArray
+      def finish_fixed: (Spec spec, ::Array[[untyped, untyped]] parts) -> untyped
 
       # The result for a field read through Numo cursors: +parts+ are [values, validity] pairs
-      # (validity is a Numo::Bit, or nil when every value is present)
+      # (validity is a untyped, or nil when every value is present)
       # Booleans with nulls become an RObject of true/false/nil, other types with nulls a float
       # array with NaN in the null slots.
       # 
@@ -3630,7 +3640,7 @@ module Herringbone
       # _@param_ `parts` — one [values, validity] pair per batch
       # 
       # _@return_ — the whole column
-      def self.finish_fixed: (Spec spec, ::Array[[Numo::NArray, Numo::Bit]] parts) -> Numo::NArray
+      def self.finish_fixed: (Spec spec, ::Array[[untyped, untyped]] parts) -> untyped
 
       # The result for a field read as Ruby values (+parts+ are Arrays of values)
       # 
@@ -3639,7 +3649,7 @@ module Herringbone
       # _@param_ `parts` — the field's values, one Array per batch
       # 
       # _@return_ — the whole column
-      def finish_values: (Spec spec, ::Array[::Array[untyped]] parts) -> Numo::NArray
+      def finish_values: (Spec spec, ::Array[::Array[untyped]] parts) -> untyped
 
       # The result for a field read as Ruby values (+parts+ are Arrays of values)
       # 
@@ -3648,7 +3658,7 @@ module Herringbone
       # _@param_ `parts` — the field's values, one Array per batch
       # 
       # _@return_ — the whole column
-      def self.finish_values: (Spec spec, ::Array[::Array[untyped]] parts) -> Numo::NArray
+      def self.finish_values: (Spec spec, ::Array[::Array[untyped]] parts) -> untyped
 
       # A numeric / boolean leaf's Ruby values as a Numo array
       # 
@@ -3657,7 +3667,7 @@ module Herringbone
       # _@param_ `values` — the column's values, nil for nulls
       # 
       # _@return_ — +klass+ without nulls; SFloat/DFloat with NaN (or RObject for booleans) with nulls
-      def from_values: (Class klass, ::Array[(Numeric | bool)?] values) -> Numo::NArray
+      def from_values: (Class klass, ::Array[(Numeric | bool)?] values) -> untyped
 
       # A numeric / boolean leaf's Ruby values as a Numo array
       # 
@@ -3666,7 +3676,7 @@ module Herringbone
       # _@param_ `values` — the column's values, nil for nulls
       # 
       # _@return_ — +klass+ without nulls; SFloat/DFloat with NaN (or RObject for booleans) with nulls
-      def self.from_values: (Class klass, ::Array[(Numeric | bool)?] values) -> Numo::NArray
+      def self.from_values: (Class klass, ::Array[(Numeric | bool)?] values) -> untyped
 
       # Lists of numbers: 2-D [rows, length] when every row is a list of the same, non-zero
       # length without nulls; otherwise an RObject of the Arrays
@@ -3675,8 +3685,8 @@ module Herringbone
       # 
       # _@param_ `values` — one list (or nil) per row
       # 
-      # _@return_ — a 2-D +klass+ array or a 1-D Numo::RObject
-      def list_array: (Class klass, ::Array[::Array[Numeric?]?] values) -> Numo::NArray
+      # _@return_ — a 2-D +klass+ array or a 1-D untyped
+      def list_array: (Class klass, ::Array[::Array[Numeric?]?] values) -> untyped
 
       # Lists of numbers: 2-D [rows, length] when every row is a list of the same, non-zero
       # length without nulls; otherwise an RObject of the Arrays
@@ -3685,10 +3695,10 @@ module Herringbone
       # 
       # _@param_ `values` — one list (or nil) per row
       # 
-      # _@return_ — a 2-D +klass+ array or a 1-D Numo::RObject
-      def self.list_array: (Class klass, ::Array[::Array[Numeric?]?] values) -> Numo::NArray
+      # _@return_ — a 2-D +klass+ array or a 1-D untyped
+      def self.list_array: (Class klass, ::Array[::Array[Numeric?]?] values) -> untyped
 
-      # A 1-D Numo::RObject holding +values+ as they are. Only list columns hold Arrays, which
+      # A 1-D untyped holding +values+ as they are. Only list columns hold Arrays, which
       # #store and .cast would turn into more dimensions.
       # 
       # _@param_ `values` — one Ruby value per row
@@ -3696,9 +3706,9 @@ module Herringbone
       # _@param_ `arrays` — whether +values+ may contain Arrays that must stay single elements
       # 
       # _@return_ — 1-D array of +values+
-      def robject: (::Array[untyped] values, ?arrays: bool) -> Numo::RObject
+      def robject: (::Array[untyped] values, ?arrays: bool) -> untyped
 
-      # A 1-D Numo::RObject holding +values+ as they are. Only list columns hold Arrays, which
+      # A 1-D untyped holding +values+ as they are. Only list columns hold Arrays, which
       # #store and .cast would turn into more dimensions.
       # 
       # _@param_ `values` — one Ruby value per row
@@ -3706,7 +3716,7 @@ module Herringbone
       # _@param_ `arrays` — whether +values+ may contain Arrays that must stay single elements
       # 
       # _@return_ — 1-D array of +values+
-      def self.robject: (::Array[untyped] values, ?arrays: bool) -> Numo::RObject
+      def self.robject: (::Array[untyped] values, ?arrays: bool) -> untyped
 
       # Numo vector of 1 << j for each bit j of +width+, memoized per Ractor; dotting a bit matrix
       # with it turns rows of bits into integers. Int64 above 30 bits so the sums cannot overflow.
@@ -3714,7 +3724,7 @@ module Herringbone
       # _@param_ `width` — bits per value
       # 
       # _@return_ — the powers of two
-      def powers: (Integer width) -> (Numo::Int32 | Numo::Int64)
+      def powers: (Integer width) -> (untyped | untyped)
 
       # Numo vector of 1 << j for each bit j of +width+, memoized per Ractor; dotting a bit matrix
       # with it turns rows of bits into integers. Int64 above 30 bits so the sums cannot overflow.
@@ -3722,7 +3732,7 @@ module Herringbone
       # _@param_ `width` — bits per value
       # 
       # _@return_ — the powers of two
-      def self.powers: (Integer width) -> (Numo::Int32 | Numo::Int64)
+      def self.powers: (Integer width) -> (untyped | untyped)
 
       # +count+ bit-packed values of +width+ bits (LSB first) from +data+ at +pos+ as a Numo
       # array, without a Ruby object per value
@@ -3741,7 +3751,7 @@ module Herringbone
                          Integer pos,
                          Integer count,
                          Integer width
-                       ) -> Numo::NArray
+                       ) -> untyped
 
       # +count+ bit-packed values of +width+ bits (LSB first) from +data+ at +pos+ as a Numo
       # array, without a Ruby object per value
@@ -3760,7 +3770,7 @@ module Herringbone
                               Integer pos,
                               Integer count,
                               Integer width
-                            ) -> Numo::NArray
+                            ) -> untyped
 
       # How a top-level field becomes a Numo array.
       #   kind:      :fixed (a numeric or boolean leaf), :list (list of numbers) or :object
@@ -3768,7 +3778,7 @@ module Herringbone
       #   bin_klass: for :fixed leaves whose pages can be decoded straight into Numo, the class
       #              of the decoded values (same width as the physical type), else nil
       #   arrays:    whether values may be Arrays (list fields)
-      class Spec < Struct
+      class Spec < ::Struct[untyped]
         # _@return_ — whether pages can be decoded straight into Numo (via NumoCursor)
         def fast?: () -> bool
 
@@ -3791,7 +3801,7 @@ module Herringbone
 
     # Hands out the next +k+ rows of a flat (non-repeated) numeric or boolean column as a
     # [Numo values, validity] pair: values has one slot per row (zero where the row is null),
-    # validity is a Numo::Bit or nil when all rows are present.
+    # validity is a untyped or nil when all rows are present.
     # 
     # @api private
     class NumoCursor
@@ -3811,7 +3821,7 @@ module Herringbone
       # 
       # _@return_ — values (zero in null slots)
       # and validity, nil when all +k+ rows are present
-      def take: (Integer k) -> ([Numo::NArray, Numo::Bit] | [Numo::NArray, NilClass])
+      def take: (Integer k) -> ([untyped, untyped] | [untyped, NilClass])
 
       # Decodes the current page's next +n+ non-null values into a +@klass+ array, by the cheapest
       # route the value decoder supports: raw bytes, dictionary indices, its own Numo decoding, or
@@ -3820,12 +3830,12 @@ module Herringbone
       # _@param_ `n` — number of non-null values
       # 
       # _@return_ — +n+ values, never a view into a cached dictionary
-      def values: (Integer n) -> Numo::NArray
+      def values: (Integer n) -> untyped
 
       # _@param_ `values` — decoded values, without nulls
       # 
       # _@return_ — +values+ as a +@klass+ array (booleans as 0/1 bits)
-      def cast: (::Array[(Numeric | bool)] values) -> Numo::NArray
+      def cast: (::Array[(Numeric | bool)] values) -> untyped
 
       # Advances to the chunk's next data page.
       def load_page!: () -> void
@@ -4029,7 +4039,7 @@ module Herringbone
       #     (empty for a top-level column)
       # @!attribute [rw] test
       #   @return [Object] the condition, with Symbols turned into Strings
-      class Condition < Struct
+      class Condition < ::Struct[untyped]
         # _@return_ — the key as given (dotted path of a leaf column)
         attr_accessor name: String
 
@@ -4099,7 +4109,7 @@ module Herringbone
         def value_decoder: () -> Object
 
         # Which of the next +n+ entries are defined (definition level == +max_def+), as a
-        # Numo::Bit, or nil when the column has no definition levels. For columns without
+        # untyped, or nil when the column has no definition levels. For columns without
         # repetition levels; used by read(as: :numo).
         # 
         # _@param_ `n` — entries wanted; capped at #remaining
@@ -4107,7 +4117,7 @@ module Herringbone
         # _@param_ `max_def` — the column's max definition level
         # 
         # _@return_ — 1 where the entry holds a value
-        def read_validity_numo: (Integer n, Integer max_def) -> Numo::Bit?
+        def read_validity_numo: (Integer n, Integer max_def) -> untyped?
 
         # _@return_ — entries (levels) of the page not read yet
         attr_reader remaining: Integer
@@ -4150,14 +4160,14 @@ module Herringbone
         # _@return_ — the next +n+ values
         def read: (Integer n) -> ::Array[Integer]
 
-        # For a bit width of 1: the next +n+ values as a Numo::Bit (read(as: :numo)). Runs are
+        # For a bit width of 1: the next +n+ values as a untyped (read(as: :numo)). Runs are
         # collected as "0"/"1" characters, which costs less per run than Numo calls do (levels of
         # columns with scattered nulls come in many short runs).
         # 
         # _@param_ `n` — number of values to decode
         # 
         # _@return_ — the next +n+ values
-        def read_flags: (Integer n) -> Numo::Bit
+        def read_flags: (Integer n) -> untyped
 
         # The next +n+ values as a Numo array of +klass+ (read(as: :numo)): RLE runs are
         # filled and bit-packed runs unpacked by Numo, with no Ruby object per value. Leaves the
@@ -4165,10 +4175,10 @@ module Herringbone
         # 
         # _@param_ `n` — number of values to decode
         # 
-        # _@param_ `klass` — Numo integer class to fill, e.g. Numo::UInt8 or Numo::Int32
+        # _@param_ `klass` — Numo integer class to fill, e.g. untyped or untyped
         # 
         # _@return_ — the next +n+ values as a +klass+ array
-        def read_numo: (Integer n, Class klass) -> Numo::NArray
+        def read_numo: (Integer n, Class klass) -> untyped
 
         # Reads run headers until a non-empty run starts: an RLE run (count and one value) or
         # a bit-packed run (groups of 8 values)
@@ -4268,12 +4278,12 @@ module Herringbone
         # _@return_ — the next +n+ values
         def read: (Integer n) -> ::Array[bool]
 
-        # The next +n+ values as a Numo::Bit (read(as: :numo))
+        # The next +n+ values as a untyped (read(as: :numo))
         # 
         # _@param_ `n` — number of values to decode
         # 
         # _@return_ — 1 for true
-        def read_numo: (Integer n) -> Numo::Bit
+        def read_numo: (Integer n) -> untyped
       end
 
       # RLE_DICTIONARY / PLAIN_DICTIONARY indices mapped to the (already converted) dictionary
@@ -4302,12 +4312,12 @@ module Herringbone
         # _@return_ — the dictionary values at the next +n+ indices
         def read: (Integer n) -> ::Array[untyped]
 
-        # The next +n+ indices as a Numo::Int32, bounds-checked (read(as: :numo))
+        # The next +n+ indices as a untyped, bounds-checked (read(as: :numo))
         # 
         # _@param_ `n` — number of indices to decode
         # 
         # _@return_ — indices into #dictionary
-        def read_indices_numo: (Integer n) -> Numo::Int32
+        def read_indices_numo: (Integer n) -> untyped
 
         # _@return_ — the chunk's dictionary values (converted, shared by all its pages)
         attr_reader dictionary: ::Array[untyped]
@@ -4325,12 +4335,12 @@ module Herringbone
         # _@return_ — the next +n+ values
         def read: (Integer n) -> ::Array[bool]
 
-        # The next +n+ values as a Numo::Bit (read(as: :numo))
+        # The next +n+ values as a untyped (read(as: :numo))
         # 
         # _@param_ `n` — number of values to decode
         # 
         # _@return_ — 1 for true
-        def read_numo: (Integer n) -> Numo::Bit
+        def read_numo: (Integer n) -> untyped
       end
 
       # DELTA_LENGTH_BYTE_ARRAY: all lengths first (Integers), then the bytes sliced as needed
@@ -5811,7 +5821,7 @@ module Herringbone
       # _@return_ — the added schema node
       def add_column: (
                         Builder builder,
-                        ActiveRecord::ConnectionAdapters::Column column,
+                        untyped column,
                         bool nullable,
                         bool primary
                       ) -> Node
@@ -5830,7 +5840,7 @@ module Herringbone
       # _@return_ — the added schema node
       def self.add_column: (
                              Builder builder,
-                             ActiveRecord::ConnectionAdapters::Column column,
+                             untyped column,
                              bool nullable,
                              bool primary
                            ) -> Node
@@ -5847,7 +5857,7 @@ module Herringbone
       # 
       # _@return_ — DSL type and its options for Builder#column
       def scalar_type: (
-                         ActiveRecord::ConnectionAdapters::Column column,
+                         untyped column,
                          Symbol? _type,
                          String sql_type,
                          bool primary
@@ -5865,7 +5875,7 @@ module Herringbone
       # 
       # _@return_ — DSL type and its options for Builder#column
       def self.scalar_type: (
-                              ActiveRecord::ConnectionAdapters::Column column,
+                              untyped column,
                               Symbol? _type,
                               String sql_type,
                               bool primary
@@ -5881,7 +5891,7 @@ module Herringbone
       # _@param_ `primary` — true forces int64, since row ids can outgrow the declared width
       # 
       # _@return_ — one of +:int8+ .. +:int64+ or +:uint8+ .. +:uint64+
-      def integer_type: (ActiveRecord::ConnectionAdapters::Column column, String sql_type, bool primary) -> Symbol
+      def integer_type: (untyped column, String sql_type, bool primary) -> Symbol
 
       # Named SQL types (smallint, bigint, ...) decide the width; a generic "integer"/"int"
       # uses the column limit in bytes, since e.g. SQLite reports `t.integer limit: 2` as "integer(2)".
@@ -5893,7 +5903,7 @@ module Herringbone
       # _@param_ `primary` — true forces int64, since row ids can outgrow the declared width
       # 
       # _@return_ — one of +:int8+ .. +:int64+ or +:uint8+ .. +:uint64+
-      def self.integer_type: (ActiveRecord::ConnectionAdapters::Column column, String sql_type, bool primary) -> Symbol
+      def self.integer_type: (untyped column, String sql_type, bool primary) -> Symbol
     end
   end
 
@@ -5922,8 +5932,11 @@ module Herringbone
     # _@return_ — true when the value can be decoded as +type+, false when it must be skipped
     def self.compatible?: (Integer wire, (Symbol | ::Array[untyped] | Class) _type) -> bool
 
-    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode
-    class Error < StandardError
+    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode. Readers
+    # turn it into FormatError; from a writer it reaches the caller as it is.
+    # 
+    # @api public
+    class Error < Herringbone::Error
     end
 
     # Decodes compact protocol data from a String, keeping a byte position into it
@@ -6081,7 +6094,7 @@ module Herringbone
     #   @return [Symbol, Array, Class] declared type (see WIRE_TYPES)
     # @!attribute [rw] ivar
     #   @return [Symbol] instance variable holding the value (+:@name+)
-    class Field < Struct
+    class Field < ::Struct[untyped]
       # _@return_ — Thrift field id
       attr_accessor id: Integer
 
@@ -6754,7 +6767,7 @@ module Herringbone
     # @!attribute bloom_filter
     #   @return [String, nil] the chunk's encoded bloom filter, header included
     # @api private
-    class CopiedChunk < Struct
+    class CopiedChunk < ::Struct[untyped]
       # _@return_ — the chunk's footer entry in the source file
       attr_accessor chunk: Format::ColumnChunk
 
@@ -6784,7 +6797,7 @@ module Herringbone
     # @!attribute values
     #   @return [Array, ByteValues] non-null physical values
     # @api private
-    class ColumnBuffer < Struct
+    class ColumnBuffer < ::Struct[untyped]
       # _@return_ — definition levels (unpacked to an Array while a chunk is written)
       attr_accessor defs: (String | ::Array[Integer])
 
@@ -6810,7 +6823,7 @@ module Herringbone
     # @!attribute range
     #   @return [Array(Object, Object), nil] [min, max] physical values, nil when there are none
     # @api private
-    class PageInfo < Struct
+    class PageInfo < ::Struct[untyped]
       # _@return_ — file offset of the page header
       attr_accessor offset: Integer
 
@@ -7418,7 +7431,7 @@ module Herringbone
     # @!attribute inputs
     #   @return [Array<InputReport>] how each input was fitted to the output schema, in input order
     # @api public
-    class Report < Struct
+    class Report < ::Struct[untyped]
       # _@return_ — rows written
       attr_accessor rows: Integer
 
@@ -7441,7 +7454,7 @@ module Herringbone
     # @!attribute dropped
     #   @return [Array<String>] fields of the input the output does not have (+schema: :intersect+)
     # @api public
-    class InputReport < Struct
+    class InputReport < ::Struct[untyped]
       # _@return_ — "input 2", with the IO's path when it has one: "input 2 (2026-03.parquet)"
       attr_accessor name: String
 
@@ -7458,7 +7471,7 @@ module Herringbone
     # One input file: its Reader (with the combiner's own options), its ChunkCopier, output column
     # index => the input's column holding its values (output columns the input lacks are not in
     # it), and its InputReport
-    class Input < Struct
+    class Input < ::Struct[untyped]
       # Returns the value of attribute reader
       attr_accessor reader: Object
 
@@ -7955,7 +7968,7 @@ module Herringbone
     # +min+/+max+ are converted with the column's type converter (hex Strings when they could
     # not be decoded); +min_exact+/+max_exact+ mirror is_min_value_exact/is_max_value_exact;
     # +source+ says which Thrift fields they came from and +caveat+ why they may be unreliable.
-    class Stats < Struct
+    class Stats < ::Struct[untyped]
       # _@return_ — the set members, JSON-safe (see Inspector.jsonable)
       def to_h: () -> ::Hash[Symbol, Object]
 
@@ -7990,7 +8003,7 @@ module Herringbone
     # +index+ is the page's position in the chunk, +offset+ where its header starts; +type+ is
     # a PageType name such as :DATA_PAGE (the raw Integer when unknown). +first_row_index+ and,
     # for v1 pages of repeated columns, +num_rows+ are only known from the OffsetIndex.
-    class PageInfo < Struct
+    class PageInfo < ::Struct[untyped]
       # _@return_ — bytes taken by the page in the file: header plus compressed body
       def total_size: () -> Integer
 
@@ -8080,7 +8093,7 @@ module Herringbone
     end
 
     # ColumnIndex of one column chunk, with min/max decoded per page (nil for all-null pages)
-    class ColumnIndexInfo < Struct
+    class ColumnIndexInfo < ::Struct[untyped]
       # _@return_ — the set members, JSON-safe (see Inspector.jsonable)
       def to_h: () -> ::Hash[Symbol, Object]
 
@@ -8114,7 +8127,7 @@ module Herringbone
 
     # One OffsetIndex entry: where a data page starts, its size (header included) and the index
     # of its first row within the row group
-    class PageLocation < Struct
+    class PageLocation < ::Struct[untyped]
       # Returns the value of attribute offset
       attr_accessor offset: Object
 
@@ -8127,7 +8140,7 @@ module Herringbone
 
     # OffsetIndex of one column chunk: its own +offset+/+length+ in the file, the PageLocations
     # of its data pages and the optional per-page unencoded BYTE_ARRAY sizes
-    class OffsetIndexInfo < Struct
+    class OffsetIndexInfo < ::Struct[untyped]
       # _@return_ — the set members, with +:page_locations+ as Hashes
       def to_h: () -> ::Hash[Symbol, Object]
 
@@ -8417,6 +8430,8 @@ module Herringbone
     # 
     # Fields carry :name, :type, :nullable and, when present, :children, :dictionary
     # ({ index_type:, ordered:, id: }), :extension (ARROW:extension:name) and :metadata.
+    # 
+    # @api private
     module ArrowSchema
       # Decodes the base64 ARROW:schema value; raises ArrowSchema::Error when it can't
       # 
@@ -8880,7 +8895,9 @@ module Herringbone
     #   @return [Hash{String => Object}] column => value, for a replace without a block
     # @!attribute block
     #   @return [Proc, nil] computes the replacement values
-    class Statement < Struct
+    # 
+    # @api private
+    class Statement < ::Struct[untyped]
       # _@return_ — +:delete+ or +:replace+
       attr_accessor kind: Symbol
 
@@ -8907,7 +8924,7 @@ module Herringbone
     #   @return [Integer] rows kept where at least one replace produced a different value
     # @!attribute row_groups
     #   @return [Hash{Symbol => Integer}] +{copied:, rewritten:}+ row group counts
-    class Report < Struct
+    class Report < ::Struct[untyped]
       # _@return_ — rows decoded (rows of row groups that were copied unread are not counted)
       attr_accessor rows_read: Integer
 
@@ -9169,7 +9186,7 @@ module Herringbone
       #   @return [Schema::Field] the replaced field
       # @!attribute column
       #   @return [Schema::Column, nil] the leaf column, nil when the field is nested
-      class Target < Struct
+      class Target < ::Struct[untyped]
         # _@return_ — the column as named in the statement
         attr_accessor name: String
 
@@ -9448,7 +9465,7 @@ module Herringbone
       #   @return [String, nil] stored with the column (column keys only)
       # @!attribute footer
       #   @return [Boolean] whether the key is the footer key
-      class ColumnKey < Struct
+      class ColumnKey < ::Struct[untyped]
         # _@return_ — its key
         attr_accessor cipher: Cipher
 
@@ -10433,7 +10450,7 @@ module Herringbone
     #   @return [String] 16, 24 or 32 bytes, binary
     # @!attribute [r] key_metadata
     #   @return [String, nil] stored with the column, for readers to find the key by
-    class ColumnKey < Struct
+    class ColumnKey < ::Struct[untyped]
       # _@return_ — the key metadata, without the key
       def inspect: () -> String
 
