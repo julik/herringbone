@@ -14,6 +14,9 @@ group :development do
   gem "yard-lint", "1.12.0" if RUBY_VERSION >= "3.3"
   # Generates rbi/ and rbs/ from the YARD docs (`rake types`)
   gem "sord", "7.1.0" if RUBY_VERSION >= "3.3"
+  # sord reads the rbi/ of every gem in the bundle, and its parser (parlour 9.1.2) fails on the
+  # files prism 2 ships ("node after a sig must be a method definition")
+  gem "prism", "< 2" if RUBY_VERSION >= "3.3"
 end
 
 group :test do
