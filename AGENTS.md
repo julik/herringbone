@@ -23,12 +23,14 @@ class from another file (as `reader/bloom_filters.rb` does) is required by that 
 
 ## Type signatures
 
-`rbi/herringbone.rbi` and `rbs/herringbone.rbs` are generated from the YARD docs by
+`rbi/herringbone.rbi` and `sig/herringbone.rbs` are generated from the YARD docs by
 [sord](https://github.com/AaronC81/sord) with `bundle exec rake types` (also part of the default
-`rake`). Never edit them by hand. When a change touches a signature or a doc comment in `lib/`,
-regenerate them and commit the result before pushing a PR; CI fails when they are out of date.
-They leave out constants and declare `VERSION` as a plain `String`, so bumping the version needs
-no regeneration.
+`rake`), which then checks the RBS with `rbs validate`. Both are packaged in the gem. Never edit
+them by hand. When a change touches a signature or a doc comment in `lib/`, regenerate them and
+commit the result before pushing a PR; CI fails when they are out of date. They leave out
+constants and declare `VERSION` as a plain `String`, so bumping the version needs no regeneration.
+`sig/manifest.yaml` is written by hand: it lists the standard libraries the RBS refers to, as
+`RBS_LIBRARIES` in the `Rakefile` does.
 
 ## CHANGELOG
 

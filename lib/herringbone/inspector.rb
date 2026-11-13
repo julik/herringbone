@@ -1155,6 +1155,8 @@ module Herringbone
     #
     # Fields carry :name, :type, :nullable and, when present, :children, :dictionary
     # ({ index_type:, ordered:, id: }), :extension (ARROW:extension:name) and :metadata.
+    #
+    # @api private
     module ArrowSchema
       # Raised for malformed or unsupported ARROW:schema values
       class Error < StandardError; end

@@ -147,7 +147,8 @@ module Herringbone
     # @return [String] decompressed bytes (binary)
     # @raise [UnsupportedError] for a codec herringbone does not implement
     # @raise [MissingCodecError] when the codec's gem is not loaded
-    # @raise [FormatError] when the decompressed size does not match +uncompressed_size+
+    # @raise [FormatError] when the data is corrupt, or the decompressed size does not match
+    #   +uncompressed_size+
     def decompress(codec, data, uncompressed_size)
       return "".b if uncompressed_size.zero? && data.empty?
       out = case codec
@@ -167,6 +168,13 @@ module Herringbone
         raise FormatError, "Decompressed #{out.bytesize} bytes, expected #{uncompressed_size}"
       end
       out
+    rescue Error
+      raise
+    rescue => e
+      # zstd-ruby raises a bare RuntimeError and zlib and brotli have errors of their own, so
+      # there is no narrower list to rescue
+      raise FormatError, "Cannot decompress #{data.bytesize} bytes of #{Format::Codec::NAMES[codec] || codec} data, " \
+        "they are corrupt or cut short: #{e.message} (#{e.class})"
     end
 
     # Compresses a page body. Given several Strings, compresses their concatenation; GZIP, ZSTD

@@ -163,12 +163,14 @@ module Herringbone
       #
       # @return [Proc, Method, nil] converts a physical value into its Ruby value, or nil when the physical
       #   value is used as-is
+      # @api private
       def converter = Types.reader_for(@node)
 
       # Types.writer_for of the node. Not memoized, like #converter.
       #
       # @return [Proc, Method] converts a Ruby value into the physical value to store, raising
       #   ArgumentError / TypeError / RangeError for values that do not fit
+      # @api private
       def encoder = Types.writer_for(@node)
     end
 
@@ -666,6 +668,7 @@ module Herringbone
     # a Builder of their own.
     class Builder
       # @return [Array<Node>] fields declared so far, in declaration order
+      # @api private
       attr_reader :nodes
 
       # Yields a new Builder to the block.
@@ -690,6 +693,7 @@ module Herringbone
       # @param usage [String] how the entry point is called with a block, for the error message
       # @return [void]
       # @raise [ArgumentError] when the block takes no parameter
+      # @api private
       def self.check_block!(block, usage)
         return if block.nil? || !block.parameters.empty?
         raise ArgumentError, "The block receives the schema builder as a parameter: #{usage}"

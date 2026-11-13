@@ -32,7 +32,7 @@ Please adhere to the coding conventions used throughout the project (indentation
 accurate and terse comments, etc.) and any other requirements (such as test coverage).
 
 Run the `rake` default task to make sure code is properly formatted and documented, and commit
-the type signatures it regenerates in `rbi/` and `rbs/`.
+the type signatures it regenerates in `rbi/` and `sig/`.
 
 ## Basic expectations
 

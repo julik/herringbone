@@ -301,11 +301,12 @@ module Herringbone
       # @param size [Integer] uncompressed size from the page header
       # @return [String] uncompressed bytes
       # @raise [UnsupportedError] for an unsupported codec, naming the column
+      # @raise [FormatError] for a body that cannot be decompressed, naming the column
       def decompress(body, size)
         Compression.decompress(@meta.codec, body, size)
       rescue MissingCodecError => e
         raise e.for_column(@column.dotted_path)
-      rescue UnsupportedError => e
+      rescue UnsupportedError, FormatError => e
         raise e, "#{e.message} (column #{@column.dotted_path})"
       end
 

@@ -41,6 +41,8 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
 - [Inspecting files](#inspecting-files)
 - [Command line](#command-line)
 - [Supported format features](#supported-format-features)
+- [Errors](#errors)
+- [Public API and type signatures](#public-api-and-type-signatures)
 - [Development](#development)
 
 ## Installation
@@ -937,6 +939,36 @@ prints the page instead.
 - Modular encryption (read and write): AES_GCM_V1 and AES_GCM_CTR_V1, encrypted and plaintext
   footers, footer and column keys, AAD prefixes
 - Not supported: column chunks in external files
+
+## Errors
+
+Every error Herringbone raises on purpose is a `Herringbone::Error`:
+
+- `Herringbone::FormatError`: the file is not valid Parquet, or a page in it is damaged. A page
+  that cannot be decompressed raises it too, naming the codec and the column, with the error of
+  the codec's library (`Zlib::DataError`, for instance) as its `cause`.
+- `Herringbone::EncodeError`: a value does not fit its column; it carries `row`, `column` and
+  `value`. `Herringbone::SchemaMismatch` is the same for a schema that was inferred.
+- `Herringbone::UnsupportedError`: a Parquet feature Herringbone does not implement.
+  `Herringbone::MissingCodecError` says which gem a codec needs.
+- `Herringbone::IncompatibleSchema`: schemas that cannot be united, intersected or combined.
+- `Herringbone::DecryptionError`: a key is missing or wrong, or the encrypted bytes were changed.
+- `Herringbone::Thrift::Error`: footer metadata that cannot be written, such as a `metadata:`
+  value that is not valid UTF-8.
+
+Invalid arguments and options raise `ArgumentError`.
+
+## Public API and type signatures
+
+The public API is what the YARD docs show without an `@api private` tag: `Herringbone.write`,
+`redact`, `combine` and `codecs`, `Reader`, `Writer`, `Schema`, `Key`, the encryption
+configurations, `Redaction`, `Inspector`, the errors and the `herringbone` executable. Classes,
+modules and methods tagged `@api private` are there for the library itself and can change in any
+release.
+
+The gem ships type signatures for [RBS](https://github.com/ruby/rbs) (`sig/herringbone.rbs`, for
+Steep and other RBS tools) and for [Sorbet](https://sorbet.org) (`rbi/herringbone.rbi`), both
+generated from the YARD docs.
 
 ## Development
 

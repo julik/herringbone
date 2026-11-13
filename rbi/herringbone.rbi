@@ -328,7 +328,7 @@ module Herringbone
 
     # A field that does not fit: its dotted path, how each side declares it, why the two do not
     # fit, and for Herringbone.combine the position of the input it was found in
-    class Conflict < Struct
+    class Conflict < ::Struct
       # _@return_ — e.g. "address.zip: int32 vs string (no common type)"
       sig { returns(String) }
       def to_s; end
@@ -1310,7 +1310,7 @@ module Herringbone
       # next state (read +nbits+ bits, add them to +base+)
       # 
       # @api private
-      class FSETable < Struct
+      class FSETable < ::Struct
         # Returns the value of attribute log
         sig { returns(Object) }
         attr_accessor :log
@@ -1331,7 +1331,7 @@ module Herringbone
       # A Huffman decoding table indexed by the next +max_bits+ bits of the stream
       # 
       # @api private
-      class HuffmanTable < Struct
+      class HuffmanTable < ::Struct
         # Returns the value of attribute max_bits
         sig { returns(Object) }
         attr_accessor :max_bits
@@ -3227,84 +3227,84 @@ module Herringbone
     end
 
     # Byte and level-histogram statistics for a page or column chunk.
-    class SizeStatistics < Herringbone::Format::S
+    class SizeStatistics < Herringbone::Thrift::Struct
     end
 
     # Min/max and count statistics for a page or column chunk. +max+/+min+ are the deprecated
     # signed-order fields; +max_value+/+min_value+ use the column's sort order.
-    class Statistics < Herringbone::Format::S
+    class Statistics < Herringbone::Thrift::Struct
     end
 
     # STRING logical type.
-    class StringType < Herringbone::Format::S
+    class StringType < Herringbone::Thrift::Struct
     end
 
     # UUID logical type (16-byte FIXED_LEN_BYTE_ARRAY).
-    class UUIDType < Herringbone::Format::S
+    class UUIDType < Herringbone::Thrift::Struct
     end
 
     # MAP logical type.
-    class MapType < Herringbone::Format::S
+    class MapType < Herringbone::Thrift::Struct
     end
 
     # LIST logical type.
-    class ListType < Herringbone::Format::S
+    class ListType < Herringbone::Thrift::Struct
     end
 
     # ENUM logical type.
-    class EnumType < Herringbone::Format::S
+    class EnumType < Herringbone::Thrift::Struct
     end
 
     # DATE logical type.
-    class DateType < Herringbone::Format::S
+    class DateType < Herringbone::Thrift::Struct
     end
 
     # FLOAT16 logical type (2-byte FIXED_LEN_BYTE_ARRAY, little-endian half precision).
-    class Float16Type < Herringbone::Format::S
+    class Float16Type < Herringbone::Thrift::Struct
     end
 
     # UNKNOWN logical type: the column is always null.
-    class NullType < Herringbone::Format::S
+    class NullType < Herringbone::Thrift::Struct
     end
 
     # JSON logical type.
-    class JsonType < Herringbone::Format::S
+    class JsonType < Herringbone::Thrift::Struct
     end
 
     # BSON logical type.
-    class BsonType < Herringbone::Format::S
+    class BsonType < Herringbone::Thrift::Struct
     end
 
     # Millisecond member of the TimeUnit union.
-    class MilliSeconds < Herringbone::Format::S
+    class MilliSeconds < Herringbone::Thrift::Struct
     end
 
     # Microsecond member of the TimeUnit union.
-    class MicroSeconds < Herringbone::Format::S
+    class MicroSeconds < Herringbone::Thrift::Struct
     end
 
     # Nanosecond member of the TimeUnit union.
-    class NanoSeconds < Herringbone::Format::S
+    class NanoSeconds < Herringbone::Thrift::Struct
     end
 
     # ColumnOrder member: values are ordered according to their (logical) type.
-    class TypeDefinedOrder < Herringbone::Format::S
+    class TypeDefinedOrder < Herringbone::Thrift::Struct
     end
 
     # Header of an index page; has no fields in the spec.
-    class IndexPageHeader < Herringbone::Format::S
+    class IndexPageHeader < Herringbone::Thrift::Struct
     end
 
     # VARIANT logical type.
-    class VariantType < Herringbone::Format::S
+    class VariantType < Herringbone::Thrift::Struct
     end
 
     # DECIMAL logical type: unscaled integer value divided by 10 to the power of +scale+.
-    class DecimalType < Herringbone::Format::S
+    class DecimalType < Herringbone::Thrift::Struct
     end
 
     # Union of time units for TIME and TIMESTAMP; exactly one member is set.
-    class TimeUnit < Herringbone::Format::S
+    class TimeUnit < Herringbone::Thrift::Struct
       # _@return_ — a unit with the +millis+ member set
       sig { returns(TimeUnit) }
       def self.millis; end
@@ -3323,20 +3323,20 @@ module Herringbone
     end
 
     # TIMESTAMP logical type.
-    class TimestampType < Herringbone::Format::S
+    class TimestampType < Herringbone::Thrift::Struct
     end
 
     # TIME logical type.
-    class TimeType < Herringbone::Format::S
+    class TimeType < Herringbone::Thrift::Struct
     end
 
     # INTEGER logical type (bit width 8, 16, 32 or 64; signed or unsigned).
-    class IntType < Herringbone::Format::S
+    class IntType < Herringbone::Thrift::Struct
     end
 
     # Union of logical type annotations; exactly one member is set. Field id 9 is reserved
     # (for INTERVAL) in parquet.thrift.
-    class LogicalType < Herringbone::Format::S
+    class LogicalType < Herringbone::Thrift::Struct
       # Returns [kind_symbol, payload] for whichever union member is set
       # 
       # _@return_ — member name and its struct, or nil when
@@ -3347,82 +3347,82 @@ module Herringbone
 
     # One node of the schema, flattened depth-first into +FileMetaData#schema+. Groups carry
     # +num_children+; leaves carry the physical +type+.
-    class SchemaElement < Herringbone::Format::S
+    class SchemaElement < Herringbone::Thrift::Struct
     end
 
     # Header of a v1 data page: levels and values share one compressed block.
-    class DataPageHeader < Herringbone::Format::S
+    class DataPageHeader < Herringbone::Thrift::Struct
     end
 
     # Header of a dictionary page.
-    class DictionaryPageHeader < Herringbone::Format::S
+    class DictionaryPageHeader < Herringbone::Thrift::Struct
     end
 
     # Header of a v2 data page: levels are stored uncompressed before the (optionally
     # compressed) values, with their byte lengths given here.
-    class DataPageHeaderV2 < Herringbone::Format::S
+    class DataPageHeaderV2 < Herringbone::Thrift::Struct
     end
 
     # Header preceding every page; +type+ (a PageType) says which sub-header is set.
-    class PageHeader < Herringbone::Format::S
+    class PageHeader < Herringbone::Thrift::Struct
     end
 
     # Application-defined key/value metadata entry.
-    class KeyValue < Herringbone::Format::S
+    class KeyValue < Herringbone::Thrift::Struct
     end
 
     # Sort order of one column within a row group.
-    class SortingColumn < Herringbone::Format::S
+    class SortingColumn < Herringbone::Thrift::Struct
     end
 
     # Number of pages of a given type and encoding in a column chunk.
-    class PageEncodingStats < Herringbone::Format::S
+    class PageEncodingStats < Herringbone::Thrift::Struct
     end
 
     # Metadata of a column chunk: where its pages are, how they are encoded and compressed.
-    class ColumnMetaData < Herringbone::Format::S
+    class ColumnMetaData < Herringbone::Thrift::Struct
     end
 
     # Algorithm settings shared by both algorithms: the AAD prefix (unless readers must supply
     # it) and the file's unique id, which together make the file's part of every module's AAD.
-    class AesGcmV1 < Herringbone::Format::S
+    class AesGcmV1 < Herringbone::Thrift::Struct
     end
 
     # AES_GCM_CTR_V1: like AesGcmV1, but pages are encrypted with AES-CTR, without a tag.
-    class AesGcmCtrV1 < Herringbone::Format::S
+    class AesGcmCtrV1 < Herringbone::Thrift::Struct
     end
 
     # Union of encryption algorithms; exactly one member is set.
-    class EncryptionAlgorithm < Herringbone::Format::S
+    class EncryptionAlgorithm < Herringbone::Thrift::Struct
       # _@return_ — whichever member is set
       sig { returns(T.nilable(T.any(AesGcmV1, AesGcmCtrV1))) }
       def settings; end
     end
 
     # ColumnCryptoMetaData member: the column is encrypted with the footer key.
-    class EncryptionWithFooterKey < Herringbone::Format::S
+    class EncryptionWithFooterKey < Herringbone::Thrift::Struct
     end
 
     # ColumnCryptoMetaData member: the column is encrypted with a key of its own.
-    class EncryptionWithColumnKey < Herringbone::Format::S
+    class EncryptionWithColumnKey < Herringbone::Thrift::Struct
     end
 
     # Union saying which key an encrypted column uses; exactly one member is set.
-    class ColumnCryptoMetaData < Herringbone::Format::S
+    class ColumnCryptoMetaData < Herringbone::Thrift::Struct
     end
 
     # Stored in the clear before an encrypted footer (files with the PARE magic).
-    class FileCryptoMetaData < Herringbone::Format::S
+    class FileCryptoMetaData < Herringbone::Thrift::Struct
     end
 
     # One column of a row group, plus the locations of its page index. In encrypted columns
     # +crypto_metadata+ names the key, and +encrypted_column_metadata+ holds the ColumnMetaData
     # when it is encrypted on its own.
-    class ColumnChunk < Herringbone::Format::S
+    class ColumnChunk < Herringbone::Thrift::Struct
     end
 
     # A horizontal slice of the file, holding one ColumnChunk per leaf column.
-    class RowGroup < Herringbone::Format::S
+    class RowGroup < Herringbone::Thrift::Struct
     end
 
     # Ordering of the per-page min/max values in a ColumnIndex (+BoundaryOrder+ enum).
@@ -3430,52 +3430,52 @@ module Herringbone
     end
 
     # Location of one data page within the file.
-    class PageLocation < Herringbone::Format::S
+    class PageLocation < Herringbone::Thrift::Struct
     end
 
     # Offset index of a column chunk: the location of each of its data pages.
-    class OffsetIndex < Herringbone::Format::S
+    class OffsetIndex < Herringbone::Thrift::Struct
     end
 
     # Column index of a column chunk: per-page min/max values and null information.
-    class ColumnIndex < Herringbone::Format::S
+    class ColumnIndex < Herringbone::Thrift::Struct
     end
 
     # Union describing how min/max statistics of a column are ordered.
-    class ColumnOrder < Herringbone::Format::S
+    class ColumnOrder < Herringbone::Thrift::Struct
     end
 
     # The file footer: schema, row groups and file-level metadata. The encryption fields are
     # only set in encrypted files with a plaintext footer.
-    class FileMetaData < Herringbone::Format::S
+    class FileMetaData < Herringbone::Thrift::Struct
     end
 
     # Split block bloom filter algorithm.
-    class SplitBlockAlgorithm < Herringbone::Format::S
+    class SplitBlockAlgorithm < Herringbone::Thrift::Struct
     end
 
     # XXH64 hash with seed 0.
-    class XxHash < Herringbone::Format::S
+    class XxHash < Herringbone::Thrift::Struct
     end
 
     # Bloom filter bitset stored uncompressed.
-    class BloomFilterUncompressed < Herringbone::Format::S
+    class BloomFilterUncompressed < Herringbone::Thrift::Struct
     end
 
     # Union of bloom filter algorithms.
-    class BloomFilterAlgorithm < Herringbone::Format::S
+    class BloomFilterAlgorithm < Herringbone::Thrift::Struct
     end
 
     # Union of hash functions used to feed the bloom filter.
-    class BloomFilterHash < Herringbone::Format::S
+    class BloomFilterHash < Herringbone::Thrift::Struct
     end
 
     # Union of bloom filter compressions.
-    class BloomFilterCompression < Herringbone::Format::S
+    class BloomFilterCompression < Herringbone::Thrift::Struct
     end
 
     # Header preceding the bitset of a column chunk's bloom filter.
-    class BloomFilterHeader < Herringbone::Format::S
+    class BloomFilterHeader < Herringbone::Thrift::Struct
     end
   end
 
@@ -4213,7 +4213,7 @@ module Herringbone
       #   bin_klass: for :fixed leaves whose pages can be decoded straight into Numo, the class
       #              of the decoded values (same width as the physical type), else nil
       #   arrays:    whether values may be Arrays (list fields)
-      class Spec < Struct
+      class Spec < ::Struct
         # _@return_ — whether pages can be decoded straight into Numo (via NumoCursor)
         sig { returns(T::Boolean) }
         def fast?; end
@@ -4508,7 +4508,7 @@ module Herringbone
       #     (empty for a top-level column)
       # @!attribute [rw] test
       #   @return [Object] the condition, with Symbols turned into Strings
-      class Condition < Struct
+      class Condition < ::Struct
         # _@return_ — the key as given (dotted path of a leaf column)
         sig { returns(String) }
         attr_accessor :name
@@ -6687,8 +6687,11 @@ module Herringbone
     sig { params(wire: Integer, type: T.any(Symbol, T::Array[T.untyped], Class)).returns(T::Boolean) }
     def self.compatible?(wire, type); end
 
-    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode
-    class Error < StandardError
+    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode. Readers
+    # turn it into FormatError; from a writer it reaches the caller as it is.
+    # 
+    # @api public
+    class Error < Herringbone::Error
     end
 
     # Decodes compact protocol data from a String, keeping a byte position into it
@@ -6869,7 +6872,7 @@ module Herringbone
     #   @return [Symbol, Array, Class] declared type (see WIRE_TYPES)
     # @!attribute [rw] ivar
     #   @return [Symbol] instance variable holding the value (+:@name+)
-    class Field < Struct
+    class Field < ::Struct
       # _@return_ — Thrift field id
       sig { returns(Integer) }
       attr_accessor :id
@@ -7634,7 +7637,7 @@ module Herringbone
     # @!attribute bloom_filter
     #   @return [String, nil] the chunk's encoded bloom filter, header included
     # @api private
-    class CopiedChunk < Struct
+    class CopiedChunk < ::Struct
       # _@return_ — the chunk's footer entry in the source file
       sig { returns(Format::ColumnChunk) }
       attr_accessor :chunk
@@ -7670,7 +7673,7 @@ module Herringbone
     # @!attribute values
     #   @return [Array, ByteValues] non-null physical values
     # @api private
-    class ColumnBuffer < Struct
+    class ColumnBuffer < ::Struct
       # _@return_ — definition levels (unpacked to an Array while a chunk is written)
       sig { returns(T.any(String, T::Array[Integer])) }
       attr_accessor :defs
@@ -7699,7 +7702,7 @@ module Herringbone
     # @!attribute range
     #   @return [Array(Object, Object), nil] [min, max] physical values, nil when there are none
     # @api private
-    class PageInfo < Struct
+    class PageInfo < ::Struct
       # _@return_ — file offset of the page header
       sig { returns(Integer) }
       attr_accessor :offset
@@ -8387,7 +8390,7 @@ module Herringbone
     # @!attribute inputs
     #   @return [Array<InputReport>] how each input was fitted to the output schema, in input order
     # @api public
-    class Report < Struct
+    class Report < ::Struct
       # _@return_ — rows written
       sig { returns(Integer) }
       attr_accessor :rows
@@ -8413,7 +8416,7 @@ module Herringbone
     # @!attribute dropped
     #   @return [Array<String>] fields of the input the output does not have (+schema: :intersect+)
     # @api public
-    class InputReport < Struct
+    class InputReport < ::Struct
       # _@return_ — "input 2", with the IO's path when it has one: "input 2 (2026-03.parquet)"
       sig { returns(String) }
       attr_accessor :name
@@ -8434,7 +8437,7 @@ module Herringbone
     # One input file: its Reader (with the combiner's own options), its ChunkCopier, output column
     # index => the input's column holding its values (output columns the input lacks are not in
     # it), and its InputReport
-    class Input < Struct
+    class Input < ::Struct
       # Returns the value of attribute reader
       sig { returns(Object) }
       attr_accessor :reader
@@ -9011,7 +9014,7 @@ module Herringbone
     # +min+/+max+ are converted with the column's type converter (hex Strings when they could
     # not be decoded); +min_exact+/+max_exact+ mirror is_min_value_exact/is_max_value_exact;
     # +source+ says which Thrift fields they came from and +caveat+ why they may be unreliable.
-    class Stats < Struct
+    class Stats < ::Struct
       # _@return_ — the set members, JSON-safe (see Inspector.jsonable)
       sig { returns(T::Hash[Symbol, Object]) }
       def to_h; end
@@ -9055,7 +9058,7 @@ module Herringbone
     # +index+ is the page's position in the chunk, +offset+ where its header starts; +type+ is
     # a PageType name such as :DATA_PAGE (the raw Integer when unknown). +first_row_index+ and,
     # for v1 pages of repeated columns, +num_rows+ are only known from the OffsetIndex.
-    class PageInfo < Struct
+    class PageInfo < ::Struct
       # _@return_ — bytes taken by the page in the file: header plus compressed body
       sig { returns(Integer) }
       def total_size; end
@@ -9173,7 +9176,7 @@ module Herringbone
     end
 
     # ColumnIndex of one column chunk, with min/max decoded per page (nil for all-null pages)
-    class ColumnIndexInfo < Struct
+    class ColumnIndexInfo < ::Struct
       # _@return_ — the set members, JSON-safe (see Inspector.jsonable)
       sig { returns(T::Hash[Symbol, Object]) }
       def to_h; end
@@ -9217,7 +9220,7 @@ module Herringbone
 
     # One OffsetIndex entry: where a data page starts, its size (header included) and the index
     # of its first row within the row group
-    class PageLocation < Struct
+    class PageLocation < ::Struct
       # Returns the value of attribute offset
       sig { returns(Object) }
       attr_accessor :offset
@@ -9233,7 +9236,7 @@ module Herringbone
 
     # OffsetIndex of one column chunk: its own +offset+/+length+ in the file, the PageLocations
     # of its data pages and the optional per-page unencoded BYTE_ARRAY sizes
-    class OffsetIndexInfo < Struct
+    class OffsetIndexInfo < ::Struct
       # _@return_ — the set members, with +:page_locations+ as Hashes
       sig { returns(T::Hash[Symbol, Object]) }
       def to_h; end
@@ -9591,6 +9594,8 @@ module Herringbone
     # 
     # Fields carry :name, :type, :nullable and, when present, :children, :dictionary
     # ({ index_type:, ordered:, id: }), :extension (ARROW:extension:name) and :metadata.
+    # 
+    # @api private
     module ArrowSchema
       # Decodes the base64 ARROW:schema value; raises ArrowSchema::Error when it can't
       # 
@@ -10115,7 +10120,9 @@ module Herringbone
     #   @return [Hash{String => Object}] column => value, for a replace without a block
     # @!attribute block
     #   @return [Proc, nil] computes the replacement values
-    class Statement < Struct
+    # 
+    # @api private
+    class Statement < ::Struct
       # _@return_ — +:delete+ or +:replace+
       sig { returns(Symbol) }
       attr_accessor :kind
@@ -10147,7 +10154,7 @@ module Herringbone
     #   @return [Integer] rows kept where at least one replace produced a different value
     # @!attribute row_groups
     #   @return [Hash{Symbol => Integer}] +{copied:, rewritten:}+ row group counts
-    class Report < Struct
+    class Report < ::Struct
       # _@return_ — rows decoded (rows of row groups that were copied unread are not counted)
       sig { returns(Integer) }
       attr_accessor :rows_read
@@ -10449,7 +10456,7 @@ module Herringbone
       #   @return [Schema::Field] the replaced field
       # @!attribute column
       #   @return [Schema::Column, nil] the leaf column, nil when the field is nested
-      class Target < Struct
+      class Target < ::Struct
         # _@return_ — the column as named in the statement
         sig { returns(String) }
         attr_accessor :name
@@ -10768,7 +10775,7 @@ module Herringbone
       #   @return [String, nil] stored with the column (column keys only)
       # @!attribute footer
       #   @return [Boolean] whether the key is the footer key
-      class ColumnKey < Struct
+      class ColumnKey < ::Struct
         # _@return_ — its key
         sig { returns(Cipher) }
         attr_accessor :cipher
@@ -11902,7 +11909,7 @@ module Herringbone
     #   @return [String] 16, 24 or 32 bytes, binary
     # @!attribute [r] key_metadata
     #   @return [String, nil] stored with the column, for readers to find the key by
-    class ColumnKey < Struct
+    class ColumnKey < ::Struct
       # _@return_ — the key metadata, without the key
       sig { returns(String) }
       def inspect; end

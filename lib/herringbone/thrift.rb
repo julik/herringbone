@@ -7,8 +7,11 @@ module Herringbone
   #
   # @api private
   module Thrift
-    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode
-    class Error < StandardError; end
+    # Raised on malformed or truncated Thrift data, and on values the writer cannot encode. Readers
+    # turn it into FormatError; from a writer it reaches the caller as it is.
+    #
+    # @api public
+    class Error < Herringbone::Error; end
 
     # Compact protocol wire type: end of a struct's fields
     T_STOP = 0
