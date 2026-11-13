@@ -2,7 +2,7 @@
 
 module Herringbone
   # How Writer encrypts a file (Parquet modular encryption), checked as soon as it is built. The
-  # +encryption:+ option of Writer, Herringbone.write, SimpleWriter and Herringbone.redact takes
+  # +encryption:+ option of Writer, Herringbone.write and Herringbone.redact takes
   # one, or a Hash of the same keywords, which is turned into one with EncryptionConfiguration.from.
   #
   #   config = Herringbone::EncryptionConfiguration.new(

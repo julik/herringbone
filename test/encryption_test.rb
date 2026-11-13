@@ -422,40 +422,22 @@ class EncryptionTest < Minitest::Test
     assert_equal expected_rows(rows(10)), encrypted_reader(bytes, key.hex).read
   end
 
-  def test_simple_writer_encrypt
+  def test_write_with_headers_encrypts_with_a_key
     io = StringIO.new
-    key = nil
-    Herringbone::SimpleWriter.open(io) do |sw|
-      key = sw.encrypt!(key: Herringbone::Key.generate)
-      sw.headers!(:id, :name)
-      sw << [1, "John"]
-      sw << {id: 2, name: "Jane"}
-    end
-    assert_kind_of Herringbone::Key, key
+    key = Herringbone::Key.generate
+    Herringbone.write(io, [[1, "John"], {id: 2, name: "Jane"}], headers: [:id, :name], encryption: key)
     assert_equal "PARE", io.string.byteslice(0, 4)
     assert_equal [{"id" => 1, "name" => "John"}, {"id" => 2, "name" => "Jane"}], encrypted_reader(io.string, key).read
 
     hex = Herringbone::Key.generate.hex
     io = StringIO.new
-    sw = Herringbone::SimpleWriter.new(io)
-    assert_equal Herringbone::Key.from(hex), sw.encrypt!(key: hex)
-    sw.headers!("a")
-    sw << [1]
-    error = assert_raises(ArgumentError) { sw.encrypt!(key: hex) }
-    assert_match(/before the first row/, error.message)
-    sw.close
+    Herringbone.write(io, [[1]], headers: ["a"], encryption: hex)
     assert_equal [{"a" => 1}], encrypted_reader(io.string, hex).read
 
-    sw = Herringbone::SimpleWriter.new(StringIO.new)
-    sw.encrypt!(key: hex)
-    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(key: hex) }.message)
-    sw = Herringbone::SimpleWriter.new(StringIO.new, encryption: hex)
-    assert_match(/already encrypted/, assert_raises(ArgumentError) { sw.encrypt!(key: hex) }.message)
-    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt! }
-    error = assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!(key: SSN_KEY) }
+    error = assert_raises(ArgumentError) { Herringbone.write(StringIO.new, [[1]], headers: [:a], encryption: SSN_KEY) }
     assert_match(/raw key bytes\?/, error.message)
-    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new).encrypt!(key: "ab" * 24) }
-    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new, encryption: {footer_key: "short"}) }
+    assert_raises(ArgumentError) { Herringbone.write(StringIO.new, [[1]], headers: [:a], encryption: "ab" * 24) }
+    assert_raises(ArgumentError) { Herringbone.write(StringIO.new, [[1]], headers: [:a], encryption: {footer_key: "short"}) }
   end
 
   def test_keyring_picks_the_key_by_id
@@ -531,10 +513,7 @@ class EncryptionTest < Minitest::Test
     assert_equal [{"id" => 1, "secret" => "x"}], encrypted_reader(io.string, {footer_key: FOOTER_KEY, columns: {"secret" => SSN_KEY}}).read
 
     io = StringIO.new
-    w = Herringbone::SimpleWriter.new(io, encryption: {footer_key: FOOTER_KEY})
-    w.headers!(%w[a b])
-    w << [1, "x"]
-    w.close
+    Herringbone.write(io, [[1, "x"]], headers: %w[a b], encryption: {footer_key: FOOTER_KEY})
     assert_equal [{"a" => 1, "b" => "x"}], encrypted_reader(io.string, {footer_key: FOOTER_KEY}).read
   end
 

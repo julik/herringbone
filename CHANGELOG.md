@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `Herringbone::Writer.open(io, headers: [:id, :name]) { |w| w << [1, "John"] }` infers the column
+  types when no schema is given, and `Herringbone.write(io, rows, headers: [:id, :name])` writes
+  Array rows with inferred types.
+- **Breaking:** `Herringbone::SimpleWriter` is removed: use `Herringbone::Writer.open` with
+  `headers:` (and `encryption:` instead of `encrypt!(key:)`).
+
 ## 0.9.1
 
 - `Herringbone.combine` works in Ractors other than the main one, and so does reading ZSTD without

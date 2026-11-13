@@ -20,11 +20,22 @@ module Herringbone
   #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
   #   Herringbone.write(io, events.lazy.map(&:to_h)) { |s| s.json :payload }
   # 
+  # +headers:+ names the columns of Array rows, as with the CSV gem, and the types are inferred.
+  # Rows produced in a loop can be given through an Enumerator:
+  # 
+  #   rows = Enumerator.new do |y|
+  #     y << [123, "John", 12]
+  #     y << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+  #   end
+  #   Herringbone.write(io, rows, headers: [:id, :name, :age])
+  # 
   # _@param_ `io` — destination; written sequentially, never closed
   # 
   # _@param_ `records` — rows (Hashes, Arrays in schema order, or objects responding to #attributes or #to_h), or an ActiveRecord model or relation
   # 
   # _@param_ `schema` — schema to write with; derived from +records+ when nil
+  # 
+  # _@param_ `headers` — column names, in the order Array rows list their values; the types are inferred, so it can't be combined with +schema+
   # 
   # _@param_ `options` — passed to Writer.new
   # 
@@ -34,11 +45,12 @@ module Herringbone
       io: T.any(IO, T.untyped),
       records: T.any(T::Enumerable[T.any(T::Hash[T.untyped, T.untyped], T::Array[T.untyped], Object)], Class, T.untyped),
       schema: T.nilable(Schema),
+      headers: T.nilable(T::Array[T.any(String, Symbol)]),
       options: T::Hash[Symbol, Object],
       overrides: T.proc.params(s: Schema::Builder).void
     ).returns(Integer)
   end
-  def write(io, records, schema: nil, **options, &overrides); end
+  def write(io, records, schema: nil, headers: nil, **options, &overrides); end
 
   # Writes +records+ to +io+ (any IO responding to #write; Herringbone never opens files by path)
   # and returns the number of rows written. +records+ is an Enumerable of rows, or an ActiveRecord
@@ -51,11 +63,22 @@ module Herringbone
   #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
   #   Herringbone.write(io, events.lazy.map(&:to_h)) { |s| s.json :payload }
   # 
+  # +headers:+ names the columns of Array rows, as with the CSV gem, and the types are inferred.
+  # Rows produced in a loop can be given through an Enumerator:
+  # 
+  #   rows = Enumerator.new do |y|
+  #     y << [123, "John", 12]
+  #     y << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+  #   end
+  #   Herringbone.write(io, rows, headers: [:id, :name, :age])
+  # 
   # _@param_ `io` — destination; written sequentially, never closed
   # 
   # _@param_ `records` — rows (Hashes, Arrays in schema order, or objects responding to #attributes or #to_h), or an ActiveRecord model or relation
   # 
   # _@param_ `schema` — schema to write with; derived from +records+ when nil
+  # 
+  # _@param_ `headers` — column names, in the order Array rows list their values; the types are inferred, so it can't be combined with +schema+
   # 
   # _@param_ `options` — passed to Writer.new
   # 
@@ -65,11 +88,12 @@ module Herringbone
       io: T.any(IO, T.untyped),
       records: T.any(T::Enumerable[T.any(T::Hash[T.untyped, T.untyped], T::Array[T.untyped], Object)], Class, T.untyped),
       schema: T.nilable(Schema),
+      headers: T.nilable(T::Array[T.any(String, Symbol)]),
       options: T::Hash[Symbol, Object],
       overrides: T.proc.params(s: Schema::Builder).void
     ).returns(Integer)
   end
-  def self.write(io, records, schema: nil, **options, &overrides); end
+  def self.write(io, records, schema: nil, headers: nil, **options, &overrides); end
 
   # Rewrites +io_or_reader+ into +output_io+ with rows removed or values replaced, building the
   # Redaction from the block (or taking +redaction+). A shortcut for Redaction#apply.
@@ -272,8 +296,8 @@ module Herringbone
   end
 
   # A row does not fit a schema that was inferred from earlier rows (Herringbone.write without
-  # +schema:+, SimpleWriter). The message says what was inferred, from how many rows, and how to
-  # declare the column instead.
+  # +schema:+, Writer.open without a schema). The message says what was inferred, from how many
+  # rows, and how to declare the column instead.
   class SchemaMismatch < Herringbone::EncodeError
   end
 
@@ -2616,9 +2640,8 @@ module Herringbone
   #   Herringbone.write(io, rows, encryption: key)
   #   Herringbone::Reader.new(io, decryption: key)            # or [new_key, old_key, ...]
   # 
-  # Where a key may be given as a String instead (+encryption:+, +decryption:+,
-  # SimpleWriter#encrypt!), the String must be its hex: raw bytes are easy to mangle and to confuse
-  # with text, so they go through Key.new.
+  # Where a key may be given as a String instead (+encryption:+, +decryption:+), the String must be
+  # its hex: raw bytes are easy to mangle and to confuse with text, so they go through Key.new.
   # 
   # Instances are frozen; #inspect and #to_s show the id but not the key.
   class Key
@@ -6976,9 +6999,19 @@ module Herringbone
     # returns and the block's value is returned; if the block raises, the writer is aborted and no
     # footer is written. Without a block, call #close to finish. The IO is never closed.
     # 
+    # Without a schema, the column types are inferred from the first Schema::INFER_SAMPLE rows
+    # (see InferringWriter), and +headers:+ names the columns of Array rows, as with the CSV gem:
+    # 
+    #   Herringbone::Writer.open(io, headers: [:id, :name, :age]) do |w|
+    #     w << [123, "John", 12]
+    #     w << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+    #   end
+    # 
     # _@param_ `io` — destination
     # 
-    # _@param_ `schema` — schema of the rows
+    # _@param_ `schema` — schema of the rows; inferred from them when nil
+    # 
+    # _@param_ `headers` — column names, in the order Array rows list their values, when the schema is inferred
     # 
     # _@param_ `options` — see the class description and #initialize
     # 
@@ -6986,12 +7019,13 @@ module Herringbone
     sig do
       params(
         io: T.any(IO, T.untyped),
-        schema: Schema,
+        schema: T.nilable(Schema),
+        headers: T.nilable(T::Array[T.any(String, Symbol)]),
         options: T::Hash[Symbol, Object],
-        blk: T.proc.params(writer: Writer).returns(Object)
-      ).returns(T.any(Writer, Object))
+        blk: T.proc.params(writer: T.any(Writer, InferringWriter)).returns(Object)
+      ).returns(T.any(Writer, InferringWriter, Object))
     end
-    def self.open(io, schema, **options, &blk); end
+    def self.open(io, schema = nil, headers: nil, **options, &blk); end
 
     # Internal (used by Redaction and Combiner): .open for a file whose row groups are all written
     # with #write_row_group, one for each row group of another file, so they keep their boundaries
@@ -11562,114 +11596,6 @@ module Herringbone
     attr_reader :column
   end
 
-  # Writes Parquet the way the CSV gem writes CSV: name the columns, then append rows as Arrays.
-  # The column types are inferred from the first Schema::INFER_SAMPLE rows (see Schema.infer), so
-  # no schema has to be declared.
-  # 
-  #   File.open("people.parquet", "wb") do |file|
-  #     Herringbone::SimpleWriter.open(file) do |sw|
-  #       sw.headers!(:id, :name, :age)
-  #       sw << [123, "John", 12]
-  #       sw << { id: 124, name: "Jane" } # Hashes work too; missing columns are nulls
-  #     end
-  #   end
-  # 
-  # Every column is nullable. A column that is nil in every sampled row becomes a string, and a file
-  # with headers but no rows has only string columns. Only the sample is held in memory; later rows
-  # are written as they come. A row that does not fit the inferred types raises SchemaMismatch,
-  # explaining what was inferred and how to declare the column, and the writer stops there (the
-  # file is left without a footer). Unlike CSV, the headers are mandatory: a Parquet file always
-  # has named columns.
-  # 
-  # Columns declared in a block (Schema::Builder DSL) replace inferred ones, e.g. for a column that
-  # holds both numbers and text:
-  # 
-  #   Herringbone::SimpleWriter.new(io) { |s| s.string :code }
-  # 
-  # #encrypt! encrypts the file with one key (see Key):
-  # 
-  #   Herringbone::SimpleWriter.open(file) do |sw|
-  #     sw.encrypt!(key: ENV["PARQUET_KEY"]) # the key's hex, or a Herringbone::Key
-  #     sw.headers!(:id, :name)
-  #     sw << [1, "John"]
-  #   end
-  class SimpleWriter
-    # Opens a writer, yields it and closes it, finishing the file. If the block raises, the file is
-    # left unfinished (no footer), as with Writer.open. To declare columns, use #initialize and #close.
-    # 
-    # _@param_ `io` — destination; written sequentially, never closed
-    # 
-    # _@param_ `options` — Writer options (compression:, row_group_bytes:...)
-    # 
-    # _@return_ — the writer without a block, the block's value with one
-    sig { params(io: T.any(IO, T.untyped), options: T::Hash[Symbol, Object], blk: T.proc.params(writer: SimpleWriter).returns(Object)).returns(T.any(SimpleWriter, Object)) }
-    def self.open(io, **options, &blk); end
-
-    # _@param_ `io` — destination; nothing is written to it until the column types are known
-    # 
-    # _@param_ `options` — Writer options (compression:, row_group_bytes:...)
-    sig { params(io: T.any(IO, T.untyped), options: T::Hash[Symbol, Object], overrides: T.proc.params(s: Schema::Builder).void).void }
-    def initialize(io, **options, &overrides); end
-
-    # Names the columns, in the order row Arrays list their values. Must be called once, before
-    # the first row.
-    # 
-    # _@param_ `names` — column names
-    sig { params(names: T::Array[T.any(String, Symbol)]).returns(T.self_type) }
-    def headers!(*names); end
-
-    # Encrypts the file with one key, the way most Parquet readers can decrypt with that key (see
-    # EncryptionConfiguration.simple). Must be called before the first row. For a new key, pass
-    # +key: Herringbone::Key.generate+ and keep it (+key.hex+): the file can't be read without it.
-    # 
-    # _@param_ `key` — a key, or its hex (32 or 64 digits; raw bytes go through Key.new)
-    # 
-    # _@return_ — the key the file is encrypted with
-    sig { params(key: T.any(Key, String)).returns(Key) }
-    def encrypt!(key:); end
-
-    # Appends a row: an Array with one value per header, in header order, or a Hash keyed by
-    # header (String or Symbol keys; missing columns are nulls).
-    # 
-    # _@param_ `row`
-    sig { params(row: T.any(T::Array[T.untyped], T::Hash[T.untyped, T.untyped])).returns(T.self_type) }
-    def <<(row); end
-
-    # _@return_ — rows written so far, including those held back to infer the column types
-    sig { returns(Integer) }
-    def rows_written; end
-
-    # Writes any rows still held back and finishes the file. The IO is not closed.
-    sig { void }
-    def close; end
-
-    # Stops without finishing the file. What was already written stays in the IO.
-    sig { void }
-    def abort; end
-
-    # Short summary for the console, without the rows
-    # 
-    # _@return_ — the number of columns and the underlying writer's summary
-    sig { returns(String) }
-    def inspect; end
-
-    # _@param_ `row` — row given to #<<
-    # 
-    # _@return_ — its values in header order
-    sig { params(row: T.any(T::Array[T.untyped], T::Hash[T.untyped, T.untyped])).returns(T::Array[T.untyped]) }
-    def values_of(row); end
-
-    # _@param_ `sample` — held-back rows, values in header order
-    # 
-    # _@return_ — inferred from the sample; string columns when it is empty
-    sig { params(sample: T::Array[T::Array[T.untyped]]).returns(Schema) }
-    def schema_for(sample); end
-
-    # _@return_ — the column names, nil until #headers! is called
-    sig { returns(T.nilable(T::Array[String])) }
-    attr_reader :headers
-  end
-
   # Writes rows whose schema is inferred from the rows themselves, reading them only once: the
   # first Schema::INFER_SAMPLE rows are held back, the schema is built from them, and then they and
   # every later row go straight to a Writer. Memory is bounded by the sample, however many rows
@@ -11679,34 +11605,33 @@ module Herringbone
   # A row that does not fit the inferred schema raises SchemaMismatch and stops the writer: the
   # file is left unfinished (no footer) rather than written with rows missing.
   # 
-  # Used by Herringbone.write and SimpleWriter.
+  # With +headers:+, rows are Arrays of values in header order (or Hashes keyed by header), and
+  # only the held-back rows are turned into Hashes for inference.
   # 
-  # @api private
+  # Writer.open returns one when it is given no schema, and Herringbone.write uses one when it has
+  # to infer the schema.
   class InferringWriter
     # _@param_ `io` — destination, passed to Writer.new
     # 
     # _@param_ `fix` — how a caller declares a column, for SchemaMismatch messages; +%s+ is replaced by a declaration such as +string :age+
+    # 
+    # _@param_ `headers` — column names, in the order row Arrays list their values; nil for rows the Writer takes as they are
     # 
     # _@param_ `options` — Writer options
     sig do
       params(
         io: T.any(IO, T.untyped),
         fix: String,
+        headers: T.nilable(T::Array[T.any(String, Symbol)]),
         options: T::Hash[Symbol, Object],
         schema_for: T.proc.params(sample: T::Array[T.untyped]).returns(Schema)
       ).void
     end
-    def initialize(io, fix:, **options, &schema_for); end
+    def initialize(io, fix:, headers: nil, **options, &schema_for); end
 
-    # _@param_ `row` — row to write, in any form the Writer accepts
+    # _@param_ `row` — row to write, in any form the Writer accepts; with +headers+, an Array or a Hash
     sig { params(row: Object).returns(T.self_type) }
     def <<(row); end
-
-    # Sets the encryption before the first row
-    # 
-    # _@param_ `config` — how to encrypt the file
-    sig { params(config: EncryptionConfiguration).void }
-    def encryption=(config); end
 
     # _@return_ — rows accepted so far, including the ones held back
     sig { returns(Integer) }
@@ -11733,6 +11658,22 @@ module Herringbone
     # _@param_ `row` — row for the Writer
     sig { params(row: Object).void }
     def write(row); end
+
+    # _@return_ — built by the block from the held-back rows, as Hashes when there are headers
+    sig { returns(Schema) }
+    def infer_schema; end
+
+    # _@param_ `headers` — column names given as +headers:+
+    # 
+    # _@return_ — the names as frozen Strings
+    sig { params(headers: T::Array[T.any(String, Symbol)]).returns(T::Array[String]) }
+    def check_headers(headers); end
+
+    # _@param_ `row` — row given to #<<
+    # 
+    # _@return_ — its values in header order
+    sig { params(row: T.any(T::Array[T.untyped], T::Hash[T.untyped, T.untyped])).returns(T::Array[T.untyped]) }
+    def values_of(row); end
 
     sig { void }
     def check_usable!; end
@@ -11829,7 +11770,7 @@ module Herringbone
   end
 
   # How Writer encrypts a file (Parquet modular encryption), checked as soon as it is built. The
-  # +encryption:+ option of Writer, Herringbone.write, SimpleWriter and Herringbone.redact takes
+  # +encryption:+ option of Writer, Herringbone.write and Herringbone.redact takes
   # one, or a Hash of the same keywords, which is turned into one with EncryptionConfiguration.from.
   # 
   #   config = Herringbone::EncryptionConfiguration.new(

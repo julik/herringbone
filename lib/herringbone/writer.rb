@@ -86,8 +86,18 @@ module Herringbone
     # returns and the block's value is returned; if the block raises, the writer is aborted and no
     # footer is written. Without a block, call #close to finish. The IO is never closed.
     #
+    # Without a schema, the column types are inferred from the first Schema::INFER_SAMPLE rows
+    # (see InferringWriter), and +headers:+ names the columns of Array rows, as with the CSV gem:
+    #
+    #   Herringbone::Writer.open(io, headers: [:id, :name, :age]) do |w|
+    #     w << [123, "John", 12]
+    #     w << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+    #   end
+    #
     # @param io [IO, #write] destination
-    # @param schema [Schema] schema of the rows
+    # @param schema [Schema, nil] schema of the rows; inferred from them when nil
+    # @param headers [Array<String, Symbol>, nil] column names, in the order Array rows list their
+    #   values, when the schema is inferred
     # @param options [Hash{Symbol => Object}] see the class description and #initialize
     # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
     # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
@@ -106,12 +116,21 @@ module Herringbone
     # @option options [EncryptionConfiguration, Hash{Symbol => Object}, nil] :encryption (nil) modular
     #   encryption settings, see #initialize
     # @yield [writer] the open writer
-    # @yieldparam writer [Writer] writer to append rows to
+    # @yieldparam writer [Writer, InferringWriter] writer to append rows to
     # @yieldreturn [Object] returned by open
-    # @return [Writer, Object] the writer without a block, the block's value with one
-    # @raise [ArgumentError] for an invalid IO, schema or option
-    def self.open(io, schema, **options)
-      writer = new(io, schema, **options)
+    # @return [Writer, InferringWriter, Object] the writer without a block, the block's value with one
+    # @raise [ArgumentError] for an invalid IO, schema or option, or +headers:+ given with a schema
+    def self.open(io, schema = nil, headers: nil, **options)
+      if schema && headers
+        raise ArgumentError, "headers: names the columns of Array rows whose types are inferred, but the " \
+          "schema already names the columns (Array rows list their values in schema order). Pass one or the other."
+      end
+      writer = if schema
+        new(io, schema, **options)
+      else
+        fix = "Herringbone::Writer.open(io, Herringbone::Schema.define { |s| ...; s.%s })"
+        InferringWriter.new(io, fix: fix, headers: headers, **options) { |sample| Schema.infer(sample) }
+      end
       return writer unless block_given?
       begin
         result = yield writer
