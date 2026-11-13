@@ -57,8 +57,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_a_row_that_does_not_fit_raises_schema_mismatch_and_stops
     io = StringIO.new("".b)
-    sw = Herringbone::SimpleWriter.new(io)
-    sw.headers!(:id, :age)
+    sw = Herringbone::SimpleWriter.new(io, headers: [:id, :age])
     1000.times { |i| sw << [i, i % 90] }
     error = assert_raises(Herringbone::SchemaMismatch) { sw << [1000, "twelve"] }
     assert_kind_of Herringbone::EncodeError, error
@@ -73,7 +72,7 @@ class InferringWriteTest < Minitest::Test
       Column types are decided from the first 1000 rows (or all of them, when there are
       fewer), so a later value of a different type cannot be written to the same column.
       Declare the column with a type that holds every value, for example:
-        Herringbone::SimpleWriter.new(io) { |s| s.string :age }
+        Herringbone::SimpleWriter.new(io, headers: [...]) { |s| s.string :age }
       or pass a complete schema. The file was left unfinished (no footer).
     MESSAGE
     later = assert_raises(Herringbone::Error) { sw << [1001, 3] }
@@ -84,8 +83,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_a_mismatch_within_the_sample_stops_at_close
     io = StringIO.new("".b)
-    sw = Herringbone::SimpleWriter.new(io)
-    sw.headers!(:n)
+    sw = Herringbone::SimpleWriter.new(io, headers: [:n])
     sw << [1] << [2] << [2**70] << [4] # inferred as int64, which 2**70 does not fit
     error = assert_raises(Herringbone::SchemaMismatch) { sw.close }
     assert_equal 2, error.row
@@ -108,8 +106,7 @@ class InferringWriteTest < Minitest::Test
   end
 
   def test_simple_writer_inspect_shows_columns_and_rows
-    sw = Herringbone::SimpleWriter.new(StringIO.new("".b))
-    sw.headers!(:id, :name)
+    sw = Herringbone::SimpleWriter.new(StringIO.new("".b), headers: [:id, :name])
     50_000.times { |i| sw << [i, "name #{i}"] }
     assert_operator sw.inspect.bytesize, :<, 200
     assert_match(/\A#<Herringbone::SimpleWriter columns=2 writer=.*open rows_written=50000 /, sw.inspect)
@@ -117,8 +114,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_simple_writer_like_csv
     io = StringIO.new("".b)
-    result = Herringbone::SimpleWriter.open(io, compression: :gzip) do |sw|
-      sw.headers!(:id, :name, :age)
+    result = Herringbone::SimpleWriter.open(io, compression: :gzip, headers: [:id, :name, :age]) do |sw|
       sw << [123, "John", 12]
       sw << {:id => 124, "name" => "Jane"}
       sw << [125, nil, 40]
@@ -136,8 +132,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_simple_writer_streams_past_the_sample
     io = StringIO.new("".b)
-    Herringbone::SimpleWriter.open(io, row_group_rows: 1000) do |sw|
-      sw.headers!(%w[i half])
+    Herringbone::SimpleWriter.open(io, row_group_rows: 1000, headers: %w[i half]) do |sw|
       3000.times { |i| sw << [i, i / 2.0] }
     end
     reader = Herringbone::Reader.new(StringIO.new(io.string))
@@ -147,32 +142,29 @@ class InferringWriteTest < Minitest::Test
 
   def test_simple_writer_takes_schema_overrides_in_a_block
     io = StringIO.new("".b)
-    sw = Herringbone::SimpleWriter.new(io) { |s| s.string :code }
-    sw.headers!(:id, :code)
+    sw = Herringbone::SimpleWriter.new(io, headers: [:id, :code]) { |s| s.string :code }
     sw << [1, 7] << [2, "B12"]
     sw.close
     assert_equal %w[7 B12], read(io).map { |r| r["code"] }
-    sw = Herringbone::SimpleWriter.new(StringIO.new("".b)) { |s| s.string :other }
-    sw.headers!(:id)
+    sw = Herringbone::SimpleWriter.new(StringIO.new("".b), headers: [:id]) { |s| s.string :other }
     assert_raises(ArgumentError) { sw.close }
   end
 
   def test_simple_writer_without_rows_writes_string_columns
     io = StringIO.new("".b)
-    Herringbone::SimpleWriter.open(io) { |sw| sw.headers!(:a, :b) }
+    Herringbone::SimpleWriter.open(io, headers: [:a, :b]) { |sw| }
     reader = Herringbone::Reader.new(StringIO.new(io.string))
     assert_equal 0, reader.num_rows
     assert_equal %w[a b], reader.schema.fields.map(&:name)
   end
 
   def test_simple_writer_needs_headers
-    sw = Herringbone::SimpleWriter.new(StringIO.new("".b))
-    assert_raises(ArgumentError) { sw << [1] }
-    assert_raises(ArgumentError) { sw.close }
-    assert_raises(ArgumentError) { sw.headers! }
-    assert_raises(ArgumentError) { sw.headers!(:a, "a") }
-    sw.headers!(:a, :b)
-    assert_raises(ArgumentError) { sw.headers!(:c) }
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new("".b)) }
+    assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new("".b), headers: []) }
+    error = assert_raises(ArgumentError) { Herringbone::SimpleWriter.new(StringIO.new("".b), headers: [:a, "a"]) }
+    assert_match(/Duplicate column names: a/, error.message)
+    sw = Herringbone::SimpleWriter.new(StringIO.new("".b), headers: [:a, :b])
+    assert_equal %w[a b], sw.headers
     assert_raises(ArgumentError) { sw << [1] }
     assert_raises(ArgumentError) { sw << "1,2" }
     assert_raises(ArgumentError) { sw << {a: 1, c: 2} }
@@ -181,8 +173,7 @@ class InferringWriteTest < Minitest::Test
   def test_simple_writer_block_failure_leaves_no_footer
     io = StringIO.new("".b)
     assert_raises(RuntimeError) do
-      Herringbone::SimpleWriter.open(io, row_group_rows: 500) do |sw|
-        sw.headers!(:a)
+      Herringbone::SimpleWriter.open(io, row_group_rows: 500, headers: [:a]) do |sw|
         1500.times { |i| sw << [i] }
         raise "boom"
       end

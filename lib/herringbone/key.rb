@@ -14,9 +14,8 @@ module Herringbone
   #   Herringbone.write(io, rows, encryption: key)
   #   Herringbone::Reader.new(io, decryption: key)            # or [new_key, old_key, ...]
   #
-  # Where a key may be given as a String instead (+encryption:+, +decryption:+,
-  # SimpleWriter#encrypt!), the String must be its hex: raw bytes are easy to mangle and to confuse
-  # with text, so they go through Key.new.
+  # Where a key may be given as a String instead (+encryption:+, +decryption:+), the String must be
+  # its hex: raw bytes are easy to mangle and to confuse with text, so they go through Key.new.
   #
   # Instances are frozen; #inspect and #to_s show the id but not the key.
   class Key

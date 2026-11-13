@@ -2616,9 +2616,8 @@ module Herringbone
   #   Herringbone.write(io, rows, encryption: key)
   #   Herringbone::Reader.new(io, decryption: key)            # or [new_key, old_key, ...]
   # 
-  # Where a key may be given as a String instead (+encryption:+, +decryption:+,
-  # SimpleWriter#encrypt!), the String must be its hex: raw bytes are easy to mangle and to confuse
-  # with text, so they go through Key.new.
+  # Where a key may be given as a String instead (+encryption:+, +decryption:+), the String must be
+  # its hex: raw bytes are easy to mangle and to confuse with text, so they go through Key.new.
   # 
   # Instances are frozen; #inspect and #to_s show the id but not the key.
   class Key
@@ -11567,8 +11566,7 @@ module Herringbone
   # no schema has to be declared.
   # 
   #   File.open("people.parquet", "wb") do |file|
-  #     Herringbone::SimpleWriter.open(file) do |sw|
-  #       sw.headers!(:id, :name, :age)
+  #     Herringbone::SimpleWriter.open(file, headers: [:id, :name, :age]) do |sw|
   #       sw << [123, "John", 12]
   #       sw << { id: 124, name: "Jane" } # Hashes work too; missing columns are nulls
   #     end
@@ -11584,13 +11582,11 @@ module Herringbone
   # Columns declared in a block (Schema::Builder DSL) replace inferred ones, e.g. for a column that
   # holds both numbers and text:
   # 
-  #   Herringbone::SimpleWriter.new(io) { |s| s.string :code }
+  #   Herringbone::SimpleWriter.new(io, headers: [:id, :code]) { |s| s.string :code }
   # 
-  # #encrypt! encrypts the file with one key (see Key):
+  # +encryption:+ encrypts the file with one key (see Key):
   # 
-  #   Herringbone::SimpleWriter.open(file) do |sw|
-  #     sw.encrypt!(key: ENV["PARQUET_KEY"]) # the key's hex, or a Herringbone::Key
-  #     sw.headers!(:id, :name)
+  #   Herringbone::SimpleWriter.open(file, headers: [:id, :name], encryption: ENV["PARQUET_KEY"]) do |sw|
   #     sw << [1, "John"]
   #   end
   class SimpleWriter
@@ -11599,34 +11595,35 @@ module Herringbone
     # 
     # _@param_ `io` — destination; written sequentially, never closed
     # 
+    # _@param_ `headers` — column names, in the order row Arrays list their values
+    # 
     # _@param_ `options` — Writer options (compression:, row_group_bytes:...)
     # 
     # _@return_ — the writer without a block, the block's value with one
-    sig { params(io: T.any(IO, T.untyped), options: T::Hash[Symbol, Object], blk: T.proc.params(writer: SimpleWriter).returns(Object)).returns(T.any(SimpleWriter, Object)) }
-    def self.open(io, **options, &blk); end
+    sig do
+      params(
+        io: T.any(IO, T.untyped),
+        headers: T::Array[T.any(String, Symbol)],
+        options: T::Hash[Symbol, Object],
+        blk: T.proc.params(writer: SimpleWriter).returns(Object)
+      ).returns(T.any(SimpleWriter, Object))
+    end
+    def self.open(io, headers:, **options, &blk); end
 
     # _@param_ `io` — destination; nothing is written to it until the column types are known
     # 
+    # _@param_ `headers` — column names, in the order row Arrays list their values
+    # 
     # _@param_ `options` — Writer options (compression:, row_group_bytes:...)
-    sig { params(io: T.any(IO, T.untyped), options: T::Hash[Symbol, Object], overrides: T.proc.params(s: Schema::Builder).void).void }
-    def initialize(io, **options, &overrides); end
-
-    # Names the columns, in the order row Arrays list their values. Must be called once, before
-    # the first row.
-    # 
-    # _@param_ `names` — column names
-    sig { params(names: T::Array[T.any(String, Symbol)]).returns(T.self_type) }
-    def headers!(*names); end
-
-    # Encrypts the file with one key, the way most Parquet readers can decrypt with that key (see
-    # EncryptionConfiguration.simple). Must be called before the first row. For a new key, pass
-    # +key: Herringbone::Key.generate+ and keep it (+key.hex+): the file can't be read without it.
-    # 
-    # _@param_ `key` — a key, or its hex (32 or 64 digits; raw bytes go through Key.new)
-    # 
-    # _@return_ — the key the file is encrypted with
-    sig { params(key: T.any(Key, String)).returns(Key) }
-    def encrypt!(key:); end
+    sig do
+      params(
+        io: T.any(IO, T.untyped),
+        headers: T::Array[T.any(String, Symbol)],
+        options: T::Hash[Symbol, Object],
+        overrides: T.proc.params(s: Schema::Builder).void
+      ).void
+    end
+    def initialize(io, headers:, **options, &overrides); end
 
     # Appends a row: an Array with one value per header, in header order, or a Hash keyed by
     # header (String or Symbol keys; missing columns are nulls).
@@ -11665,8 +11662,8 @@ module Herringbone
     sig { params(sample: T::Array[T::Array[T.untyped]]).returns(Schema) }
     def schema_for(sample); end
 
-    # _@return_ — the column names, nil until #headers! is called
-    sig { returns(T.nilable(T::Array[String])) }
+    # _@return_ — the column names
+    sig { returns(T::Array[String]) }
     attr_reader :headers
   end
 
@@ -11701,12 +11698,6 @@ module Herringbone
     # _@param_ `row` — row to write, in any form the Writer accepts
     sig { params(row: Object).returns(T.self_type) }
     def <<(row); end
-
-    # Sets the encryption before the first row
-    # 
-    # _@param_ `config` — how to encrypt the file
-    sig { params(config: EncryptionConfiguration).void }
-    def encryption=(config); end
 
     # _@return_ — rows accepted so far, including the ones held back
     sig { returns(Integer) }

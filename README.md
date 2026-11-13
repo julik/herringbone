@@ -75,8 +75,7 @@ statistics, page indexes and bloom filters. See [Reading](MANUAL.md#reading).
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file) do |sw|
-    sw.headers!(:id, :name, :age)
+  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :age]) do |sw|
     sw << [123, "John", 12]
     sw << { id: 124, name: "Jane" } # Hashes work too
   end
@@ -100,9 +99,7 @@ Then write with it:
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file) do |sw|
-    sw.encrypt!(key: ENV["PARQUET_KEY"])
-    sw.headers!(:id, :name, :email)
+  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :email], encryption: ENV["PARQUET_KEY"]) do |sw|
     sw << [1, "John", "john@example.com"]
   end
 end

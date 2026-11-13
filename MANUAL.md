@@ -308,8 +308,7 @@ inferred from the first 1000 rows, as with `Herringbone.write`.
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file) do |sw|
-    sw.headers!(:id, :name, :age)
+  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :age]) do |sw|
     sw << [123, "John", 12]
     sw << { id: 124, name: "Jane" } # Hashes work too
   end
@@ -317,15 +316,14 @@ end
 ```
 
 Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
-`Herringbone::SimpleWriter.new(io) { |s| s.string :code }` (then call `close` when done).
+`Herringbone::SimpleWriter.new(io, headers: [:id, :code]) { |s| s.string :code }` (then call
+`close` when done).
 
-`encrypt!` encrypts the file with one key (see [Encryption](#encryption)): give it the key's hex
-or a `Herringbone::Key` (`key: Herringbone::Key.generate` for a new one; keep it).
+`encryption:` encrypts the file with one key (see [Encryption](#encryption)): give it the key's hex
+or a `Herringbone::Key` (`Herringbone::Key.generate` for a new one; keep it).
 
 ```ruby
-Herringbone::SimpleWriter.open(file) do |sw|
-  sw.encrypt!(key: ENV["PARQUET_KEY"])
-  sw.headers!(:id, :name)
+Herringbone::SimpleWriter.open(file, headers: [:id, :name], encryption: ENV["PARQUET_KEY"]) do |sw|
   sw << [1, "John"]
 end
 ```

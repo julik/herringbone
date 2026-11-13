@@ -57,16 +57,6 @@ module Herringbone
       self
     end
 
-    # Sets the encryption before the first row
-    #
-    # @param config [EncryptionConfiguration] how to encrypt the file
-    # @return [void]
-    # @raise [Error] once rows were given
-    def encryption=(config)
-      raise Error, "Encryption must be set before the first row" if @writer || !@sample.empty?
-      @options = @options.merge(encryption: config)
-    end
-
     # @return [Integer] rows accepted so far, including the ones held back
     def rows_written = @writer ? @writer.rows_written : @sample.size
 

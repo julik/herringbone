@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Breaking:** `Herringbone::SimpleWriter.new` and `.open` take the column names as `headers:`
+  instead of `headers!`, and the key as `encryption:` instead of `encrypt!(key:)`.
+
 ## 0.9.1
 
 - `Herringbone.combine` works in Ractors other than the main one, and so does reading ZSTD without
