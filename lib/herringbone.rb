@@ -32,7 +32,7 @@ module Herringbone
   end
 
   # A row does not fit a schema that was inferred from earlier rows (Herringbone.write without
-  # +schema:+, SimpleWriter). The message says what was inferred, from how many rows, and how to
+  # +schema:+). The message says what was inferred, from how many rows, and how to
   # declare the column instead.
   class SchemaMismatch < EncodeError; end
 
@@ -99,7 +99,6 @@ module Herringbone
   autoload :Redaction, "#{LIB}/redaction"
   autoload :RestrictedReadableIO, "#{LIB}/restricted_readable_io"
   autoload :Schema, "#{LIB}/schema"
-  autoload :SimpleWriter, "#{LIB}/simple_writer"
   autoload :Thrift, "#{LIB}/thrift"
   autoload :Types, "#{LIB}/types"
   autoload :Visualizer, "#{LIB}/visualizer"
@@ -153,10 +152,21 @@ module Herringbone
   #   File.open("orders.parquet", "wb") { |f| Herringbone.write(f, Order.where(created_at: 1.year.ago..)) }
   #   Herringbone.write(io, events.lazy.map(&:to_h)) { |s| s.json :payload }
   #
+  # +headers:+ names the columns of Array rows, as with the CSV gem, and the types are inferred.
+  # Rows produced in a loop can be given through an Enumerator:
+  #
+  #   rows = Enumerator.new do |y|
+  #     y << [123, "John", 12]
+  #     y << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+  #   end
+  #   Herringbone.write(io, rows, headers: [:id, :name, :age])
+  #
   # @param io [IO, #write] destination; written sequentially, never closed
   # @param records [Enumerable<Hash, Array, Object>, Class, #find_each] rows (Hashes, Arrays in schema
   #   order, or objects responding to #attributes or #to_h), or an ActiveRecord model or relation
   # @param schema [Schema, nil] schema to write with; derived from +records+ when nil
+  # @param headers [Array<String, Symbol>, nil] column names, in the order Array rows list their
+  #   values; the types are inferred, so it can't be combined with +schema+
   # @param options [Hash{Symbol => Object}] passed to Writer.new
   # @option options [Symbol] :compression (:snappy) codec, see Herringbone.codecs
   # @option options [Integer, nil] :compression_level (nil) level for :zstd, :gzip or :brotli
@@ -178,20 +188,26 @@ module Herringbone
   # @yieldreturn [void]
   # @return [Integer] number of rows written
   # @raise [ArgumentError] when the schema has to be inferred and +records+ is empty or holds Array
-  #   rows, an option is invalid, or the block takes no parameter
+  #   rows without +headers+, +headers+ is given with +schema+ or an ActiveRecord source, a row does
+  #   not match the headers, an option is invalid, or the block takes no parameter
   # @raise [EncodeError] when a row does not fit the schema
   # @raise [SchemaMismatch] when a row does not fit the inferred schema; the file is left unfinished
-  def write(io, records, schema: nil, **options, &overrides)
+  def write(io, records, schema: nil, headers: nil, **options, &overrides)
     Schema::Builder.check_block!(overrides, "Herringbone.write(io, rows) { |s| s.json :payload }")
     model = if records.respond_to?(:klass) then records.klass
     elsif records.respond_to?(:columns) && records.respond_to?(:find_each) then records
+    end
+    if headers && (schema || model)
+      raise ArgumentError, "headers: names the columns of Array rows whose types are inferred, but " \
+        "#{schema ? "schema: already names the columns (Array rows list their values in schema order)" : "an ActiveRecord source has its own columns"}. " \
+        "Pass one or the other."
     end
     schema ||= Schema.from_active_record(model) if model
     writer = if schema
       Writer.new(io, schema, **options)
     else
-      fix = "Herringbone.write(io, rows) { |s| s.%s }"
-      InferringWriter.new(io, fix: fix, **options) { |sample| Schema.infer(sample, &overrides) }
+      fix = "Herringbone.write(io, rows#{", headers: [...]" if headers}) { |s| s.%s }"
+      InferringWriter.new(io, fix: fix, headers: headers, **options) { |sample| Schema.infer(sample, &overrides) }
     end
     begin
       if records.respond_to?(:find_each)

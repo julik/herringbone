@@ -16,7 +16,7 @@ The full reference for Herringbone. For a quick start, see the [README](README.m
   - [Column types](#column-types)
   - [Accepted values](#accepted-values)
   - [Writer options](#writer-options)
-  - [SimpleWriter: coming from CSV](#simplewriter-coming-from-csv)
+  - [Coming from CSV](#coming-from-csv)
   - [Statistics, page indexes and bloom filters](#statistics-page-indexes-and-bloom-filters)
   - [Writing to S3](#writing-to-s3)
   - [Writing to Google Cloud Storage](#writing-to-google-cloud-storage)
@@ -301,32 +301,29 @@ failed row is discarded and the writer can carry on.
 | `metadata` | `{}` | footer key/value metadata, read back with `reader.metadata` |
 | `bloom_filters` | none | `true`, an Array of column paths, or `{ "path" => { ndv:, fpp:, max_bytes: } }` |
 
-### SimpleWriter: coming from CSV
+### Coming from CSV
 
-`SimpleWriter` writes like the CSV gem: name the columns, then append Arrays. The types are
-inferred from the first 1000 rows, as with `Herringbone.write`.
+`headers:` names the columns of Array rows, like the CSV gem's `headers:`, and the types are
+inferred from the first 1000 rows as usual. Code that appends rows one at a time can do so into an
+Enumerator:
 
 ```ruby
+rows = Enumerator.new do |y|
+  y << [123, "John", 12]
+  y << { id: 124, name: "Jane" } # Hashes work too; missing columns are nulls
+end
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :age]) do |sw|
-    sw << [123, "John", 12]
-    sw << { id: 124, name: "Jane" } # Hashes work too
-  end
+  Herringbone.write(file, rows, headers: [:id, :name, :age])
 end
 ```
 
-Unlike CSV, headers are required. A column that holds more than one type can be declared up front:
-`Herringbone::SimpleWriter.new(io, headers: [:id, :code]) { |s| s.string :code }` (then call
-`close` when done).
+Unlike CSV, headers are required for Array rows: a Parquet file always has named columns. The
+block declares a column that holds more than one type, as with Hash rows:
+`Herringbone.write(io, rows, headers: [:id, :code]) { |s| s.string :code }`. With `schema:`, Array
+rows list their values in schema order, so `headers:` can't be given as well.
 
-`encryption:` encrypts the file with one key (see [Encryption](#encryption)): give it the key's hex
-or a `Herringbone::Key` (`Herringbone::Key.generate` for a new one; keep it).
-
-```ruby
-Herringbone::SimpleWriter.open(file, headers: [:id, :name], encryption: ENV["PARQUET_KEY"]) do |sw|
-  sw << [1, "John"]
-end
-```
+When the rows arrive over separate calls (a writer kept in an instance variable), use
+`Herringbone::Writer`, which needs a schema.
 
 ### Statistics, page indexes and bloom filters
 

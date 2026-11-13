@@ -47,9 +47,7 @@ class RactorTest < Minitest::Test
         end
         inferred = Herringbone.write(StringIO.new, rows.map { |r| r.slice("id", "str", "f64", "ts_us", "dec_med") })
         simple = StringIO.new
-        Herringbone::SimpleWriter.open(simple, headers: [:id, :name]) do |sw|
-          rows.each { |r| sw << [r["id"], r["str"]] }
-        end
+        Herringbone.write(simple, rows.map { |r| [r["id"], r["str"]] }, headers: [:id, :name])
         [rows.length, nested_counts.uniq, inferred, Herringbone::Reader.new(simple).read.length]
       end
     end

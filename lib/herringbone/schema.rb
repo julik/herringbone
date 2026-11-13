@@ -318,7 +318,7 @@ module Herringbone
       #   to one
       def row_hash(row)
         return row if row.is_a?(Hash)
-        raise ArgumentError, "Cannot infer a schema from Array rows (values in schema order); pass a schema" if row.is_a?(Array)
+        raise ArgumentError, "Cannot infer a schema from Array rows (values in schema order); pass headers: with the column names, or a schema" if row.is_a?(Array)
         return row.attributes if row.respond_to?(:attributes)
         return row.to_h if row.respond_to?(:to_h)
         raise ArgumentError, "Cannot infer a schema from a #{row.class}"

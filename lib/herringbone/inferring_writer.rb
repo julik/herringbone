@@ -10,13 +10,18 @@ module Herringbone
   # A row that does not fit the inferred schema raises SchemaMismatch and stops the writer: the
   # file is left unfinished (no footer) rather than written with rows missing.
   #
-  # Used by Herringbone.write and SimpleWriter.
+  # With +headers:+, rows are Arrays of values in header order (or Hashes keyed by header), and
+  # only the held-back rows are turned into Hashes for inference.
+  #
+  # Used by Herringbone.write.
   #
   # @api private
   class InferringWriter
     # @param io [IO, #write] destination, passed to Writer.new
     # @param fix [String] how a caller declares a column, for SchemaMismatch messages; +%s+ is
     #   replaced by a declaration such as +string :age+
+    # @param headers [Array<String, Symbol>, nil] column names, in the order row Arrays list their
+    #   values; nil for rows the Writer takes as they are
     # @param options [Hash{Symbol => Object}] Writer options
     # @option options [Symbol] :compression (:snappy) codec, checked before any row is read
     #   (the other Writer options are passed on as well)
@@ -24,14 +29,15 @@ module Herringbone
     # @yieldparam sample [Array] the rows held back, at most Schema::INFER_SAMPLE
     # @yieldreturn [Schema]
     # @raise [MissingCodecError] when the codec's optional gem is not loaded
-    # @raise [ArgumentError] for a compression level the codec does not take, or invalid
-    #   encryption settings
-    def initialize(io, fix:, **options, &schema_for)
+    # @raise [ArgumentError] for a compression level the codec does not take, invalid encryption
+    #   settings, or +headers+ that are empty or name a column twice
+    def initialize(io, fix:, headers: nil, **options, &schema_for)
       # Fail before reading any rows if the codec's library is missing or the level is wrong
       codec = Compression.codec_id(options.fetch(:compression, :snappy))
       Compression.ensure_available!(codec)
       Compression.check_level!(codec, options[:compression_level])
       options = options.merge(encryption: EncryptionConfiguration.from(options[:encryption])) if options[:encryption]
+      @headers = headers && check_headers(headers)
       @io = io
       @fix = fix
       @options = options
@@ -42,12 +48,15 @@ module Herringbone
       @mismatch = nil
     end
 
-    # @param row [Object] row to write, in any form the Writer accepts
+    # @param row [Object] row to write, in any form the Writer accepts; with +headers+, an Array or
+    #   a Hash
     # @return [self]
+    # @raise [ArgumentError] when the row does not match the headers
     # @raise [SchemaMismatch] when the row does not fit the inferred schema
     # @raise [Error] after an earlier SchemaMismatch
     def <<(row)
       check_usable!
+      row = values_of(row) if @headers
       if @writer
         write(row)
       else
@@ -91,9 +100,10 @@ module Herringbone
     #
     # @return [void]
     # @raise [SchemaMismatch] when a held-back row does not fit
+    # @raise [ArgumentError] when a column declared in the block is not among the headers
     def start
       @sample_size = @sample.size
-      @writer = Writer.new(@io, @schema_for.call(@sample), **@options)
+      @writer = Writer.new(@io, infer_schema, **@options)
       sample, @sample = @sample, nil
       sample.each { |row| write(row) }
     end
@@ -107,6 +117,48 @@ module Herringbone
       @writer.abort
       @mismatch = SchemaMismatch.new(explain(e), row: e.row, column: e.column, value: e.value)
       raise @mismatch
+    end
+
+    # @return [Schema] built by the block from the held-back rows, as Hashes when there are headers
+    # @raise [ArgumentError] when a column declared in the block is not among the headers
+    def infer_schema
+      return @schema_for.call(@sample) unless @headers
+      # Without rows, every column is nil and so becomes a string
+      rows = @sample.empty? ? [@headers.to_h { |name| [name, nil] }] : @sample.map { |values| @headers.zip(values).to_h }
+      schema = @schema_for.call(rows)
+      extra = schema.fields.map(&:name) - @headers
+      raise ArgumentError, "Declared columns not among the headers (#{@headers.join(", ")}): #{extra.join(", ")}" unless extra.empty?
+      schema
+    end
+
+    # @param headers [Array<String, Symbol>] column names given as +headers:+
+    # @return [Array<String>] the names as frozen Strings
+    # @raise [ArgumentError] when there are none or a name is given twice
+    def check_headers(headers)
+      names = Array(headers).map(&:to_s)
+      raise ArgumentError, "headers: needs at least one column name" if names.empty?
+      duplicates = names.tally.select { |_, n| n > 1 }.keys
+      raise ArgumentError, "headers: names a column more than once: #{duplicates.join(", ")}" unless duplicates.empty?
+      names.freeze
+    end
+
+    # @param row [Array, Hash] row given to #<<
+    # @return [Array] its values in header order
+    # @raise [ArgumentError] when it does not match the headers
+    def values_of(row)
+      case row
+      when Array
+        unless row.size == @headers.size
+          raise ArgumentError, "Expected #{@headers.size} values (#{@headers.join(", ")}), got #{row.size}"
+        end
+        row
+      when Hash
+        unknown = row.keys.map(&:to_s) - @headers
+        raise ArgumentError, "Not among the headers (#{@headers.join(", ")}): #{unknown.join(", ")}" unless unknown.empty?
+        @headers.map { |name| row.fetch(name) { row[name.to_sym] } }
+      else
+        raise ArgumentError, "With headers:, rows must be Arrays or Hashes, got #{row.class}"
+      end
     end
 
     # @return [void]

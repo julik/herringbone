@@ -71,14 +71,12 @@ statistics, page indexes and bloom filters. See [Reading](MANUAL.md#reading).
 
 ## Writing CSV-style
 
-`SimpleWriter` writes like the CSV gem: name the columns, then append rows. The types are inferred.
+Name the columns with `headers:` and give the rows as Arrays, like with the CSV gem. The types are
+inferred.
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :age]) do |sw|
-    sw << [123, "John", 12]
-    sw << { id: 124, name: "Jane" } # Hashes work too
-  end
+  Herringbone.write(file, [[123, "John", 12], [124, "Jane", nil]], headers: [:id, :name, :age])
 end
 ```
 
@@ -99,9 +97,7 @@ Then write with it:
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone::SimpleWriter.open(file, headers: [:id, :name, :email], encryption: ENV["PARQUET_KEY"]) do |sw|
-    sw << [1, "John", "john@example.com"]
-  end
+  Herringbone.write(file, [[1, "John", "john@example.com"]], headers: [:id, :name, :email], encryption: ENV["PARQUET_KEY"])
 end
 ```
 

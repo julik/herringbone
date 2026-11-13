@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- **Breaking:** `Herringbone::SimpleWriter.new` and `.open` take the column names as `headers:`
-  instead of `headers!`, and the key as `encryption:` instead of `encrypt!(key:)`.
+- `Herringbone.write(io, rows, headers: [:id, :name])` writes Array rows with inferred types.
+- **Breaking:** `Herringbone::SimpleWriter` is removed: use `Herringbone.write` with `headers:` (and
+  `encryption:` instead of `encrypt!(key:)`), or `Herringbone::Writer` with a schema.
 
 ## 0.9.1
 
