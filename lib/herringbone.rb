@@ -32,8 +32,8 @@ module Herringbone
   end
 
   # A row does not fit a schema that was inferred from earlier rows (Herringbone.write without
-  # +schema:+). The message says what was inferred, from how many rows, and how to
-  # declare the column instead.
+  # +schema:+, Writer.open without a schema). The message says what was inferred, from how many
+  # rows, and how to declare the column instead.
   class SchemaMismatch < EncodeError; end
 
   # The file (or the writer configuration) uses a Parquet feature Herringbone does not implement,

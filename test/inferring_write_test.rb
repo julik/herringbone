@@ -57,8 +57,7 @@ class InferringWriteTest < Minitest::Test
 
   def test_a_row_that_does_not_fit_raises_schema_mismatch_and_stops
     io = StringIO.new("".b)
-    fix = "Herringbone.write(io, rows, headers: [...]) { |s| s.%s }"
-    sw = Herringbone::InferringWriter.new(io, fix: fix, headers: [:id, :age]) { |sample| Herringbone::Schema.infer(sample) }
+    sw = Herringbone::Writer.open(io, headers: [:id, :age])
     1000.times { |i| sw << [i, i % 90] }
     error = assert_raises(Herringbone::SchemaMismatch) { sw << [1000, "twelve"] }
     assert_kind_of Herringbone::EncodeError, error
@@ -73,7 +72,7 @@ class InferringWriteTest < Minitest::Test
       Column types are decided from the first 1000 rows (or all of them, when there are
       fewer), so a later value of a different type cannot be written to the same column.
       Declare the column with a type that holds every value, for example:
-        Herringbone.write(io, rows, headers: [...]) { |s| s.string :age }
+        Herringbone::Writer.open(io, Herringbone::Schema.define { |s| ...; s.string :age })
       or pass a complete schema. The file was left unfinished (no footer).
     MESSAGE
     later = assert_raises(Herringbone::Error) { sw << [1001, 3] }
@@ -162,6 +161,44 @@ class InferringWriteTest < Minitest::Test
     schema = Herringbone::Schema.define { |s| s.int64 :a }
     error = assert_raises(ArgumentError) { Herringbone.write(StringIO.new("".b), [[1]], schema: schema, headers: [:a]) }
     assert_match(/schema: already names the columns/, error.message)
+  end
+
+  def test_writer_open_without_a_schema_infers_it
+    io = StringIO.new("".b)
+    result = Herringbone::Writer.open(io, headers: [:id, :name, :age], compression: :gzip) do |w|
+      w << [123, "John", 12]
+      w << {:id => 124, "name" => "Jane"}
+      w.rows_written
+    end
+    assert_equal 2, result
+    assert_equal [{"id" => 123, "name" => "John", "age" => 12}, {"id" => 124, "name" => "Jane", "age" => nil}], read(io)
+
+    io = StringIO.new("".b)
+    w = Herringbone::Writer.open(io)
+    3000.times { |i| w << {"i" => i, "half" => i / 2.0} }
+    w.close
+    assert_equal 2999, read(io).last["i"]
+  end
+
+  def test_writer_open_refuses_headers_with_a_schema_and_arrays_without_headers
+    schema = Herringbone::Schema.define { |s| s.int64 :a }
+    error = assert_raises(ArgumentError) { Herringbone::Writer.open(StringIO.new("".b), schema, headers: [:a]) }
+    assert_match(/schema already names the columns/, error.message)
+    w = Herringbone::Writer.open(StringIO.new("".b))
+    w << [1]
+    assert_match(/pass headers:/, assert_raises(ArgumentError) { w.close }.message)
+  end
+
+  def test_writer_open_aborts_when_the_block_raises
+    io = StringIO.new("".b)
+    assert_raises(RuntimeError) do
+      Herringbone::Writer.open(io, headers: [:a], row_group_rows: 500) do |w|
+        1500.times { |i| w << [i] }
+        raise "boom"
+      end
+    end
+    assert io.string.start_with?("PAR1")
+    refute io.string.end_with?("PAR1")
   end
 
   def test_write_with_headers_leaves_no_footer_when_the_rows_fail

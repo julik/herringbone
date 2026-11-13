@@ -13,10 +13,10 @@ module Herringbone
   # With +headers:+, rows are Arrays of values in header order (or Hashes keyed by header), and
   # only the held-back rows are turned into Hashes for inference.
   #
-  # Used by Herringbone.write.
-  #
-  # @api private
+  # Writer.open returns one when it is given no schema, and Herringbone.write uses one when it has
+  # to infer the schema.
   class InferringWriter
+    # @api private
     # @param io [IO, #write] destination, passed to Writer.new
     # @param fix [String] how a caller declares a column, for SchemaMismatch messages; +%s+ is
     #   replaced by a declaration such as +string :age+

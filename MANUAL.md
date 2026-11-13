@@ -303,27 +303,25 @@ failed row is discarded and the writer can carry on.
 
 ### Coming from CSV
 
-`headers:` names the columns of Array rows, like the CSV gem's `headers:`, and the types are
-inferred from the first 1000 rows as usual. Code that appends rows one at a time can do so into an
-Enumerator:
+`Herringbone::Writer.open` without a schema infers the column types from the first 1000 rows, and
+`headers:` names the columns of Array rows, like the CSV gem's `headers:`:
 
 ```ruby
-rows = Enumerator.new do |y|
-  y << [123, "John", 12]
-  y << { id: 124, name: "Jane" } # Hashes work too; missing columns are nulls
-end
 File.open("people.parquet", "wb") do |file|
-  Herringbone.write(file, rows, headers: [:id, :name, :age])
+  Herringbone::Writer.open(file, headers: [:id, :name, :age]) do |w|
+    w << [123, "John", 12]
+    w << { id: 124, name: "Jane" } # Hashes work too; missing columns are nulls
+  end
 end
 ```
 
-Unlike CSV, headers are required for Array rows: a Parquet file always has named columns. The
-block declares a column that holds more than one type, as with Hash rows:
-`Herringbone.write(io, rows, headers: [:id, :code]) { |s| s.string :code }`. With `schema:`, Array
-rows list their values in schema order, so `headers:` can't be given as well.
+Without a block it returns the writer, to keep around and `close` when done. Unlike CSV, headers
+are required for Array rows: a Parquet file always has named columns. With a schema, Array rows
+list their values in schema order, so `headers:` can't be given as well. For a column that holds
+more than one type, pass the schema.
 
-When the rows arrive over separate calls (a writer kept in an instance variable), use
-`Herringbone::Writer`, which needs a schema.
+Rows you already have go in one call, where the block can declare just the columns that need it:
+`Herringbone.write(io, rows, headers: [:id, :code]) { |s| s.string :code }`.
 
 ### Statistics, page indexes and bloom filters
 

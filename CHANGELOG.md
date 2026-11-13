@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- `Herringbone.write(io, rows, headers: [:id, :name])` writes Array rows with inferred types.
-- **Breaking:** `Herringbone::SimpleWriter` is removed: use `Herringbone.write` with `headers:` (and
-  `encryption:` instead of `encrypt!(key:)`), or `Herringbone::Writer` with a schema.
+- `Herringbone::Writer.open(io, headers: [:id, :name]) { |w| w << [1, "John"] }` infers the column
+  types when no schema is given, and `Herringbone.write(io, rows, headers: [:id, :name])` writes
+  Array rows with inferred types.
+- **Breaking:** `Herringbone::SimpleWriter` is removed: use `Herringbone::Writer.open` with
+  `headers:` (and `encryption:` instead of `encrypt!(key:)`).
 
 ## 0.9.1
 

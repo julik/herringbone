@@ -296,8 +296,8 @@ module Herringbone
   end
 
   # A row does not fit a schema that was inferred from earlier rows (Herringbone.write without
-  # +schema:+). The message says what was inferred, from how many rows, and how to
-  # declare the column instead.
+  # +schema:+, Writer.open without a schema). The message says what was inferred, from how many
+  # rows, and how to declare the column instead.
   class SchemaMismatch < Herringbone::EncodeError
   end
 
@@ -6999,9 +6999,19 @@ module Herringbone
     # returns and the block's value is returned; if the block raises, the writer is aborted and no
     # footer is written. Without a block, call #close to finish. The IO is never closed.
     # 
+    # Without a schema, the column types are inferred from the first Schema::INFER_SAMPLE rows
+    # (see InferringWriter), and +headers:+ names the columns of Array rows, as with the CSV gem:
+    # 
+    #   Herringbone::Writer.open(io, headers: [:id, :name, :age]) do |w|
+    #     w << [123, "John", 12]
+    #     w << {id: 124, name: "Jane"} # Hashes work too; missing columns are nulls
+    #   end
+    # 
     # _@param_ `io` — destination
     # 
-    # _@param_ `schema` — schema of the rows
+    # _@param_ `schema` — schema of the rows; inferred from them when nil
+    # 
+    # _@param_ `headers` — column names, in the order Array rows list their values, when the schema is inferred
     # 
     # _@param_ `options` — see the class description and #initialize
     # 
@@ -7009,12 +7019,13 @@ module Herringbone
     sig do
       params(
         io: T.any(IO, T.untyped),
-        schema: Schema,
+        schema: T.nilable(Schema),
+        headers: T.nilable(T::Array[T.any(String, Symbol)]),
         options: T::Hash[Symbol, Object],
-        blk: T.proc.params(writer: Writer).returns(Object)
-      ).returns(T.any(Writer, Object))
+        blk: T.proc.params(writer: T.any(Writer, InferringWriter)).returns(Object)
+      ).returns(T.any(Writer, InferringWriter, Object))
     end
-    def self.open(io, schema, **options, &blk); end
+    def self.open(io, schema = nil, headers: nil, **options, &blk); end
 
     # Internal (used by Redaction and Combiner): .open for a file whose row groups are all written
     # with #write_row_group, one for each row group of another file, so they keep their boundaries
@@ -11597,9 +11608,8 @@ module Herringbone
   # With +headers:+, rows are Arrays of values in header order (or Hashes keyed by header), and
   # only the held-back rows are turned into Hashes for inference.
   # 
-  # Used by Herringbone.write.
-  # 
-  # @api private
+  # Writer.open returns one when it is given no schema, and Herringbone.write uses one when it has
+  # to infer the schema.
   class InferringWriter
     # _@param_ `io` — destination, passed to Writer.new
     # 

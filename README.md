@@ -71,14 +71,20 @@ statistics, page indexes and bloom filters. See [Reading](MANUAL.md#reading).
 
 ## Writing CSV-style
 
-Name the columns with `headers:` and give the rows as Arrays, like with the CSV gem. The types are
+Name the columns with `headers:` and append the rows as Arrays, like with the CSV gem. The types are
 inferred.
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone.write(file, [[123, "John", 12], [124, "Jane", nil]], headers: [:id, :name, :age])
+  Herringbone::Writer.open(file, headers: [:id, :name, :age]) do |w|
+    w << [123, "John", 12]
+    w << { id: 124, name: "Jane" } # Hashes work too
+  end
 end
 ```
+
+Rows you already have in an Array or an Enumerable go in one call:
+`Herringbone.write(file, rows, headers: [:id, :name, :age])`.
 
 To control the types, declare a schema and use `Herringbone::Writer`, see
 [Writing](MANUAL.md#writing).
@@ -97,7 +103,9 @@ Then write with it:
 
 ```ruby
 File.open("people.parquet", "wb") do |file|
-  Herringbone.write(file, [[1, "John", "john@example.com"]], headers: [:id, :name, :email], encryption: ENV["PARQUET_KEY"])
+  Herringbone::Writer.open(file, headers: [:id, :name, :email], encryption: ENV["PARQUET_KEY"]) do |w|
+    w << [1, "John", "john@example.com"]
+  end
 end
 ```
 
