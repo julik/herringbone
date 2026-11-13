@@ -7,6 +7,8 @@
   Array rows with inferred types.
 - `Herringbone::FormatError` is raised for a page that cannot be decompressed, naming the codec and
   the column, instead of `Zlib::DataError`, zstd-ruby's `RuntimeError` or an internal codec error.
+- `Herringbone::Reader` raises `Herringbone::FormatError` for a footer or page header that is
+  damaged in a way that still decodes, instead of a `NoMethodError`, `KeyError` or `TypeError`.
 - `Herringbone::Thrift::Error` is a `Herringbone::Error`, so `rescue Herringbone::Error` covers
   footer metadata that cannot be written.
 - The gem ships its type signatures: `sig/herringbone.rbs` for RBS tools such as Steep (now valid

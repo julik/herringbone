@@ -944,9 +944,10 @@ prints the page instead.
 
 Every error Herringbone raises on purpose is a `Herringbone::Error`:
 
-- `Herringbone::FormatError`: the file is not valid Parquet, or a page in it is damaged. A page
-  that cannot be decompressed raises it too, naming the codec and the column, with the error of
-  the codec's library (`Zlib::DataError`, for instance) as its `cause`.
+- `Herringbone::FormatError`: the file is not valid Parquet, or a part of it is damaged. A page
+  that cannot be decompressed raises it too, naming the codec and the column, and so does
+  metadata with a field missing; the error that gave the damage away (`Zlib::DataError`, a
+  `NoMethodError` on nil) is its `cause`.
 - `Herringbone::EncodeError`: a value does not fit its column; it carries `row`, `column` and
   `value`. `Herringbone::SchemaMismatch` is the same for a schema that was inferred.
 - `Herringbone::UnsupportedError`: a Parquet feature Herringbone does not implement.

@@ -3758,6 +3758,17 @@ module Herringbone
     sig { params(filter: T.nilable(Filter), from: T.nilable(Integer)).returns(T::Array[[Integer, T::Array[[Integer, Integer]]]]) }
     def plan_rows(filter, from); end
 
+    # Runs a block that decodes a part of the file, raising FormatError where damaged metadata
+    # makes it trip. Required fields are not checked when the metadata is decoded (that would cost
+    # on every page header), so a missing one shows up as a nil or a nonsensical number later on.
+    # The block must not call into the caller's code, whose errors are not ours to rename.
+    # 
+    # _@param_ `what` — the part of the file being read, for the message
+    # 
+    # _@return_ — the block's value
+    sig { params(what: String, blk: T.proc.returns(Object)).returns(Object) }
+    def damage_as_format_error(what, &blk); end
+
     # Decodes one Thrift struct stored elsewhere in the file (ColumnIndex, OffsetIndex)
     # 
     # _@param_ `klass` — Format struct class to decode with (responds to .decode)
